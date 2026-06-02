@@ -2098,6 +2098,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                 <option value="auto" ${configLanguage === 'auto' ? 'selected' : ''}>${i18n.t('webview.languageAuto')}</option>
                 <option value="en" ${configLanguage === 'en' ? 'selected' : ''}>English</option>
                 <option value="ar" ${configLanguage === 'ar' ? 'selected' : ''}>العربية</option>
+                <option value="es" ${configLanguage === 'es' ? 'selected' : ''}>Español</option>
               </select>
             </div>
 
