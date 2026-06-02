@@ -27,13 +27,20 @@ import { AccountsWebviewProvider } from './presentation/providers/accounts-webvi
  * - Setting up the sidebar webview
  * - Initializing the status bar
  */
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = Logger.getInstance();
   logger.info('Antigravity Hub is activating...');
 
   // ── Initialize Configuration ──
   const config = ExtensionConfig.getInstance();
   config.initialize(context);
+
+  // ── Run Storage Migration & Sanitization ──
+  try {
+    await migrateAndSanitizeStorage(context);
+  } catch (err: any) {
+    logger.error('Failed to run storage migration/sanitization during activation', err);
+  }
 
   // ── Initialize i18n ──
   const i18n = I18nService.getInstance();
@@ -195,4 +202,113 @@ function registerCommands(
   );
 
   return disposables;
+}
+
+/**
+ * Startup routine that:
+ * 1. Sanitizes any account email containing typo domains like ".con" -> ".com"
+ *    inside the globalState accounts list and the active account key.
+ * 2. Migrates all stored secrets (refresh token, access token, metadata, deviceProfile)
+ *    from the conflict-prone prefix "antigravity.account.*" to the isolated prefix "antigravityHub.secure.*".
+ * 3. Wipes old "antigravity.account.*" keys from SecretStorage to prevent IDE 500 crashes.
+ */
+async function migrateAndSanitizeStorage(context: vscode.ExtensionContext): Promise<void> {
+  const logger = Logger.getInstance();
+  logger.info('Starting storage migration and sanitization check...');
+
+  try {
+    const globalState = context.globalState;
+    const secrets = context.secrets;
+
+    // 1. Load accounts list
+    let accounts = globalState.get<any[]>('antigravity.accounts.list', []);
+    let activeAccount = globalState.get<string | null>('antigravity.accounts.active', null);
+    let accountsModified = false;
+
+    // Keep a map of old email -> new email
+    const emailReplacements = new Map<string, string>();
+
+    // Step A: Sanitize emails with ".con" typo in the accounts list
+    const sanitizedAccounts = accounts.map(account => {
+      const email = account.email;
+      if (email && email.toLowerCase().endsWith('.con')) {
+        const newEmail = email.slice(0, -4) + '.com';
+        emailReplacements.set(email.toLowerCase(), newEmail.toLowerCase());
+        logger.info(`Detected typo email in list: "${email}". Correcting to "${newEmail}"`);
+        accountsModified = true;
+        return {
+          ...account,
+          email: newEmail,
+          displayName: account.displayName === email ? newEmail : account.displayName
+        };
+      }
+      return account;
+    });
+
+    // Step B: Sanitize active account setting
+    if (activeAccount && activeAccount.toLowerCase().endsWith('.con')) {
+      const newActive = activeAccount.slice(0, -4) + '.com';
+      logger.info(`Detected typo in active account config: "${activeAccount}". Correcting to "${newActive}"`);
+      activeAccount = newActive;
+      globalState.update('antigravity.accounts.active', activeAccount);
+    }
+
+    if (accountsModified) {
+      logger.info('Saving sanitized accounts list to globalState...');
+      await globalState.update('antigravity.accounts.list', sanitizedAccounts);
+      accounts = sanitizedAccounts;
+    }
+
+    // Step C: Migrate secrets and clean up legacy/typo keys
+    for (const account of accounts) {
+      const email = account.email;
+      // Check if we corrected this email from a typo
+      const oldEmail = Array.from(emailReplacements.entries()).find(([_, val]) => val === email.toLowerCase())?.[0];
+
+      // Source emails to migrate from: check both current email and typo email
+      const sourceEmailsToCheck = [email];
+      if (oldEmail) {
+        sourceEmailsToCheck.push(oldEmail);
+      }
+
+      for (const srcEmail of sourceEmailsToCheck) {
+        // Old keys:
+        const oldRefKey = `antigravity.account.${srcEmail}.refreshToken`;
+        const oldAccKey = `antigravity.account.${srcEmail}.accessToken`;
+        const oldMetaKey = `antigravity.account.${srcEmail}.metadata`;
+        const oldProfileKey = `antigravity.account.${srcEmail}.deviceProfile`;
+
+        // New isolated keys:
+        const newRefKey = `antigravityHub.secure.${email}.refreshToken`;
+        const newAccKey = `antigravityHub.secure.${email}.accessToken`;
+        const newMetaKey = `antigravityHub.secure.${email}.metadata`;
+        const newProfileKey = `antigravityHub.secure.${email}.deviceProfile`;
+
+        // Retrieve from old keys
+        const refreshToken = await secrets.get(oldRefKey);
+        const accessToken = await secrets.get(oldAccKey);
+        const metadata = await secrets.get(oldMetaKey);
+        const deviceProfile = await secrets.get(oldProfileKey);
+
+        if (refreshToken || accessToken || metadata || deviceProfile) {
+          logger.info(`Migrating credentials for account: ${srcEmail} -> ${email}`);
+
+          if (refreshToken) await secrets.store(newRefKey, refreshToken);
+          if (accessToken) await secrets.store(newAccKey, accessToken);
+          if (metadata) await secrets.store(newMetaKey, metadata);
+          if (deviceProfile) await secrets.store(newProfileKey, deviceProfile);
+        }
+
+        // Clean up old keys unconditionally from SecretStorage
+        await secrets.delete(oldRefKey);
+        await secrets.delete(oldAccKey);
+        await secrets.delete(oldMetaKey);
+        await secrets.delete(oldProfileKey);
+      }
+    }
+
+    logger.info('Storage migration and sanitization check finished successfully.');
+  } catch (error: any) {
+    logger.error('Failed to complete storage migration/sanitization', error);
+  }
 }

@@ -54,9 +54,9 @@ export const STORAGE_KEYS = {
 
 // ── Secret Storage Key Prefixes ──
 export const SECRET_KEYS = {
-  REFRESH_TOKEN: (email: string) => `antigravity.account.${email}.refreshToken`,
-  ACCESS_TOKEN: (email: string) => `antigravity.account.${email}.accessToken`,
-  METADATA: (email: string) => `antigravity.account.${email}.metadata`,
+  REFRESH_TOKEN: (email: string) => `antigravityHub.secure.${email}.refreshToken`,
+  ACCESS_TOKEN: (email: string) => `antigravityHub.secure.${email}.accessToken`,
+  METADATA: (email: string) => `antigravityHub.secure.${email}.metadata`,
 } as const;
 
 // ── State Database Keys ──

@@ -151,7 +151,7 @@ export class AccountRepositoryImpl implements IAccountRepository {
   // ── Device Profile Storage (SecretStorage) ──────────────────────────────────
 
   private deviceProfileKey(email: string): string {
-    return `antigravity.account.${email}.deviceProfile`;
+    return `antigravityHub.secure.${email}.deviceProfile`;
   }
 
   async storeDeviceProfile(email: string, profile: DeviceProfile): Promise<void> {
