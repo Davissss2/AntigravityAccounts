@@ -397,8 +397,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     });
 
     accounts.sort((a, b) => {
-      if (a.isActive && !b.isActive) return -1;
-      if (!a.isActive && b.isActive) return 1;
       return a.displayName.localeCompare(b.displayName, undefined, { numeric: true, sensitivity: 'base' });
     });
 
@@ -775,10 +773,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const effectivePreferred = preferredModel || '';
 
     // ── Sort accounts ──
-    // Active account always first (overrides all rules), then by preferred model balance
+    // Sort strictly alphabetically by display name (active account is not pinned to the top)
     accounts.sort((a, b) => {
-      if (a.isActive && !b.isActive) return -1;
-      if (!a.isActive && b.isActive) return 1;
       return a.displayName.localeCompare(b.displayName, undefined, { numeric: true, sensitivity: 'base' });
     });
 
