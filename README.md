@@ -82,3 +82,28 @@ If you encounter any issues, bugs, or have feature requests, please check out th
 - 🐛 **التبليغ عن مشكلة:** [GitHub Issues](https://github.com/devhakeem5/antigravity-hub-extension/issues)
 - 💻 **رابط المستودع:** [GitHub](https://github.com/devhakeem5/antigravity-hub-extension)
 - 📧 **البريد الإلكتروني:** [devhakeem5@gmail.com](mailto:devhakeem5@gmail.com)
+
+---
+
+## 🔒 Privacy & Anti-Ban Security
+
+- **100% Local & Self-Contained:** Your credentials, access tokens, and account keys never leave your machine. No telemetry or analytics data is collected, stored, or sent to external servers. All requests are made directly and securely from your computer to Google's official developer API endpoints.
+- **Session Fingerprint Randomization:** To prevent account cross-correlation, the extension maps a unique, randomized machine ID/device profile fingerprint to each account's session.
+- **Anti-Ban Protection:** Built-in randomized request delays (between 3 to 7 seconds) mimic human behavior, protecting you from automatic API rate-limiting or temporary IP blocks.
+
+---
+
+## 🔒 الخصوصية والأمان ضد الحظر
+
+- **محلية بالكامل 100%:** لا تغادر بيانات اعتمادك أو رموز الوصول أو مفاتيح حسابك جهازك مطلقاً. لا يتم جمع أو تخزين أو إرسال أي بيانات تتبع أو تحليلات إلى خوادم خارجية. يتم إجراء جميع الطلبات بشكل مباشر وآمن من جهاز الكمبيوتر الخاص بك إلى خوادم واجهة برمجة التطبيقات (API) الرسمية من Google.
+- **عشوائية بصمة الجهاز:** لمنع الربط والارتباط بين حساباتك المختلفة لدى Google، تقوم الإضافة بربط معرّف جهاز فريد وبصمة عشوائية لكل ملف تعريف حساب وجلسة.
+- **الحماية ضد الحظر:** تأتي الإضافة بتأخيرات زمنية عشوائية مدمجة (بين 3 إلى 7 ثوانٍ) بين عمليات فحص الأرصدة لمحاكاة السلوك البشري الطبيعي وحمايتك من حظر عنوان IP مؤقتاً أو تقييد الطلبات.
+
+---
+
+## 🔒 Privacidad y Seguridad Anti-Bloqueo
+
+- **100% Local y Autónomo:** Tus credenciales, tokens de acceso y llaves de cuenta nunca salen de tu máquina. No se recopilan, almacenan ni envían datos de telemetría o análisis a servidores externos. Todas las solicitudes se realizan de manera directa y segura desde tu computadora a los endpoints oficiales de la API de desarrolladores de Google.
+- **Aleatorización de Huella de Sesión:** Para evitar la correlación cruzada de cuentas, la extensión asigna un identificador de máquina y una huella de perfil de dispositivo únicos y aleatorios a la sesión de cada cuenta.
+- **Protección Anti-Bloqueo:** Retrasos aleatorios integrados (de entre 3 y 7 segundos) entre consultas de saldo para imitar el comportamiento humano natural y protegerte de límites de tasa de API o bloqueos temporales de IP.
+

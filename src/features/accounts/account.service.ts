@@ -282,9 +282,9 @@ export class AccountService {
         break;
       }
 
-      // ── Anti-Ban: Random delay between accounts (200ms to 4s) ──
+      // ── Anti-Ban: Random delay between accounts (3s to 7s) to prevent rate limiting ──
       if (accountsProcessed > 0) {
-        const delay = Math.floor(Math.random() * (4000 - 200 + 1)) + 200;
+        const delay = Math.floor(Math.random() * (7000 - 3000 + 1)) + 3000;
         Logger.getInstance().debug(`Anti-ban: Sleeping for ${delay}ms before refreshing ${account.email}`);
         
         await new Promise(resolve => {
