@@ -107,7 +107,7 @@ export class StateDbService {
       }
 
       // ── Step 4: Spawn background worker + close window ──
-      const triggered = await this.triggerWorkerAndClose(account.email, dbPath, rows);
+      const triggered = await this.triggerWorkerAndClose(account.email, dbPath, rows, deviceProfile);
       return triggered ? 'success' : 'cancelled';
 
     } catch (error: any) {
@@ -125,7 +125,8 @@ export class StateDbService {
   private async triggerWorkerAndClose(
     email: string,
     dbPath: string,
-    rows: Array<{ key: string; value: string | null }>
+    rows: Array<{ key: string; value: string | null }>,
+    deviceProfile?: DeviceProfile | null
   ): Promise<boolean> {
     const i18n = I18nService.getInstance();
     const actionYes = i18n.t('switchPrompt.actionYes');
@@ -164,7 +165,13 @@ export class StateDbService {
     if (antigravityExe) exeCandidates.push(antigravityExe);
     if (currentExePath && !exeCandidates.includes(currentExePath)) exeCandidates.push(currentExePath);
 
-    const payloadObj = { dbPath, rows, exeCandidates };
+    const payloadObj = {
+      dbPath,
+      rows,
+      exeCandidates,
+      storageJsonPath: PathUtils.getStorageJsonPath(this.context),
+      deviceProfile
+    };
 
     fs.writeFileSync(payloadPath, JSON.stringify(payloadObj, null, 2), 'utf-8');
     fs.writeFileSync(workerPath, this.getWorkerScript(), 'utf-8');
@@ -347,6 +354,31 @@ async function inject() {
 
   // Phase 3: Safety margin for OS to release file locks
   await new Promise(r => setTimeout(r, 1500));
+
+  // Write device profile to storage.json after IDE has exited to avoid cached configuration overwrites!
+  if (payload.storageJsonPath && payload.deviceProfile) {
+    try {
+      const storagePath = payload.storageJsonPath;
+      const profile = payload.deviceProfile;
+      let storageData = {};
+      if (fs.existsSync(storagePath)) {
+        try { storageData = JSON.parse(fs.readFileSync(storagePath, 'utf-8')); }
+        catch (e) { storageData = {}; }
+      } else {
+        const dir = path.dirname(storagePath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      }
+      storageData['telemetry.machineId'] = profile.machineId;
+      storageData['telemetry.macMachineId'] = profile.macMachineId;
+      storageData['telemetry.devDeviceId'] = profile.devDeviceId;
+      storageData['telemetry.sqmId'] = profile.sqmId;
+      storageData['storage.serviceMachineId'] = profile.devDeviceId;
+      fs.writeFileSync(storagePath, JSON.stringify(storageData, null, 2), 'utf-8');
+      log('Device profile successfully written to storage.json in worker.');
+    } catch (e) {
+      log('Failed to write device profile to storage.json in worker: ' + String(e));
+    }
+  }
 
   log('Loading sql.js...');
   let initSqlJs;

@@ -38,6 +38,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // ── Run Storage Migration & Sanitization ──
   try {
     await migrateAndSanitizeStorage(context);
+    await ensureValidMcpConfig();
   } catch (err: any) {
     logger.error('Failed to run storage migration/sanitization during activation', err);
   }
@@ -310,5 +311,53 @@ async function migrateAndSanitizeStorage(context: vscode.ExtensionContext): Prom
     logger.info('Storage migration and sanitization check finished successfully.');
   } catch (error: any) {
     logger.error('Failed to complete storage migration/sanitization', error);
+  }
+}
+
+/**
+ * Ensures that the IDE's MCP config file (~/.gemini/config/mcp_config.json) is valid.
+ * If the file exists and is empty (0 bytes) or contains invalid/corrupted JSON,
+ * this function automatically overwrites it with `{}` to prevent Antigravity IDE
+ * from throwing a 500 error on every model call.
+ */
+async function ensureValidMcpConfig(): Promise<void> {
+  const logger = Logger.getInstance();
+  const os = require('os');
+  const path = require('path');
+  const fs = require('fs');
+
+  try {
+    const homeDir = os.homedir();
+    const mcpConfigDir = path.join(homeDir, '.gemini', 'config');
+    const mcpConfigPath = path.join(mcpConfigDir, 'mcp_config.json');
+
+    if (fs.existsSync(mcpConfigPath)) {
+      const stat = fs.statSync(mcpConfigPath);
+      let needsRepair = false;
+
+      if (stat.size === 0) {
+        logger.info(`Detected empty (0-byte) mcp_config.json at: ${mcpConfigPath}. Preparing to repair...`);
+        needsRepair = true;
+      } else {
+        try {
+          const content = fs.readFileSync(mcpConfigPath, 'utf-8').trim();
+          if (!content) {
+            needsRepair = true;
+          } else {
+            JSON.parse(content); // Test if it's valid JSON
+          }
+        } catch (parseError) {
+          logger.info(`Detected invalid JSON in mcp_config.json at: ${mcpConfigPath}. Preparing to repair...`);
+          needsRepair = true;
+        }
+      }
+
+      if (needsRepair) {
+        fs.writeFileSync(mcpConfigPath, '{}', 'utf-8');
+        logger.info(`Successfully repaired mcp_config.json (wrote empty object '{}') to prevent IDE 500 crashes.`);
+      }
+    }
+  } catch (error: any) {
+    logger.error('Failed to run mcp_config.json validation and repair', error);
   }
 }
