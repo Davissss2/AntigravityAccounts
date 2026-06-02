@@ -58,6 +58,13 @@ export class ExtensionConfig {
   }
 
   /**
+   * Whether automatic account rotation on depletion is enabled
+   */
+  isAutoRotateEnabled(): boolean {
+    return this.getConfig().get<boolean>('autoRotateEnabled', false);
+  }
+
+  /**
    * Get the extension context (for services that need it)
    */
   getContext(): vscode.ExtensionContext {

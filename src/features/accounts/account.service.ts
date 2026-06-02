@@ -361,6 +361,16 @@ export class AccountService {
 
       // Notify UI: this account is done with updated data
       options?.onAccountDone?.(account.email, balanceInfo.balances, status);
+
+      // Check if we need to auto-rotate
+      const isAutoRotate = ExtensionConfig.getInstance().isAutoRotateEnabled();
+      if (isAutoRotate && status === AccountStatus.DEPLETED) {
+        const activeEmail = await this.getActiveAntigravityEmail();
+        if (activeEmail && activeEmail.toLowerCase() === account.email.toLowerCase()) {
+          Logger.getInstance().info(`Active account ${account.email} is depleted and auto-rotate is enabled.`);
+          await this.triggerAutoRotation(account.email);
+        }
+      }
     }
 
     const wasCancelled = !!options?.signal?.aborted;
@@ -453,6 +463,15 @@ export class AccountService {
 
     callbacks?.onDone?.(email, balanceInfo.balances, status);
 
+    const isAutoRotate = ExtensionConfig.getInstance().isAutoRotateEnabled();
+    if (isAutoRotate && status === AccountStatus.DEPLETED) {
+      const activeEmail = await this.getActiveAntigravityEmail();
+      if (activeEmail && activeEmail.toLowerCase() === email.toLowerCase()) {
+        Logger.getInstance().info(`Active account ${email} is depleted and auto-rotate is enabled.`);
+        await this.triggerAutoRotation(email);
+      }
+    }
+
     // Update global refresh timestamp
     await this.accountRepo.setBalancesLastRefreshed(Date.now());
   }
@@ -542,6 +561,60 @@ export class AccountService {
       // because it is dynamically read from Antigravity.
       
       this._onAccountsChanged.fire();
+    }
+  }
+
+  /**
+   * Helper to automatically switch to the next healthy account when the active one runs out of credits.
+   */
+  private async triggerAutoRotation(depletedEmail: string): Promise<void> {
+    const accounts = await this.accountRepo.getAllAccounts();
+    if (accounts.length <= 1) {
+      Logger.getInstance().info('Auto-rotation skipped: only one account registered.');
+      return;
+    }
+
+    // Sort alphabetically by displayName just like the UI!
+    const sorted = [...accounts].sort((a, b) => {
+      const aName = a.alias || a.name || a.email;
+      const bName = b.alias || b.name || b.email;
+      return aName.localeCompare(bName, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    const currentIndex = sorted.findIndex(a => a.email.toLowerCase() === depletedEmail.toLowerCase());
+    if (currentIndex === -1) return;
+
+    let nextAccount = null;
+    const len = sorted.length;
+
+    // Search circularly starting from the account after the current depleted one
+    for (let i = 1; i < len; i++) {
+      const idx = (currentIndex + i) % len;
+      const candidate = sorted[idx];
+      if (candidate.status === AccountStatus.ACTIVE || candidate.status === AccountStatus.LOW_BALANCE) {
+        nextAccount = candidate;
+        break;
+      }
+    }
+
+    // Fallback search from the beginning if no candidate succeeded starting after the depleted index
+    if (!nextAccount) {
+      nextAccount = sorted.find(a => a.email.toLowerCase() !== depletedEmail.toLowerCase() &&
+        (a.status === AccountStatus.ACTIVE || a.status === AccountStatus.LOW_BALANCE));
+    }
+
+    if (nextAccount) {
+      Logger.getInstance().info(`Auto-rotating from depleted ${depletedEmail} to healthy ${nextAccount.email}`);
+      const i18n = I18nService.getInstance();
+      
+      vscode.window.showWarningMessage(
+        i18n.t('notifications.depleted', { email: depletedEmail })
+      );
+
+      // Trigger automatic account switch
+      await this.switchAccountWorkflow(nextAccount.email);
+    } else {
+      Logger.getInstance().warn('Active account is depleted, but no other healthy accounts are available to rotate to.');
     }
   }
 }

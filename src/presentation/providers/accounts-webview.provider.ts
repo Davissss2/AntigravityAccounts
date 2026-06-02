@@ -155,6 +155,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           if (message.autoRefreshEnabled !== undefined) {
             await vscode.workspace.getConfiguration('antigravityHub').update('autoRefreshEnabled', message.autoRefreshEnabled, vscode.ConfigurationTarget.Global);
           }
+          if (message.autoRotateEnabled !== undefined) {
+            await vscode.workspace.getConfiguration('antigravityHub').update('autoRotateEnabled', message.autoRotateEnabled, vscode.ConfigurationTarget.Global);
+          }
           if (message.refreshIntervalMinutes !== undefined) {
             await vscode.workspace.getConfiguration('antigravityHub').update('refreshIntervalMinutes', message.refreshIntervalMinutes, vscode.ConfigurationTarget.Global);
           }
@@ -739,6 +742,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
     const configLanguage = vscode.workspace.getConfiguration('antigravityHub').get<string>('language', 'auto');
     const configAutoRefresh = vscode.workspace.getConfiguration('antigravityHub').get<boolean>('autoRefreshEnabled', true);
+    const configAutoRotate = vscode.workspace.getConfiguration('antigravityHub').get<boolean>('autoRotateEnabled', false);
     const configRefreshInterval = vscode.workspace.getConfiguration('antigravityHub').get<number>('refreshIntervalMinutes', 15);
     const accounts = await this.accountRepo.getAccountSummaries();
 
@@ -2124,6 +2128,16 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               </div>
               <p style="font-size:0.82em; opacity:0.65; margin:0 0 12px 0;">${i18n.t('webview.autoRefreshDescription')}</p>
 
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; margin-top:12px;">
+                <label for="autoRotateToggle" style="font-weight:bold; cursor:pointer;">${i18n.t('webview.autoRotateLabel')}</label>
+                <label style="position:relative; display:inline-block; width:40px; height:22px; cursor:pointer;">
+                  <input type="checkbox" id="autoRotateToggle" ${configAutoRotate ? 'checked' : ''} onchange="onAutoRotateToggle()" style="opacity:0; width:0; height:0;">
+                  <span id="autoRotateTrack" style="position:absolute; inset:0; background:${configAutoRotate ? '#4caf50' : 'var(--glass-border)'}; border-radius:11px; transition:background 0.3s, box-shadow 0.3s; ${configAutoRotate ? 'box-shadow:0 0 6px rgba(76,175,80,0.4);' : ''}"></span>
+                  <span id="autoRotateSlider" style="position:absolute; top:2px; ${isRtl ? 'right' : 'left'}:2px; width:18px; height:18px; background:var(--text-primary); border-radius:50%; transition:0.3s; ${configAutoRotate ? (isRtl ? 'right:20px' : 'left:20px') : ''}"></span>
+                </label>
+              </div>
+              <p style="font-size:0.82em; opacity:0.65; margin:0 0 12px 0;">${i18n.t('webview.autoRotateDescription')}</p>
+
               <div id="refreshIntervalGroup" style="${configAutoRefresh ? '' : 'opacity:0.4; pointer-events:none;'}">
                 <label for="refreshIntervalSelect" style="display:block; margin-bottom:6px; font-weight:bold; font-size:0.9em;">${i18n.t('webview.refreshIntervalLabel')}</label>
                 <select id="refreshIntervalSelect" style="width:100%; padding:8px; background:var(--vscode-dropdown-background); color:var(--vscode-dropdown-foreground); border:1px solid var(--vscode-dropdown-border); border-radius:4px;">
@@ -2162,6 +2176,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           const currentPreferredModel = ${JSON.stringify(effectivePreferred)};
           const hasAccounts = ${accounts.length > 0};
           const currentAutoRefresh = ${configAutoRefresh};
+          const currentAutoRotate = ${configAutoRotate};
           const currentRefreshInterval = ${configRefreshInterval};
           const isRtlDir = ${isRtl};
           const savedSearchQuery = ${JSON.stringify(this._searchQuery)};
@@ -2454,6 +2469,21 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             }
           }
 
+          function onAutoRotateToggle() {
+            const toggle = document.getElementById('autoRotateToggle');
+            const slider = document.getElementById('autoRotateSlider');
+            const track = document.getElementById('autoRotateTrack');
+            if (toggle.checked) {
+              slider.style[isRtlDir ? 'right' : 'left'] = '20px';
+              track.style.background = '#4caf50';
+              track.style.boxShadow = '0 0 6px rgba(76,175,80,0.4)';
+            } else {
+              slider.style[isRtlDir ? 'right' : 'left'] = '2px';
+              track.style.background = 'var(--glass-border)';
+              track.style.boxShadow = 'none';
+            }
+          }
+
           function onIntervalChange() {
             const select = document.getElementById('refreshIntervalSelect');
             if (select.value === '0') {
@@ -2519,6 +2549,18 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               _previousIntervalValue = String(currentRefreshInterval);
             }
 
+            const autoRefreshToggle = document.getElementById('autoRefreshToggle');
+            if (autoRefreshToggle) {
+              autoRefreshToggle.checked = currentAutoRefresh;
+              onAutoRefreshToggle();
+            }
+
+            const autoRotateToggle = document.getElementById('autoRotateToggle');
+            if (autoRotateToggle) {
+              autoRotateToggle.checked = currentAutoRotate;
+              onAutoRotateToggle();
+            }
+
             modal.style.display = 'flex';
             attachIntervalListener();
           }
@@ -2536,6 +2578,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             const selectedLang = langSelect ? langSelect.value : 'auto';
             const autoRefreshToggle = document.getElementById('autoRefreshToggle');
             const autoRefreshEnabled = autoRefreshToggle ? autoRefreshToggle.checked : true;
+            const autoRotateToggle = document.getElementById('autoRotateToggle');
+            const autoRotateEnabled = autoRotateToggle ? autoRotateToggle.checked : false;
             const intervalSelect = document.getElementById('refreshIntervalSelect');
             const refreshInterval = intervalSelect ? parseInt(intervalSelect.value) : 15;
             
@@ -2544,6 +2588,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               language: selectedLang,
               preferredModel: selectedModel,
               autoRefreshEnabled: autoRefreshEnabled,
+              autoRotateEnabled: autoRotateEnabled,
               refreshIntervalMinutes: refreshInterval
             });
             closeSettings();

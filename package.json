@@ -148,6 +148,11 @@
           "default": 100,
           "minimum": 10,
           "description": "Credit threshold for low balance warning"
+        },
+        "antigravityHub.autoRotateEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically switch to another account when the active account's credits are depleted"
         }
       }
     }

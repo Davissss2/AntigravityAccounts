@@ -190,6 +190,8 @@
     "languageAuto": "Auto (System Default)",
     "autoRefreshLabel": "Auto-Refresh Balances",
     "autoRefreshDescription": "When enabled, balances are refreshed automatically when you open the panel.",
+    "autoRotateLabel": "Auto-Rotate Accounts",
+    "autoRotateDescription": "Automatically switch to another account with credits when the active account runs out.",
     "refreshIntervalLabel": "Refresh Interval",
     "refreshIntervalDescription": "Balances will refresh if more than this interval has passed since the last update.",
     "intervalImmediate": "Immediately",

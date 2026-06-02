@@ -190,6 +190,8 @@
     "languageAuto": "Auto (Predeterminado del sistema)",
     "autoRefreshLabel": "Actualizar saldos automáticamente",
     "autoRefreshDescription": "Cuando está habilitado, los saldos se actualizan automáticamente al abrir el panel.",
+    "autoRotateLabel": "Rotación automática de cuentas",
+    "autoRotateDescription": "Cambiar automáticamente a otra cuenta con saldo cuando la cuenta activa se quede sin créditos.",
     "refreshIntervalLabel": "Intervalo de actualización",
     "refreshIntervalDescription": "Los saldos se actualizarán si ha pasado más de este intervalo desde la última actualización.",
     "intervalImmediate": "Inmediatamente",
