@@ -17,6 +17,7 @@ import { Account, AccountTokens, AccountStatus } from '../../core/domain/models/
 import { DeviceProfile } from '../../core/domain/models/device-profile.model';
 import { CryptoUtils } from '../../core/utils/crypto.utils';
 import { ExtensionConfig } from '../../core/config/extension.config';
+import { getFriendlyModelName } from '../../core/utils/model.utils';
 
 /** Shape of an individual account inside the backup */
 interface ExportedAccount {
@@ -933,10 +934,16 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
         // ── Phase 6: Build final processed models list ──
         for (const { model } of nonClaudeModels) {
-          processedModels.push({ key: model.key, value: model.value, resetTime: model.resetTime });
+          const friendlyName = getFriendlyModelName(model.key);
+          if (friendlyName) {
+            processedModels.push({ key: friendlyName, value: model.value, resetTime: model.resetTime });
+          }
         }
         for (const model of mergedClaudeModels) {
-          processedModels.push(model);
+          const friendlyName = getFriendlyModelName(model.key);
+          if (friendlyName) {
+            processedModels.push({ key: friendlyName, value: model.value, resetTime: model.resetTime });
+          }
         }
       }
 
@@ -2800,7 +2807,15 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       }
     }
 
-    return finalKeys;
+    // Phase 6: Apply friendly names and filter out deprecated keys
+    const friendlyKeys: string[] = [];
+    for (const key of finalKeys) {
+      const friendlyName = getFriendlyModelName(key);
+      if (friendlyName) {
+        friendlyKeys.push(friendlyName);
+      }
+    }
+    return friendlyKeys;
   }
 
   /**
@@ -2812,8 +2827,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
     return claudeKeys.sort((a, b) => {
       // Extract numbers to compare versions (e.g. 4-6 vs 3-5)
-      const aMatch = a.match(/\d+(?:-\d+)*/);
-      const bMatch = b.match(/\d+(?:-\d+)*/);
+      const aMatch = a.match(/\d+(?:[.-]\d+)*/);
+      const bMatch = b.match(/\d+(?:[.-]\d+)*/);
       
       if (!aMatch && !bMatch) return a.localeCompare(b);
       if (!aMatch) return 1;
@@ -2833,29 +2848,23 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     
     const lowerTarget = targetKey.toLowerCase();
     
-    // Direct match check
+    // Direct match check by comparing friendly names
     for (const [k, v] of Object.entries(balances)) {
       if (!k) continue;
-      const lowerKey = k.toLowerCase();
-      
-      // Strict direct match or matched prefix ignoring -high/-low
-      if (lowerKey === lowerTarget || lowerKey.replace(/-(?:low|high)$/, '') === lowerTarget) {
+      const friendlyName = getFriendlyModelName(k);
+      if (friendlyName && friendlyName.toLowerCase() === lowerTarget) {
         return typeof v === 'object' && v !== null && 'value' in v ? v.value : -1;
       }
     }
 
-    // Handle "claude-X-Y-All" merged key
-    const allMatch = lowerTarget.match(/^claude-(.+)-all$/);
-    if (allMatch) {
-      const targetVersion = allMatch[1];
+    // Handle Claude version match (e.g. Claude 4.6 (Thinking))
+    if (lowerTarget.startsWith('claude ') && lowerTarget.endsWith(' (thinking)')) {
+      const targetVersion = lowerTarget.replace('claude ', '').replace(' (thinking)', '');
       for (const [k, v] of Object.entries(balances)) {
         if (!k || !k.toLowerCase().includes('claude')) continue;
-        const lowerKey = k.toLowerCase();
-        
-        // Match version
-        const vMatch = lowerKey.match(/claude-[a-z]+-(\d+(?:-\d+)*)/i);
-        if (vMatch && vMatch[1] === targetVersion) {
-           return typeof v === 'object' && v !== null && 'value' in v ? v.value : -1;
+        const friendlyName = getFriendlyModelName(k);
+        if (friendlyName && friendlyName.toLowerCase().includes(` ${targetVersion} `)) {
+          return typeof v === 'object' && v !== null && 'value' in v ? v.value : -1;
         }
       }
     }

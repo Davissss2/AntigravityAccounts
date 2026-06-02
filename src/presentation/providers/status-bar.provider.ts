@@ -11,6 +11,7 @@ import { IAccountRepository } from '../../core/domain/repositories/account.repos
 import { I18nService } from '../../i18n/i18n.service';
 import { AccountStatus } from '../../core/domain/models/account.model';
 import { AccountService } from '../../features/accounts/account.service';
+import { getFriendlyModelName } from '../../core/utils/model.utils';
 
 export class StatusBarProvider implements vscode.Disposable {
   private statusBarItem: vscode.StatusBarItem;
@@ -223,8 +224,16 @@ export class StatusBarProvider implements vscode.Disposable {
       }
     }
 
-    // ── Phase 6: Build final list and sort ──
-    const models = [...nonClaudeModels, ...mergedClaudeModels];
+    // ── Phase 6: Build final list, apply friendly names, filter deprecated, and sort ──
+    const rawModels = [...nonClaudeModels, ...mergedClaudeModels];
+    const models: Array<{ key: string; value: number; resetTime?: string }> = [];
+    for (const m of rawModels) {
+      const friendlyName = getFriendlyModelName(m.key);
+      if (friendlyName) {
+        models.push({ key: friendlyName, value: m.value, resetTime: m.resetTime });
+      }
+    }
+    
     models.sort((a, b) => {
       const aCritical = a.value < 20;
       const bCritical = b.value < 20;
