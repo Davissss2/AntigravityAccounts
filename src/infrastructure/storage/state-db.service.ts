@@ -16,6 +16,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { spawn } from 'child_process';
 import { Logger } from '../../core/utils/logger';
 import { I18nService } from '../../i18n/i18n.service';
@@ -241,29 +242,48 @@ log('ELECTRON_RUN_AS_NODE: ' + process.env.ELECTRON_RUN_AS_NODE);
 
 // ── Helper: check if any IDE processes are running (excluding self) ──
 function getOtherAntigravityPids() {
+  const pids = [];
   try {
     const exeName = path.basename(process.execPath);
-    const out = execSync('tasklist /FI "IMAGENAME eq ' + exeName + '" /FO CSV /NH', {
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    const pids = [];
-    for (const line of out.split('\\n')) {
-      const parts = line.split(',');
-      if (parts.length > 1) {
-        const namePart = parts[0].replace(/"/g, '').trim();
-        const pidPart = parts[1].replace(/"/g, '').trim();
-        if (namePart.toLowerCase() === exeName.toLowerCase()) {
-          const pid = parseInt(pidPart, 10);
-          if (pid && pid !== ownPid) pids.push(pid);
+    if (process.platform === 'win32') {
+      const out = execSync('tasklist /FI "IMAGENAME eq ' + exeName + '" /FO CSV /NH', {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      for (const line of out.split('\\n')) {
+        const parts = line.split(',');
+        if (parts.length > 1) {
+          const namePart = parts[0].replace(/"/g, '').trim();
+          const pidPart = parts[1].replace(/"/g, '').trim();
+          if (namePart.toLowerCase() === exeName.toLowerCase()) {
+            const pid = parseInt(pidPart, 10);
+            if (pid && pid !== ownPid) pids.push(pid);
+          }
+        }
+      }
+    } else {
+      // Linux & macOS: standard ps check
+      const out = execSync('ps -ax -o pid,comm', {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      for (const line of out.split('\\n')) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const parts = trimmed.split(/\\s+/);
+        if (parts.length >= 2) {
+          const pid = parseInt(parts[0], 10);
+          const comm = parts.slice(1).join(' ');
+          if (comm.toLowerCase().includes(exeName.toLowerCase()) || exeName.toLowerCase().includes(comm.toLowerCase())) {
+            if (pid && pid !== ownPid) pids.push(pid);
+          }
         }
       }
     }
-    return pids;
   } catch (e) {
     log('Error checking PIDs: ' + String(e));
-    return [];
   }
+  return pids;
 }
 
 // ── Wait for all Antigravity processes to exit ──
@@ -283,15 +303,17 @@ async function waitForAntigravityExit(timeoutMs) {
 }
 
 // ── Force-kill specific PIDs (by PID number, NOT by image name) ──
-// This is safe because we only kill PIDs we know are lingering Antigravity
-// processes, never our own worker PID.
 function forceKillRemainingPids() {
   const pids = getOtherAntigravityPids();
   if (pids.length === 0) return;
   log('Force-killing remaining PIDs: ' + pids.join(', '));
   for (const pid of pids) {
     try {
-      execSync('taskkill /F /PID ' + pid, { stdio: 'ignore', windowsHide: true });
+      if (process.platform === 'win32') {
+        execSync('taskkill /F /PID ' + pid, { stdio: 'ignore', windowsHide: true });
+      } else {
+        execSync('kill -9 ' + pid, { stdio: 'ignore' });
+      }
       log('  Killed PID ' + pid);
     } catch (e) {
       log('  Failed to kill PID ' + pid + ': ' + String(e));
@@ -318,19 +340,43 @@ function findRelaunchExe() {
     }
   }
 
-  // Fallback: scan common installation paths on Windows
-  const localAppData = process.env.LOCALAPPDATA || '';
-  const programFiles = process.env.PROGRAMFILES || '';
-  const fallbacks = [
-    path.join(localAppData, 'Programs', 'Antigravity IDE', 'Antigravity IDE.exe'),
-    path.join(localAppData, 'Programs', 'Antigravity', 'Antigravity.exe'),
-    path.join(programFiles, 'Antigravity IDE', 'Antigravity IDE.exe'),
-    path.join(programFiles, 'Antigravity', 'Antigravity.exe'),
-  ];
-  for (const p of fallbacks) {
-    if (p && fs.existsSync(p)) {
-      log('Found relaunch exe from fallback: ' + p);
-      return p;
+  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+
+  // Fallback: scan common installation paths
+  if (process.platform === 'win32') {
+    const localAppData = process.env.LOCALAPPDATA || '';
+    const programFiles = process.env.PROGRAMFILES || '';
+    const fallbacks = [
+      path.join(localAppData, 'Programs', 'Antigravity IDE', 'Antigravity IDE.exe'),
+      path.join(localAppData, 'Programs', 'Antigravity', 'Antigravity.exe'),
+      path.join(programFiles, 'Antigravity IDE', 'Antigravity IDE.exe'),
+      path.join(programFiles, 'Antigravity', 'Antigravity.exe'),
+    ];
+    for (const p of fallbacks) {
+      if (p && fs.existsSync(p)) return p;
+    }
+  } else if (process.platform === 'darwin') {
+    const fallbacks = [
+      '/Applications/Antigravity IDE.app/Contents/MacOS/Antigravity IDE',
+      '/Applications/Antigravity.app/Contents/MacOS/Antigravity',
+      path.join(homeDir, 'Applications', 'Antigravity IDE.app', 'Contents', 'MacOS', 'Antigravity IDE'),
+      path.join(homeDir, 'Applications', 'Antigravity.app', 'Contents', 'MacOS', 'Antigravity'),
+    ];
+    for (const p of fallbacks) {
+      if (p && fs.existsSync(p)) return p;
+    }
+  } else {
+    // Linux / Ubuntu
+    const fallbacks = [
+      '/usr/bin/antigravity-ide',
+      '/usr/bin/antigravity',
+      '/usr/share/antigravity/antigravity',
+      '/opt/Antigravity/antigravity',
+      path.join(homeDir, '.local', 'bin', 'antigravity-ide'),
+      path.join(homeDir, '.local', 'bin', 'antigravity'),
+    ];
+    for (const p of fallbacks) {
+      if (p && fs.existsSync(p)) return p;
     }
   }
 
@@ -380,77 +426,122 @@ async function inject() {
     }
   }
 
-  log('Loading sql.js...');
-  let initSqlJs;
   try {
-    initSqlJs = require('sql.js');
-  } catch {
+    log('Loading sql.js...');
+    let initSqlJs;
     try {
-      initSqlJs = require(path.join(__dirname, '..', 'node_modules', 'sql.js'));
+      initSqlJs = require('sql.js');
     } catch {
-      initSqlJs = require(path.join(__dirname, '..', '..', 'node_modules', 'sql.js'));
-    }
-  }
-
-  log('Opening database: ' + dbPath);
-  const SQL = await initSqlJs();
-  const buf = fs.readFileSync(dbPath);
-  const db = new SQL.Database(buf);
-
-  try {
-    for (const { key, value } of rows) {
-      if (value === null) {
-        db.run('DELETE FROM ItemTable WHERE key = ?', [key]);
-        log('  DELETED: ' + key);
-      } else {
-        db.run('INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)', [key, value]);
-        log('  INJECTED: ' + key + ' (' + value.length + ' chars)');
+      try {
+        initSqlJs = require(path.join(__dirname, '..', 'node_modules', 'sql.js'));
+      } catch {
+        initSqlJs = require(path.join(__dirname, '..', '..', 'node_modules', 'sql.js'));
       }
     }
-    const out = db.export();
-    fs.writeFileSync(dbPath, Buffer.from(out));
-    log('Database saved.');
-  } finally {
-    db.close();
+
+    log('Opening database: ' + dbPath);
+    const SQL = await initSqlJs();
+    const buf = fs.readFileSync(dbPath);
+    const db = new SQL.Database(buf);
+
+    try {
+      for (const { key, value } of rows) {
+        if (value === null) {
+          db.run('DELETE FROM ItemTable WHERE key = ?', [key]);
+          log('  DELETED: ' + key);
+        } else {
+          db.run('INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)', [key, value]);
+          log('  INJECTED: ' + key + ' (' + value.length + ' chars)');
+        }
+      }
+      const out = db.export();
+      fs.writeFileSync(dbPath, Buffer.from(out));
+      log('Database saved.');
+    } finally {
+      db.close();
+    }
+  } catch (dbErr) {
+    log('ERROR during database injection: ' + String(dbErr));
   }
 
   // Cleanup payload file
   try { fs.unlinkSync(payloadPath); } catch {}
 
   // ── Relaunch Antigravity ──
-  const relaunchExe = findRelaunchExe();
-  if (relaunchExe) {
-    log('Relaunching Antigravity: ' + relaunchExe);
+  try {
+    const relaunchExe = findRelaunchExe();
+    if (relaunchExe) {
+      log('Relaunching Antigravity: ' + relaunchExe);
 
-    // Write a .bat file that explicitly clears ELECTRON_RUN_AS_NODE then launches.
-    // This is deterministic — unlike Node env options, a .bat controls its own env.
-    const batPath = path.join(path.dirname(payloadPath), '.relaunch-antigravity.bat');
-    const batLines = ['@echo off', 'set ELECTRON_RUN_AS_NODE=', 'start "" "' + relaunchExe + '"', 'del "%~f0"'];
-    fs.writeFileSync(batPath, batLines.join(String.fromCharCode(13, 10)) + String.fromCharCode(13, 10), 'utf-8');
-    log('Wrote relaunch .bat to: ' + batPath);
+      if (process.platform === 'win32') {
+        // Windows Relauncher
+        const batPath = path.join(path.dirname(payloadPath), '.relaunch-antigravity.bat');
+        const batLines = ['@echo off', 'set ELECTRON_RUN_AS_NODE=', 'start "" "' + relaunchExe + '"', 'del "%~f0"'];
+        fs.writeFileSync(batPath, batLines.join(String.fromCharCode(13, 10)) + String.fromCharCode(13, 10), 'utf-8');
+        log('Wrote relaunch .bat to: ' + batPath);
 
-    try {
-      const child = spawn('cmd.exe', ['/c', batPath], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true,
-      });
-      child.unref();
-      log('Relaunch .bat spawned, PID: ' + child.pid);
-    } catch (batErr) {
-      log('Relaunch .bat failed: ' + String(batErr));
-      try {
-        execSync(
-          'powershell -NoProfile -Command "Remove-Item Env:ELECTRON_RUN_AS_NODE -EA SilentlyContinue; Start-Process ' + relaunchExe + '"',
-          { stdio: 'ignore', windowsHide: true }
-        );
-        log('Relaunch via PowerShell succeeded.');
-      } catch (psErr) {
-        log('ALL relaunch methods failed: ' + String(psErr));
+        try {
+          const child = spawn('cmd.exe', ['/c', batPath], {
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true,
+          });
+          child.unref();
+          log('Relaunch .bat spawned, PID: ' + child.pid);
+        } catch (batErr) {
+          log('Relaunch .bat failed: ' + String(batErr));
+          try {
+            execSync(
+              'powershell -NoProfile -Command "Remove-Item Env:ELECTRON_RUN_AS_NODE -EA SilentlyContinue; Start-Process ' + relaunchExe + '"',
+              { stdio: 'ignore', windowsHide: true }
+            );
+            log('Relaunch via PowerShell succeeded.');
+          } catch (psErr) {
+            log('ALL Windows relaunch methods failed: ' + String(psErr));
+          }
+        }
+      } else {
+        // Unix (Linux & macOS) Relauncher
+        const shPath = path.join(path.dirname(payloadPath), '.relaunch-antigravity.sh');
+        const shLines = [
+          '#!/bin/sh',
+          'unset ELECTRON_RUN_AS_NODE',
+          '"' + relaunchExe + '" &',
+          'rm "$0"'
+        ];
+        fs.writeFileSync(shPath, shLines.join('\\n') + '\\n', { encoding: 'utf-8', mode: 0o755 });
+        log('Wrote relaunch .sh to: ' + shPath);
+
+        try {
+          const child = spawn('/bin/sh', [shPath], {
+            detached: true,
+            stdio: 'ignore',
+          });
+          child.unref();
+          log('Relaunch .sh spawned, PID: ' + child.pid);
+        } catch (shErr) {
+          log('Relaunch .sh failed: ' + String(shErr));
+          try {
+            // Direct spawn fallback with sanitized environment
+            const cleanEnv = { ...process.env };
+            delete cleanEnv.ELECTRON_RUN_AS_NODE;
+            const child = spawn(relaunchExe, [], {
+              detached: true,
+              stdio: 'ignore',
+              env: cleanEnv
+            });
+            child.unref();
+            log('Direct relaunch without ELECTRON_RUN_AS_NODE succeeded.');
+          } catch (spawnErr) {
+            log('ALL Unix relaunch methods failed: ' + String(spawnErr));
+          }
+        }
       }
+    } else {
+      log('ERROR: Antigravity exe not found, cannot relaunch.');
     }
-  } else {
-    log('ERROR: Antigravity exe not found, cannot relaunch.');
+  } catch (relaunchErr) {
+    log('FATAL ERROR during relaunch: ' + String(relaunchErr));
   }
 
   log('Worker finished successfully.');
@@ -458,13 +549,14 @@ async function inject() {
 }
 
 inject().catch((err) => {
-  log('FATAL: ' + String(err));
+  log('FATAL outer catch: ' + String(err));
   process.exit(1);
 });
 `;
   }
 
   private findAntigravityExe(): string | undefined {
+    const homeDir = os.homedir();
     if (process.platform === 'win32') {
       const candidates = [
         path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Antigravity IDE', 'Antigravity IDE.exe'),
@@ -473,8 +565,26 @@ inject().catch((err) => {
         path.join(process.env.PROGRAMFILES || '', 'Antigravity', 'Antigravity.exe'),
       ];
       return candidates.find(c => fs.existsSync(c));
+    } else if (process.platform === 'darwin') {
+      const candidates = [
+        '/Applications/Antigravity IDE.app/Contents/MacOS/Antigravity IDE',
+        '/Applications/Antigravity.app/Contents/MacOS/Antigravity',
+        path.join(homeDir, 'Applications', 'Antigravity IDE.app', 'Contents', 'MacOS', 'Antigravity IDE'),
+        path.join(homeDir, 'Applications', 'Antigravity.app', 'Contents', 'MacOS', 'Antigravity'),
+      ];
+      return candidates.find(c => fs.existsSync(c));
+    } else {
+      // Linux
+      const candidates = [
+        '/usr/bin/antigravity-ide',
+        '/usr/bin/antigravity',
+        '/usr/share/antigravity/antigravity',
+        '/opt/Antigravity/antigravity',
+        path.join(homeDir, '.local', 'bin', 'antigravity-ide'),
+        path.join(homeDir, '.local', 'bin', 'antigravity'),
+      ];
+      return candidates.find(c => fs.existsSync(c));
     }
-    return undefined;
   }
 
   // ─── Read Current Active Account from state.vscdb ──────────────────────────
