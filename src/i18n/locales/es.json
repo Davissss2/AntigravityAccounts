@@ -1,0 +1,257 @@
+{
+  "common": {
+    "appName": "Antigravity Hub",
+    "loading": "Cargando...",
+    "error": "Error",
+    "success": "Éxito",
+    "confirm": "Confirmar",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "refresh": "Refrescar",
+    "close": "Cerrar",
+    "yes": "Sí",
+    "no": "No",
+    "ok": "Aceptar",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "settings": "Configuración",
+    "search": "Buscar...",
+    "noResults": "No se encontraron resultados",
+    "retry": "Reintentar"
+  },
+  "commands": {
+    "openPanel": {
+      "placeholder": "El panel del Administrador de cuentas se implementará pronto."
+    },
+    "addAccount": {
+      "placeholder": "El flujo para agregar cuenta se implementará pronto."
+    },
+    "switchAccount": {
+      "placeholder": "El flujo para cambiar de cuenta se implementará pronto."
+    },
+    "refreshBalances": {
+      "placeholder": "La actualización de saldos se implementará pronto."
+    },
+    "setLanguage": {
+      "placeholder": "Seleccionar idioma de visualización"
+    }
+  },
+  "accounts": {
+    "title": "Cuentas",
+    "addButton": "Agregar cuenta",
+    "removeButton": "Eliminar cuenta",
+    "switchButton": "Activar",
+    "refreshButton": "Refrescar",
+    "settingsButton": "Configuración",
+    "noAccounts": "Aún no se han agregado cuentas",
+    "addFirstAccount": "Agrega tu primera cuenta para comenzar",
+    "active": "Activa",
+    "inactive": "Inactiva",
+    "expired": "Expirada",
+    "blocked": "Bloqueada temporalmente",
+    "alias": {
+      "title": "Alias de la cuenta",
+      "placeholder": "Ingresa un apodo para esta cuenta",
+      "save": "Guardar alias"
+    },
+    "confirmDelete": "¿Estás seguro de que deseas eliminar esta cuenta?",
+    "deleteWarning": "Esto eliminará permanentemente la cuenta y sus tokens almacenados.",
+    "balance": "{{amount}} créditos",
+    "balanceOf": "{{amount}} / {{total}} créditos",
+    "plan": {
+      "free": "Gratuito",
+      "premium": "AI Premium",
+      "ultra": "AI Ultra",
+      "unknown": "Plan desconocido"
+    },
+    "status": {
+      "active": "Activa",
+      "lowBalance": "Saldo bajo",
+      "depleted": "Créditos agotados",
+      "expired": "Token expirado",
+      "error": "Error de conexión"
+    },
+    "sort": {
+      "byBalance": "Ordenar por saldo",
+      "byDate": "Ordenar por fecha de adición",
+      "byName": "Ordenar alfabéticamente"
+    },
+    "noExportAccounts": "No hay cuentas para exportar.",
+    "preparingExport": "Preparando datos de exportación...",
+    "noValidExportData": "No se encontraron datos válidos para exportar.",
+    "saveBackup": "Guardar copia de seguridad",
+    "exportSuccess": "✅ Se han exportado correctamente {{count}} cuentas (encriptadas).",
+    "exportFailed": "❌ Error al exportar: {{error}}",
+    "exportPasswordPrompt": "Establece una contraseña para proteger esta copia de seguridad (mínimo 6 caracteres)",
+    "exportPasswordPlaceholder": "Ingresa la contraseña de la copia de seguridad",
+    "exportPasswordConfirm": "Confirma la contraseña de la copia de seguridad",
+    "passwordTooShort": "La contraseña debe tener al menos 6 caracteres",
+    "passwordMismatch": "❌ Las contraseñas no coinciden. Exportación cancelada.",
+    "importPasswordPrompt": "Ingresa la contraseña utilizada para encriptar esta copia de seguridad",
+    "importPasswordPlaceholder": "Ingresa la contraseña de la copia de seguridad",
+    "wrongPassword": "❌ Contraseña incorrecta o archivo dañado. Inténtalo de nuevo.",
+    "legacyFormatWarning": "⚠️ Esta copia de seguridad utiliza un formato antiguo no encriptado. Considera exportarla de nuevo con el nuevo formato encriptado para mayor seguridad.",
+    "selectBackup": "Seleccionar archivo de copia de seguridad",
+    "verifyingFile": "Verificando archivo...",
+    "invalidFile": "❌ El archivo seleccionado no es válido o está dañado.",
+    "noBackupData": "❌ El archivo no contiene datos de copia de seguridad válidos.",
+    "incompleteAccount": "❌ Los datos de la cuenta para {{email}} están incompletos.",
+    "importingAccounts": "Importando cuentas...",
+    "importSuccess": "✅ Se han importado correctamente {{count}} cuentas.",
+    "importSkipped": "\n⏭️ Se omitieron {{count}} cuentas (ya existen).",
+    "importFailed": "❌ Error al importar: {{error}}",
+    "confirmSwitch": "¿Estás seguro de que deseas activar la cuenta:\n{{email}}?",
+    "refreshingBalances": "Actualizando saldos...",
+    "refreshingAccount": "Actualizando",
+    "refreshSuccess": "✅ Todos los saldos se han actualizado correctamente.",
+    "cancelRefresh": "Cancelar",
+    "refreshCancelled": "Actualización cancelada.",
+    "cancellingRefresh": "Cancelando...",
+    "confirmCancelTitle": "¿Cancelar actualización?",
+    "confirmCancelMessage": "¿Estás seguro de que deseas detener la actualización de saldos?",
+    "confirmCancelYes": "Sí, detener",
+    "confirmCancelNo": "Continuar",
+    "models": "Modelos",
+    "availableModels": "Modelos disponibles ({{count}})",
+    "activate": "Activar",
+    "remove": "Eliminar",
+    "reAuthenticate": "Volver a iniciar sesión",
+    "expiredBanner": "La sesión ha expirado. Inicia sesión de nuevo para restaurar el acceso.",
+    "noAvailableModels": "No hay modelos disponibles",
+    "noAccountsRegistered": "Aún no hay cuentas registradas.",
+    "addNewAccount": "➕ Agregar nueva cuenta",
+    "more": "Más",
+    "exportAccounts": "Exportar cuentas",
+    "importAccounts": "Importar cuentas",
+    "settings": "Configuración",
+    "searchPlaceholder": "Buscar por nombre o correo electrónico...",
+    "noSearchResults": "Ninguna cuenta coincide con tu búsqueda."
+  },
+  "statusBar": {
+    "noAccount": "Sin cuenta",
+    "credits": "{{amount}} créditos",
+    "tooltip": "Haz clic para cambiar de cuenta"
+  },
+  "notifications": {
+    "lowBalance": "⚠️ Saldo bajo en {{email}}: quedan {{amount}} créditos",
+    "depleted": "🔴 ¡Créditos agotados en {{email}}! Cambiando a la siguiente cuenta...",
+    "switched": "✅ Cambiado a {{email}} ({{amount}} créditos)",
+    "tokenExpired": "🔑 Sesión expirada para {{email}}. Vuelve a iniciar sesión.",
+    "connectionError": "❌ Error al conectar con {{email}}",
+    "refreshComplete": "✅ Todos los saldos actualizados"
+  },
+  "auth": {
+    "signingIn": "Iniciando sesión con Google...",
+    "waitingForBrowser": "Esperando la autenticación del navegador...",
+    "authSuccess": "¡Autenticación exitosa!",
+    "authFailed": "La autenticación falló. Inténtalo de nuevo.",
+    "browserOpened": "Se ha abierto una ventana del navegador para iniciar sesión.",
+    "reAuthenticating": "Volviendo a autenticar {{email}}..."
+  },
+  "settings": {
+    "title": "Configuración",
+    "refreshInterval": {
+      "label": "Intervalo de actualización",
+      "description": "Frecuencia de actualización de los datos de saldo (en minutos)"
+    },
+    "autoRefresh": {
+      "label": "Actualización automática",
+      "description": "Actualizar automáticamente los saldos al abrir el panel"
+    },
+    "lowCreditThreshold": {
+      "label": "Límite de crédito bajo",
+      "description": "Advertir cuando los créditos bajen de esta cantidad"
+    },
+    "language": {
+      "label": "Idioma",
+      "description": "Idioma de visualización de la extensión"
+    },
+    "export": "Configuración de exportación",
+    "import": "Configuración de importación"
+  },
+  "webview": {
+    "unspecified": "No especificado",
+    "availableNow": "Disponible ahora",
+    "renewsInDaysMins": "Se renueva en {{days}}d {{mins}}m",
+    "renewsInDaysHoursMins": "Se renueva en {{days}}d {{hours}}h {{mins}}m",
+    "renewsInHoursMins": "Se renueva en {{hours}}h {{mins}}m",
+    "selectThisModel": "Seleccionar este modelo",
+    "veryLowBalance": "Saldo muy bajo",
+    "showAvailableModels": "Mostrar modelos disponibles",
+    "activatePreferredModel": "Activar este modelo preferido",
+    "preferredModelSort": "Modelo preferido para ordenar",
+    "noSelectionDefault": "Ninguno (Orden predeterminado)",
+    "sortExplanation": "Las cuentas se ordenarán primero por el saldo de este modelo.",
+    "loginRequired": "Inicia sesión en una cuenta para habilitar esta opción",
+    "activating": "Activando...",
+    "language": "Idioma",
+    "languageAuto": "Auto (Predeterminado del sistema)",
+    "autoRefreshLabel": "Actualizar saldos automáticamente",
+    "autoRefreshDescription": "Cuando está habilitado, los saldos se actualizan automáticamente al abrir el panel.",
+    "refreshIntervalLabel": "Intervalo de actualización",
+    "refreshIntervalDescription": "Los saldos se actualizarán si ha pasado más de este intervalo desde la última actualización.",
+    "intervalImmediate": "Inmediatamente",
+    "interval5Min": "5 minutos",
+    "interval15Min": "15 minutos",
+    "interval30Min": "30 minutos",
+    "interval1Hour": "1 hora",
+    "interval1Day": "1 día",
+    "immediateConfirmTitle": "⚠️ Advertencia",
+    "immediateConfirmMessage": "La opción 'Inmediatamente' no se recomienda si tienes más de 5 cuentas, ya que puede causar bloqueos de cuenta debido al exceso de solicitudes. ¿Estás seguro de que deseas habilitar esta opción?",
+    "immediateConfirmYes": "Sí, habilitar",
+    "immediateConfirmCancel": "Cancelar",
+    "notAntigravityTitle": "Se requiere Antigravity",
+    "notAntigravityMessage": "Esta extensión está diseñada para funcionar exclusivamente con el editor de código Antigravity. No puede funcionar con otros editores.",
+    "downloadAntigravity": "Descargar Antigravity"
+  },
+  "service": {
+    "generatingDeviceProfile": "Generando perfil de dispositivo...",
+    "accountAddedErrorBalance": "Cuenta {{email}} agregada, pero falló al obtener el saldo. Se reintentará más tarde.",
+    "accountAddedSuccess": "Cuenta {{email}} agregada con éxito. Saldos: [{{balances}}]",
+    "accountAddError": "Error al agregar la cuenta: {{error}}",
+    "missingLoginData": "Faltan los datos de inicio de sesión para {{email}}. Elimínala y agrégala de nuevo.",
+    "sessionExpiredFailed": "La sesión para {{email}} expiró y no se pudo renovar. Vuelve a iniciar sesión.",
+    "refreshInProgress": "⏳ La actualización de saldos ya está en progreso...",
+    "refreshCooldown": "⏳ Espera {{seconds}} segundos antes de volver a actualizar.",
+    "accountRemoved": "La cuenta {{email}} y todos sus datos se eliminaron correctamente.",
+    "switchFailed": "Error al cambiar a la cuenta {{email}}. Comprueba los errores e inténtalo de nuevo.",
+    "reAuthSuccess": "✅ Sesión restaurada con éxito para {{email}}.",
+    "reAuthFailed": "❌ Error en la reautenticación para {{email}}: {{error}}",
+    "reAuthEmailMismatch": "La cuenta conectada ({{actual}}) no coincide con la cuenta esperada ({{expected}}). Inicia sesión con la cuenta de Google correcta."
+  },
+  "stateDb": {
+    "outdatedAntigravity": "La versión instalada de Antigravity es anterior a la {{minVersion}} y no es compatible.\nActualiza Antigravity a la versión {{minVersion}} o posterior para utilizar el cambio de cuenta.",
+    "dbNotFound": "No se encontró la base de datos de Antigravity.\nAsegúrate de haber iniciado Antigravity e iniciado sesión al menos una vez.",
+    "injectionFailed": "Error al inyectar datos en la base de datos: {{error}}\nIntenta cerrar todas las demás ventanas de Antigravity e inténtalo de nuevo.",
+    "reloadPrompt": "Esta ventana se cerrará y Antigravity se volverá a abrir con la nueva cuenta."
+  },
+  "oauth": {
+    "timeout": "Tiempo de espera de autenticación agotado. Inténtalo de nuevo.",
+    "authFailedTitle": "La autenticación falló",
+    "authFailedDetail": "Ocurrió un error durante la autenticación: {{error}}",
+    "authSuccessTitle": "Autenticación exitosa",
+    "authSuccessDetail": "La cuenta se ha vinculado correctamente a la extensión Antigravity. Puedes cerrar esta ventana y regresar al editor.",
+    "noPorts": "No hay puertos disponibles para ejecutar el servidor de autenticación local.",
+    "closeWindow": "Cerrar ventana"
+  },
+  "authService": {
+    "noRefreshToken": "No se recibió el token de actualización. Inténtalo de nuevo y acepta todos los permisos.",
+    "noEmail": "No se obtuvo el correo electrónico. Comprueba los permisos."
+  },
+  "extension": {
+    "noAccountsToSwitch": "No hay cuentas registradas. Agrega una cuenta primero.",
+    "selectAccountToSwitch": "Selecciona la cuenta a la que deseas cambiar"
+  },
+  "switchPrompt": {
+    "title": "Se cambió con éxito a la cuenta {{email}}",
+    "detail": "El editor debe recargarse para activar la nueva cuenta. ¿Deseas recargar ahora? (Todos los archivos abiertos se guardarán automáticamente)",
+    "actionYes": "Recargar ahora",
+    "actionNo": "Más tarde"
+  },
+  "theme": {
+    "darkMode": "Modo oscuro",
+    "lightMode": "Modo claro"
+  }
+}

@@ -47,7 +47,7 @@ export class StateDbService {
       return 'error';
     }
 
-    const dbPath = PathUtils.getVscdbPath();
+    const dbPath = PathUtils.getVscdbPath(this.context);
     if (!fs.existsSync(dbPath)) {
       const i18n = I18nService.getInstance();
       Logger.getInstance().error(`State database not found at ${dbPath}`);
@@ -232,23 +232,29 @@ log('DB Path: ' + dbPath);
 log('Exe candidates: ' + JSON.stringify(exeCandidates));
 log('ELECTRON_RUN_AS_NODE: ' + process.env.ELECTRON_RUN_AS_NODE);
 
-// ── Helper: check if any Antigravity.exe processes are running (excluding self) ──
+// ── Helper: check if any IDE processes are running (excluding self) ──
 function getOtherAntigravityPids() {
   try {
-    const out = execSync('tasklist /FI "IMAGENAME eq Antigravity.exe" /FO CSV /NH', {
+    const exeName = path.basename(process.execPath);
+    const out = execSync('tasklist /FI "IMAGENAME eq ' + exeName + '" /FO CSV /NH', {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'ignore'],
     });
     const pids = [];
     for (const line of out.split('\\n')) {
-      const match = line.match(/"Antigravity\\.exe","(\\d+)"/i);
-      if (match) {
-        const pid = parseInt(match[1], 10);
-        if (pid !== ownPid) pids.push(pid);
+      const parts = line.split(',');
+      if (parts.length > 1) {
+        const namePart = parts[0].replace(/"/g, '').trim();
+        const pidPart = parts[1].replace(/"/g, '').trim();
+        if (namePart.toLowerCase() === exeName.toLowerCase()) {
+          const pid = parseInt(pidPart, 10);
+          if (pid && pid !== ownPid) pids.push(pid);
+        }
       }
     }
     return pids;
-  } catch {
+  } catch (e) {
+    log('Error checking PIDs: ' + String(e));
     return [];
   }
 }
@@ -309,7 +315,9 @@ function findRelaunchExe() {
   const localAppData = process.env.LOCALAPPDATA || '';
   const programFiles = process.env.PROGRAMFILES || '';
   const fallbacks = [
+    path.join(localAppData, 'Programs', 'Antigravity IDE', 'Antigravity IDE.exe'),
     path.join(localAppData, 'Programs', 'Antigravity', 'Antigravity.exe'),
+    path.join(programFiles, 'Antigravity IDE', 'Antigravity IDE.exe'),
     path.join(programFiles, 'Antigravity', 'Antigravity.exe'),
   ];
   for (const p of fallbacks) {
@@ -427,7 +435,9 @@ inject().catch((err) => {
   private findAntigravityExe(): string | undefined {
     if (process.platform === 'win32') {
       const candidates = [
+        path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Antigravity IDE', 'Antigravity IDE.exe'),
         path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Antigravity', 'Antigravity.exe'),
+        path.join(process.env.PROGRAMFILES || '', 'Antigravity IDE', 'Antigravity IDE.exe'),
         path.join(process.env.PROGRAMFILES || '', 'Antigravity', 'Antigravity.exe'),
       ];
       return candidates.find(c => fs.existsSync(c));
@@ -445,7 +455,7 @@ inject().catch((err) => {
    * Returns null if the database doesn't exist or the email can't be extracted.
    */
   async readCurrentEmailFromDb(): Promise<string | null> {
-    const dbPath = PathUtils.getVscdbPath();
+    const dbPath = PathUtils.getVscdbPath(this.context);
     if (!fs.existsSync(dbPath)) {
       Logger.getInstance().info('state.vscdb not found, cannot detect active account.');
       return null;
@@ -595,7 +605,7 @@ inject().catch((err) => {
   }
 
   private writeDeviceProfileToStorageJson(profile: DeviceProfile): void {
-    const storagePath = PathUtils.getStorageJsonPath();
+    const storagePath = PathUtils.getStorageJsonPath(this.context);
     try {
       let storageData: Record<string, any> = {};
       if (fs.existsSync(storagePath)) {

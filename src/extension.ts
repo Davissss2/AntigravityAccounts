@@ -42,7 +42,13 @@ export function activate(context: vscode.ExtensionContext): void {
     let language = config.getLanguage();
     if (language === 'auto') {
       const editorLang = vscode.env.language.split('-')[0].toLowerCase();
-      language = editorLang === 'ar' ? 'ar' : 'en';
+      if (editorLang === 'ar') {
+        language = 'ar';
+      } else if (editorLang === 'es') {
+        language = 'es';
+      } else {
+        language = 'en';
+      }
     }
     i18n.setLocale(language);
     logger.info(`Language set to: ${language} (configured: ${config.getLanguage()})`);
@@ -56,7 +62,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // ── Listen for configuration changes ──
   context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration((e) => {
+    vscode.workspace.onDidChangeConfiguration((e: vscode.ConfigurationChangeEvent) => {
       if (e.affectsConfiguration('antigravityHub.language')) {
         updateLanguage();
       }

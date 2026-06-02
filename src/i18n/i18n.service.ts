@@ -16,6 +16,8 @@
 
 import { Logger } from '../core/utils/logger';
 
+declare const require: any;
+
 /** Describes a registered locale */
 export interface LocaleInfo {
   /** ISO language code (e.g., 'en', 'ar', 'fr') */
@@ -190,7 +192,7 @@ export class I18nService {
   }
 
   /**
-   * Register built-in locales (English + Arabic).
+   * Register built-in locales (English + Arabic + Spanish).
    */
   private registerBuiltInLocales(): void {
     // English
@@ -203,6 +205,12 @@ export class I18nService {
     this.registerLocale(
       { code: 'ar', name: 'العربية', dir: 'rtl' },
       require('./locales/ar.json')
+    );
+
+    // Spanish
+    this.registerLocale(
+      { code: 'es', name: 'Español', dir: 'ltr' },
+      require('./locales/es.json')
     );
   }
 }

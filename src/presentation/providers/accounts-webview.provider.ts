@@ -393,19 +393,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       acc.isActive = (pinnedEmailLower !== null && acc.email.toLowerCase() === pinnedEmailLower);
     });
 
-    // Apply the same sort: active first, then by preferred model balance
-    const preferredModel = await this.accountRepo.getPreferredModel();
-    const effectivePreferred = preferredModel || '';
-
     accounts.sort((a, b) => {
       if (a.isActive && !b.isActive) return -1;
       if (!a.isActive && b.isActive) return 1;
-      if (effectivePreferred) {
-        const aVal = this.getModelBalanceValue(a.balances, effectivePreferred);
-        const bVal = this.getModelBalanceValue(b.balances, effectivePreferred);
-        return bVal - aVal;
-      }
-      return 0;
+      return a.displayName.localeCompare(b.displayName, undefined, { numeric: true, sensitivity: 'base' });
     });
 
     return accounts.map(a => a.email);
@@ -784,12 +775,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     accounts.sort((a, b) => {
       if (a.isActive && !b.isActive) return -1;
       if (!a.isActive && b.isActive) return 1;
-      if (effectivePreferred) {
-        const aVal = this.getModelBalanceValue(a.balances, effectivePreferred);
-        const bVal = this.getModelBalanceValue(b.balances, effectivePreferred);
-        return bVal - aVal;
-      }
-      return 0;
+      return a.displayName.localeCompare(b.displayName, undefined, { numeric: true, sensitivity: 'base' });
     });
 
     const formatTime = (resetTimeStr?: string) => {

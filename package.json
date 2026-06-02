@@ -120,12 +120,14 @@
           "enum": [
             "auto",
             "en",
-            "ar"
+            "ar",
+            "es"
           ],
           "enumDescriptions": [
             "Auto (Detect from Editor)",
             "English",
-            "العربية"
+            "العربية",
+            "Español"
           ],
           "description": "Display language for the extension UI"
         },

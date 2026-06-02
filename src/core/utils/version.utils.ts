@@ -73,7 +73,9 @@ function compareVersions(a: string, b: string): number {
 function detectVersionWindows(): AntigravityVersion | null {
   // Try to find Antigravity executable and read its FileVersion via PowerShell
   const possiblePaths = [
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Antigravity IDE', 'Antigravity IDE.exe'),
     path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Antigravity', 'Antigravity.exe'),
+    path.join(process.env.PROGRAMFILES || '', 'Antigravity IDE', 'Antigravity IDE.exe'),
     path.join(process.env.PROGRAMFILES || '', 'Antigravity', 'Antigravity.exe'),
   ];
 
@@ -97,19 +99,24 @@ function detectVersionWindows(): AntigravityVersion | null {
 }
 
 function detectVersionMacOS(): AntigravityVersion | null {
-  const plistPath = '/Applications/Antigravity.app/Contents/Info.plist';
-  if (fs.existsSync(plistPath)) {
-    try {
-      const output = execSync(
-        `/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "${plistPath}"`,
-        { encoding: 'utf-8', timeout: 5000 }
-      ).trim();
+  const possiblePaths = [
+    '/Applications/Antigravity IDE.app/Contents/Info.plist',
+    '/Applications/Antigravity.app/Contents/Info.plist',
+  ];
+  for (const plistPath of possiblePaths) {
+    if (fs.existsSync(plistPath)) {
+      try {
+        const output = execSync(
+          `/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "${plistPath}"`,
+          { encoding: 'utf-8', timeout: 5000 }
+        ).trim();
 
-      if (output && /^\d+\.\d+/.test(output)) {
-        return { full: output, short: extractShortVersion(output) };
+        if (output && /^\d+\.\d+/.test(output)) {
+          return { full: output, short: extractShortVersion(output) };
+        }
+      } catch (e) {
+        Logger.getInstance().debug(`Failed to read version from ${plistPath}`);
       }
-    } catch (e) {
-      Logger.getInstance().debug('Failed to read version from Info.plist');
     }
   }
   return null;
@@ -117,7 +124,7 @@ function detectVersionMacOS(): AntigravityVersion | null {
 
 function detectVersionLinux(): AntigravityVersion | null {
   // Try command line --version
-  const binaryNames = ['antigravity', 'Antigravity'];
+  const binaryNames = ['antigravity-ide', 'antigravity', 'Antigravity'];
   for (const name of binaryNames) {
     try {
       const output = execSync(`${name} --version 2>/dev/null`, {
