@@ -911,6 +911,14 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         if (prefIdx > -1) {
           const [prefModel] = processedModels.splice(prefIdx, 1);
           preferredModelData = prefModel;
+        } else {
+          // Preferred model is not present in this account's balances list.
+          // Render a placeholder with 0% to represent it at-a-glance.
+          preferredModelData = {
+            key: effectivePreferred,
+            value: 0,
+            resetTime: undefined
+          };
         }
       }
 
@@ -1200,11 +1208,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           .account-card.active {
-            border: 1.5px solid transparent;
-            background-image: linear-gradient(var(--surface-color), var(--surface-color)), var(--primary-gradient);
-            background-origin: border-box;
-            background-clip: content-box, border-box;
-            box-shadow: var(--active-glow), 0 8px 24px var(--shadow-color);
+            border: 1px solid var(--success-color);
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.15), 0 4px 12px var(--shadow-color);
           }
 
           .card-header {
