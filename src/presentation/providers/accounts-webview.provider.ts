@@ -751,6 +751,28 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const configRefreshInterval = vscode.workspace.getConfiguration('antigravityHub').get<number>('refreshIntervalMinutes', 15);
     const accounts = await this.accountRepo.getAccountSummaries();
 
+    // ── Preferred Model Resolution ──
+    // Extract available model keys from all accounts with balances (after filtering)
+    // and guarantee that standard IDE models are always present in the list.
+    const availableModelKeysSet = new Set<string>([
+      'Claude Sonnet 4.6 (Thinking)',
+      'Claude Opus 4.6 (Thinking)',
+      'Gemini 3.1 Pro (Low)',
+      'Gemini 3.1 Pro (High)',
+      'Gemini 3.5 Flash (Low)',
+      'Gemini 3.5 Flash (Medium)',
+      'Gemini 3.5 Flash (High)',
+      'GPT-OSS 120B (Medium)'
+    ]);
+
+    accounts.forEach(a => {
+      if (a.balances) {
+        this.extractFilteredModelKeys(a.balances).forEach(k => availableModelKeysSet.add(k));
+      }
+    });
+
+    const availableModelKeys = Array.from(availableModelKeysSet);
+
     // ── Use the cached pinned active account (set by detectAndPinActiveAccount) ──
     // This does NOT re-read from state.vscdb; it uses the result of the last
     // independent verification process, ensuring the pinned account survives
@@ -762,13 +784,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       acc.isActive = (pinnedEmailLower !== null && acc.email.toLowerCase() === pinnedEmailLower);
     });
 
-    // ── Preferred Model Resolution ──
-    // Extract available model keys from first account with balances (after filtering)
-    let availableModelKeys: string[] = [];
-    const accountWithBalances = accounts.find(a => a.balances && Object.keys(a.balances).length > 0);
-    if (accountWithBalances) {
-      availableModelKeys = this.extractFilteredModelKeys(accountWithBalances.balances);
-    }
 
     // Read stored preference (null = never set, "" = explicitly none)
     let preferredModel = await this.accountRepo.getPreferredModel();
