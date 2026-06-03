@@ -2,7 +2,7 @@
   "name": "antigravity-hub",
   "displayName": "Antigravity Hub",
   "description": "Manage multiple Antigravity accounts seamlessly - switch, monitor credits, and auto-rotate with one click.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "devhakeem5",
   "repository": {
     "type": "git",
@@ -133,7 +133,7 @@
         },
         "antigravityHub.autoRefreshEnabled": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Enable automatic balance refresh when opening the extension panel"
         },
         "antigravityHub.refreshIntervalMinutes": {

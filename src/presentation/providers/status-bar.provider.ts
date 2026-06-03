@@ -12,6 +12,7 @@ import { I18nService } from '../../i18n/i18n.service';
 import { AccountStatus } from '../../core/domain/models/account.model';
 import { AccountService } from '../../features/accounts/account.service';
 import { getFriendlyModelName } from '../../core/utils/model.utils';
+import { isEmailMatch } from '../../core/utils/account.utils';
 
 export class StatusBarProvider implements vscode.Disposable {
   private statusBarItem: vscode.StatusBarItem;
@@ -48,11 +49,9 @@ export class StatusBarProvider implements vscode.Disposable {
       return;
     }
 
-    const activeAccount = await this.accountRepo.getAccount(activeEmail)
-      // Fallback: case-insensitive search if exact match fails
-      || (await this.accountRepo.getAllAccounts()).find(
-        a => a.email.toLowerCase() === activeEmail.toLowerCase()
-      ) || null;
+    const activeAccount = (await this.accountRepo.getAllAccounts()).find(
+      a => isEmailMatch(a.email, activeEmail)
+    ) || null;
     if (!activeAccount) {
       this.statusBarItem.hide();
       return;
@@ -142,97 +141,31 @@ export class StatusBarProvider implements vscode.Disposable {
       }
     }
 
-    // ── Phase 1: Exclude by prefix (chat*, tap*, tab*, gpt*) ──
+    // ── Phase 1: Exclude by prefix (chat*, tap*, tab*) ──
     const afterPrefixFilter = allModelEntries.filter(m =>
       !m.lowerKey.startsWith('chat')
       && !m.lowerKey.startsWith('tap')
       && !m.lowerKey.startsWith('tab')
-      && !m.lowerKey.startsWith('gpt')
     );
 
     // ── Phase 2: Exclude gemini-2.5 ──
     const afterGeminiFilter = afterPrefixFilter.filter(m => !m.lowerKey.includes('gemini-2.5'));
 
-    // ── Phase 3: Strip -low/-high suffixes and deduplicate ──
-    const baseKeyMap = new Map<string, { key: string; value: number; resetTime?: string }>();
-    for (const m of afterGeminiFilter) {
-      const baseKey = m.lowerKey.replace(/-(?:low|high)$/, '');
-      if (!baseKeyMap.has(baseKey)) {
-        baseKeyMap.set(baseKey, { key: baseKey, value: m.value, resetTime: m.resetTime });
-      }
-    }
+    // ── Phase 3: Unconditional exclusion of "lite" models ──
+    const afterLiteFilter = afterGeminiFilter.filter(m => !m.lowerKey.match(/[-_\s]?lite$/i));
 
-    // ── Phase 4: Unconditional exclusion of "lite" models ──
-    const afterLiteFilter = new Map<string, { key: string; value: number; resetTime?: string }>();
-    for (const [baseKey, model] of baseKeyMap) {
-      if (baseKey.match(/[-_\s]?lite$/i)) continue;
-      afterLiteFilter.set(baseKey, model);
-    }
-
-    // ── Phase 5: Claude version merging ──
-    const claudeModels: Array<{ baseKey: string; model: { key: string; value: number; resetTime?: string } }> = [];
-    const nonClaudeModels: Array<{ key: string; value: number; resetTime?: string }> = [];
-
-    for (const [baseKey, model] of afterLiteFilter) {
-      if (baseKey.includes('claude')) {
-        claudeModels.push({ baseKey, model });
-      } else {
-        nonClaudeModels.push(model);
-      }
-    }
-
-    const extractClaudeVersion = (name: string): string => {
-      const match = name.match(/claude-[a-z]+-(d+(?:-\d+)*)/i);
-      return match ? match[1] : 'unknown';
-    };
-
-    const balanceFingerprint = (m: { value: number; resetTime?: string }) =>
-      `${m.value}|${m.resetTime || ''}`;
-
-    const claudeByBalance = new Map<string, typeof claudeModels>();
-    for (const cm of claudeModels) {
-      const fp = balanceFingerprint(cm.model);
-      if (!claudeByBalance.has(fp)) claudeByBalance.set(fp, []);
-      claudeByBalance.get(fp)!.push(cm);
-    }
-
-    const mergedClaudeModels: Array<{ key: string; value: number; resetTime?: string }> = [];
-    for (const [, group] of claudeByBalance) {
-      if (group.length <= 1) {
-        mergedClaudeModels.push(group[0].model);
-        continue;
-      }
-
-      const byVersion = new Map<string, typeof group>();
-      for (const cm of group) {
-        const version = extractClaudeVersion(cm.baseKey);
-        if (!byVersion.has(version)) byVersion.set(version, []);
-        byVersion.get(version)!.push(cm);
-      }
-
-      for (const [version, versionGroup] of byVersion) {
-        if (versionGroup.length > 1) {
-          const representative = versionGroup[0].model;
-          mergedClaudeModels.push({
-            key: `claude-${version}-All`,
-            value: representative.value,
-            resetTime: representative.resetTime,
-          });
-        } else {
-          mergedClaudeModels.push(versionGroup[0].model);
+    // ── Phase 4: Apply friendly names, filter deprecated, and deduplicate by friendly name ──
+    const friendlyModelMap = new Map<string, { key: string; value: number; resetTime?: string }>();
+    for (const m of afterLiteFilter) {
+      const friendlyName = getFriendlyModelName(m.key);
+      if (friendlyName) {
+        if (!friendlyModelMap.has(friendlyName)) {
+          friendlyModelMap.set(friendlyName, { key: friendlyName, value: m.value, resetTime: m.resetTime });
         }
       }
     }
 
-    // ── Phase 6: Build final list, apply friendly names, filter deprecated, and sort ──
-    const rawModels = [...nonClaudeModels, ...mergedClaudeModels];
-    const models: Array<{ key: string; value: number; resetTime?: string }> = [];
-    for (const m of rawModels) {
-      const friendlyName = getFriendlyModelName(m.key);
-      if (friendlyName) {
-        models.push({ key: friendlyName, value: m.value, resetTime: m.resetTime });
-      }
-    }
+    const models = Array.from(friendlyModelMap.values());
     
     models.sort((a, b) => {
       const aCritical = a.value < 20;

@@ -7,9 +7,12 @@
  */
 
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
 import { Logger } from './core/utils/logger';
 import { I18nService } from './i18n/i18n.service';
 import { ExtensionConfig } from './core/config/extension.config';
+import { PathUtils } from './core/utils/path.utils';
 
 import { AuthService } from './infrastructure/auth/auth.service';
 import { BalanceService } from './infrastructure/api/balance.service';
@@ -77,6 +80,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
+
+
   logger.info('Antigravity Hub activated successfully.');
 }
 
@@ -104,6 +109,31 @@ function registerCommands(
   const accountService = new AccountService(authService, balanceService, accountRepo, stateDbService);
 
   const disposables: vscode.Disposable[] = [];
+
+  // ── Periodic Check for Active Account changes in state.vscdb ──
+  const logger = Logger.getInstance();
+  let lastActiveEmail: string | null = null;
+  accountService.getActiveAntigravityEmail().then((email: string | null | undefined) => {
+    lastActiveEmail = email || null;
+  }).catch(() => {});
+
+  const activeCheckInterval = setInterval(async () => {
+    try {
+      const activeEmail = await accountService.getActiveAntigravityEmail();
+      const currentActive = activeEmail || null;
+      if (currentActive !== lastActiveEmail) {
+        logger.info(`Active account changed in IDE to: ${currentActive}`);
+        lastActiveEmail = currentActive;
+        accountService.emitAccountsChanged();
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, 5000); // Check every 5 seconds for responsive updates
+
+  disposables.push({
+    dispose: () => clearInterval(activeCheckInterval)
+  });
 
   // Initialize UI Providers
   const statusBarProvider = new StatusBarProvider(accountRepo, accountService);
@@ -212,12 +242,29 @@ function registerCommands(
  * 2. Migrates all stored secrets (refresh token, access token, metadata, deviceProfile)
  *    from the conflict-prone prefix "antigravity.account.*" to the isolated prefix "antigravityHub.secure.*".
  * 3. Wipes old "antigravity.account.*" keys from SecretStorage to prevent IDE 500 crashes.
+ * 4. Renames legacy Antigravity directory to prevent recurring settings migration popups in the 2.0 IDE.
  */
 async function migrateAndSanitizeStorage(context: vscode.ExtensionContext): Promise<void> {
   const logger = Logger.getInstance();
   logger.info('Starting storage migration and sanitization check...');
 
   try {
+    // ── Rename legacy configuration directory to disable the annoying settings migration prompt ──
+    try {
+      const currentDataPath = PathUtils.getAntigravityDataPath(context);
+      const appDataDir = path.dirname(currentDataPath);
+      const oldAppDataDir = path.join(appDataDir, 'Antigravity');
+      const backupOldAppDataDir = path.join(appDataDir, 'Antigravity_pre20_backup');
+
+      if (fs.existsSync(oldAppDataDir) && !fs.existsSync(backupOldAppDataDir)) {
+        logger.info(`Detected legacy Antigravity data folder at: ${oldAppDataDir}. Renaming to disable IDE migration prompts...`);
+        fs.renameSync(oldAppDataDir, backupOldAppDataDir);
+        logger.info(`Successfully renamed legacy Antigravity data folder to ${backupOldAppDataDir}`);
+      }
+    } catch (renameErr: any) {
+      logger.warn(`Failed to rename legacy Antigravity configuration directory: ${renameErr.message}`);
+    }
+
     const globalState = context.globalState;
     const secrets = context.secrets;
 

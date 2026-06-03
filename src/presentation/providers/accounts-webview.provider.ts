@@ -18,6 +18,7 @@ import { DeviceProfile } from '../../core/domain/models/device-profile.model';
 import { CryptoUtils } from '../../core/utils/crypto.utils';
 import { ExtensionConfig } from '../../core/config/extension.config';
 import { getFriendlyModelName } from '../../core/utils/model.utils';
+import { isEmailMatch } from '../../core/utils/account.utils';
 
 /** Shape of an individual account inside the backup */
 interface ExportedAccount {
@@ -196,17 +197,28 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       const config = ExtensionConfig.getInstance();
 
       if (config.isAutoRefreshEnabled()) {
-        // Auto-refresh ENABLED: check global interval (user-configured, default 15 min)
-        const lastRefreshed = await this.accountRepo.getBalancesLastRefreshed();
-        const now = Date.now();
-        const intervalMs = config.getRefreshIntervalMinutes() * 60 * 1000;
+        // Auto-refresh ENABLED:
+        // 1. Refresh the active account if it hasn't been refreshed in the last 10 seconds
+        await this.handleActiveAccountRefresh(10 * 1000);
 
-        if (now - lastRefreshed > intervalMs) {
-          await this.handleProgressiveRefresh(true);
+        // 2. Identify inactive accounts that have never been refreshed or have no balance data
+        const accounts = await this.accountRepo.getAllAccounts();
+        const inactiveEmailsToRefresh: string[] = [];
+        
+        for (const account of accounts) {
+          const isPinned = this._pinnedActiveEmail && isEmailMatch(account.email, this._pinnedActiveEmail);
+          if (!isPinned) {
+            if (!account.lastRefreshedAt || Object.keys(account.balances || {}).length === 0) {
+              inactiveEmailsToRefresh.push(account.email);
+            }
+          }
         }
-      } else {
-        // Auto-refresh DISABLED: only refresh the active account if 5 min passed
-        await this.handleActiveAccountRefresh();
+
+        // 3. Trigger progressive refresh only for those specific accounts without balance data
+        if (inactiveEmailsToRefresh.length > 0) {
+          Logger.getInstance().info(`Auto-refreshing ${inactiveEmailsToRefresh.length} new inactive accounts without balance: ${inactiveEmailsToRefresh.join(', ')}`);
+          await this.handleProgressiveRefresh(false, inactiveEmailsToRefresh);
+        }
       }
     });
   }
@@ -270,13 +282,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     // Step 4: Check if the email is in the tool's account list
-    const activeEmailLower = activeEmail.toLowerCase();
-    const matchFound = accounts.some(a => a.email.toLowerCase() === activeEmailLower);
+    const matchedAccount = accounts.find(a => isEmailMatch(a.email, activeEmail));
 
-    if (matchFound) {
+    if (matchedAccount) {
       // Step 5: Pin this account — it will be moved to the top of the list
-      this._pinnedActiveEmail = activeEmailLower;
-      Logger.getInstance().info(`Pinned active account: ${activeEmail}`);
+      this._pinnedActiveEmail = matchedAccount.email.toLowerCase();
+      Logger.getInstance().info(`Pinned active account: ${matchedAccount.email}`);
     } else {
       // Step 6: Email not in our list — clear pin
       this._pinnedActiveEmail = null;
@@ -349,7 +360,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
    * for just the account currently in use by Antigravity.
    * Only runs if more than 5 minutes have passed since that account's last refresh.
    */
-  private async handleActiveAccountRefresh(): Promise<void> {
+  private async handleActiveAccountRefresh(cooldownMs: number = 5 * 60 * 1000): Promise<void> {
     if (!this._pinnedActiveEmail) return;
 
     // Find the actual email (preserving original case) from the account list
@@ -357,11 +368,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const activeAccount = accounts.find(a => a.email.toLowerCase() === this._pinnedActiveEmail);
     if (!activeAccount) return;
 
-    // Check if 5 minutes have passed since this account's last refresh
-    const fiveMinMs = 5 * 60 * 1000;
+    // Check if cooldownMs have passed since this account's last refresh
     if (activeAccount.lastRefreshedAt) {
       const lastRefreshed = new Date(activeAccount.lastRefreshedAt).getTime();
-      if (Date.now() - lastRefreshed <= fiveMinMs) return;
+      if (Date.now() - lastRefreshed <= cooldownMs) return;
     }
 
     // Show progress banner for single account refresh
@@ -384,22 +394,18 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     await this.refresh();
   }
 
-  /**
-   * Computes the display order of accounts (same sort used in _getHtmlForWebview).
-   * Returns an array of emails in the order they appear in the UI.
-   */
   private async getDisplayOrderEmails(): Promise<string[]> {
-    const accounts = await this.accountRepo.getAccountSummaries();
+    const accounts = await this.accountRepo.getAllAccounts();
     const pinnedEmailLower = this._pinnedActiveEmail;
 
-    // Mark active account
     accounts.forEach(acc => {
       acc.isActive = (pinnedEmailLower !== null && acc.email.toLowerCase() === pinnedEmailLower);
     });
 
-    accounts.sort((a, b) => {
-      return a.displayName.localeCompare(b.displayName, undefined, { numeric: true, sensitivity: 'base' });
-    });
+    const preferredModel = await this.accountRepo.getPreferredModel();
+    const effectivePreferred = preferredModel || '';
+
+    this.sortAccounts(accounts, effectivePreferred, pinnedEmailLower);
 
     return accounts.map(a => a.email);
   }
@@ -774,10 +780,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const effectivePreferred = preferredModel || '';
 
     // ── Sort accounts ──
-    // Sort strictly alphabetically by display name (active account is not pinned to the top)
-    accounts.sort((a, b) => {
-      return a.displayName.localeCompare(b.displayName, undefined, { numeric: true, sensitivity: 'base' });
-    });
+    this.sortAccounts(accounts, effectivePreferred, this._pinnedActiveEmail);
 
     const formatTime = (resetTimeStr?: string) => {
        if (!resetTimeStr) return i18n.t('webview.unspecified');
@@ -833,118 +836,30 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         }
 
         // ── Phase 1 (FIRST exclusion): Remove models by prefix ──
-        // Excludes: chat*, tap*, tab*, gpt*
+        // Excludes: chat*, tap*, tab* (but NOT gpt*)
         const afterPrefixFilter = allModelEntries.filter(m => {
           return !m.lowerKey.startsWith('chat')
               && !m.lowerKey.startsWith('tap')
-              && !m.lowerKey.startsWith('tab')
-              && !m.lowerKey.startsWith('gpt');
+              && !m.lowerKey.startsWith('tab');
         });
 
         // ── Phase 2: Exclude gemini-2.5 ──
         const afterGeminiFilter = afterPrefixFilter.filter(m => !m.lowerKey.includes('gemini-2.5'));
 
-        // ── Phase 3: Strip -low/-high suffixes and deduplicate by base key ──
-        // This handles ALL models uniformly (including Claude)
-        const baseKeyMap = new Map<string, { key: string, value: number, resetTime?: string }>();
-        for (const m of afterGeminiFilter) {
-          const baseKey = m.lowerKey.replace(/-(?:low|high)$/, '');
-          if (!baseKeyMap.has(baseKey)) {
-            baseKeyMap.set(baseKey, { key: baseKey, value: m.value, resetTime: m.resetTime });
-          }
-          // If duplicate (e.g. model-low + model-high), keep first occurrence
-        }
+        // ── Phase 3: Unconditional exclusion of "lite" models ──
+        const afterLiteFilter = afterGeminiFilter.filter(m => !m.lowerKey.match(/[-_\s]?lite$/i));
 
-        // ── Phase 4: Unconditional exclusion of "lite" models ──
-        // Any model whose base key ends with "lite" is removed (no conditions needed)
-        const afterLiteFilter = new Map<string, { key: string, value: number, resetTime?: string }>();
-        for (const [baseKey, model] of baseKeyMap) {
-          if (baseKey.match(/[-_\s]?lite$/i)) continue; // Skip all lite variants
-          afterLiteFilter.set(baseKey, model);
-        }
-
-        // ── Phase 5: Claude version merging ──
-        // Group Claude models that share the same balance (value + resetTime).
-        // Within each shared-balance group, extract the version and merge same-version entries
-        // into a single "claude-{version}-All" entry.
-        const claudeModels: Array<{ baseKey: string, model: { key: string, value: number, resetTime?: string } }> = [];
-        const nonClaudeModels: Array<{ baseKey: string, model: { key: string, value: number, resetTime?: string } }> = [];
-
-        for (const [baseKey, model] of afterLiteFilter) {
-          if (baseKey.includes('claude')) {
-            claudeModels.push({ baseKey, model });
-          } else {
-            nonClaudeModels.push({ baseKey, model });
-          }
-        }
-
-        // Helper: extract version from Claude model name
-        // e.g. "claude-sonnet-4-6" → "4-6", "claude-opus-4-6-thinking" → "4-6"
-        const extractClaudeVersion = (name: string): string => {
-          // Match version pattern: one or more digits separated by dashes, possibly followed by a variant suffix
-          const match = name.match(/claude-[a-z]+-(\d+(?:-\d+)*)/i);
-          return match ? match[1] : 'unknown';
-        };
-
-        // Build a fingerprint for balance comparison: value + resetTime
-        const balanceFingerprint = (m: { value: number, resetTime?: string }) =>
-          `${m.value}|${m.resetTime || ''}`;
-
-        // Group Claude models by balance fingerprint
-        const claudeByBalance = new Map<string, Array<{ baseKey: string, model: { key: string, value: number, resetTime?: string } }>>();
-        for (const cm of claudeModels) {
-          const fp = balanceFingerprint(cm.model);
-          if (!claudeByBalance.has(fp)) claudeByBalance.set(fp, []);
-          claudeByBalance.get(fp)!.push(cm);
-        }
-
-        // Within each shared-balance group, merge by version
-        const mergedClaudeModels: Array<{ key: string, value: number, resetTime?: string }> = [];
-
-        for (const [, group] of claudeByBalance) {
-          if (group.length <= 1) {
-            // Only one model with this balance → keep as-is
-            mergedClaudeModels.push(group[0].model);
-            continue;
-          }
-
-          // Multiple models share the same balance → group by version
-          const byVersion = new Map<string, typeof group>();
-          for (const cm of group) {
-            const version = extractClaudeVersion(cm.baseKey);
-            if (!byVersion.has(version)) byVersion.set(version, []);
-            byVersion.get(version)!.push(cm);
-          }
-
-          for (const [version, versionGroup] of byVersion) {
-            if (versionGroup.length > 1) {
-              // Multiple models with same version AND same balance → merge into "claude-{version}-All"
-              const representative = versionGroup[0].model;
-              mergedClaudeModels.push({
-                key: `claude-${version}-All`,
-                value: representative.value,
-                resetTime: representative.resetTime,
-              });
-            } else {
-              // Only one model with this version → keep as-is
-              mergedClaudeModels.push(versionGroup[0].model);
+        // ── Phase 4: Apply friendly names, filter out deprecated keys, and deduplicate by friendly name ──
+        const friendlyModelMap = new Map<string, { key: string, value: number, resetTime?: string }>();
+        for (const entry of afterLiteFilter) {
+          const friendlyName = getFriendlyModelName(entry.key);
+          if (friendlyName) {
+            if (!friendlyModelMap.has(friendlyName)) {
+              friendlyModelMap.set(friendlyName, { key: friendlyName, value: entry.value, resetTime: entry.resetTime });
             }
           }
         }
-
-        // ── Phase 6: Build final processed models list ──
-        for (const { model } of nonClaudeModels) {
-          const friendlyName = getFriendlyModelName(model.key);
-          if (friendlyName) {
-            processedModels.push({ key: friendlyName, value: model.value, resetTime: model.resetTime });
-          }
-        }
-        for (const model of mergedClaudeModels) {
-          const friendlyName = getFriendlyModelName(model.key);
-          if (friendlyName) {
-            processedModels.push({ key: friendlyName, value: model.value, resetTime: model.resetTime });
-          }
-        }
+        processedModels = Array.from(friendlyModelMap.values());
       }
 
       // Sort processedModels
@@ -1153,28 +1068,51 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             /* ── VS Code Theme Integration ── */
             --background-dark: transparent;
             --surface-color: var(--vscode-editor-background, var(--vscode-sideBar-background));
-            --surface-light: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
+            --surface-light: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.08));
             
-            --primary-color: var(--vscode-button-background, #007acc);
-            --primary-dark: var(--vscode-button-hoverBackground, #0062a3);
-            --primary-light: var(--vscode-textLink-foreground, #3794ff);
-            --secondary-color: var(--vscode-button-secondaryBackground, #5f6a79);
+            --primary-color: var(--vscode-button-background, #7c3aed);
+            --primary-dark: var(--vscode-button-hoverBackground, #6d28d9);
+            --primary-light: var(--vscode-textLink-foreground, #a78bfa);
+            --secondary-color: var(--vscode-button-secondaryBackground, #4b5563);
             
-            --text-primary: var(--vscode-foreground, #cccccc);
-            --text-secondary: var(--vscode-descriptionForeground, #999999);
+            --text-primary: var(--vscode-foreground, #e5e7eb);
+            --text-secondary: var(--vscode-descriptionForeground, #9ca3af);
             
-            --border-color: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.2)));
+            --border-color: var(--vscode-widget-border, var(--vscode-panel-border, rgba(255, 255, 255, 0.08)));
             
-            --danger-color: var(--vscode-errorForeground, #f14c4c);
-            --success-color: var(--vscode-testing-iconPassed, #73c991);
-            --warning-color: var(--vscode-editorWarning-foreground, #cca700);
+            --danger-color: var(--vscode-errorForeground, #ef4444);
+            --success-color: var(--vscode-testing-iconPassed, #10b981);
+            --warning-color: var(--vscode-editorWarning-foreground, #f59e0b);
             
             /* Responsive neutral alphas for light/dark mode */
-            --glass-bg: rgba(128, 128, 128, 0.05);
-            --glass-border: rgba(128, 128, 128, 0.15);
-            --shadow-color: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.15));
-            --focus-border: var(--vscode-focusBorder, #007acc);
-            --hover-bg: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
+            --glass-bg: rgba(255, 255, 255, 0.02);
+            --glass-border: rgba(255, 255, 255, 0.06);
+            --shadow-color: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.25));
+            --focus-border: var(--vscode-focusBorder, #7c3aed);
+            --hover-bg: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+            
+            /* Curated premium gradients */
+            --active-glow: 0 0 20px rgba(124, 58, 237, 0.25);
+            --primary-gradient: linear-gradient(135deg, #7c3aed, #3b82f6);
+            --primary-gradient-hover: linear-gradient(135deg, #8b5cf6, #60a5fa);
+            --danger-gradient: linear-gradient(135deg, #ef4444, #b91c1c);
+            --warning-gradient: linear-gradient(135deg, #f59e0b, #b45309);
+          }
+
+          /* Modern Scrollbar Styling */
+          ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+          }
+          ::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 4px;
+          }
+          ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.24);
           }
 
           body {
@@ -1190,16 +1128,17 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 24px;
+            margin-bottom: 20px;
             padding-bottom: 12px;
             border-bottom: 1px solid var(--border-color);
           }
 
           .header-actions h2 { 
             margin: 0; 
-            font-size: 1.1rem; 
+            font-size: 1.15rem; 
             color: var(--text-primary); 
-            font-weight: 600;
+            font-weight: 700;
+            letter-spacing: -0.02em;
           }
           
           .btn-icon {
@@ -1207,71 +1146,81 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             border: 1px solid var(--glass-border);
             color: var(--text-primary);
             cursor: pointer;
-            padding: 6px 10px;
-            border-radius: 6px;
-            transition: all 0.2s;
+            padding: 8px 12px;
+            border-radius: 8px;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.9rem;
+            font-size: 0.95rem;
             margin-inline-start: 6px;
           }
           .btn-icon:hover {
             background: var(--primary-color);
             color: var(--vscode-button-foreground, #ffffff);
             border-color: var(--primary-color);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.2);
+          }
+          .btn-icon:active {
+            transform: translateY(0);
           }
 
           .account-card {
-            background: var(--surface-color);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 14px;
             padding: 16px;
             margin-bottom: 16px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
             position: relative;
-            box-shadow: 0 2px 8px var(--shadow-color);
+            box-shadow: 0 4px 12px var(--shadow-color);
+            backdrop-filter: blur(10px);
           }
 
           .account-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 16px var(--shadow-color);
-            border-color: var(--focus-border);
+            box-shadow: 0 12px 24px var(--shadow-color);
+            border-color: rgba(124, 58, 237, 0.3);
           }
 
           .account-card.active {
-            border: 2px solid var(--focus-border);
-            box-shadow: 0 0 12px var(--shadow-color);
-            background: var(--surface-color);
+            border: 1.5px solid transparent;
+            background-image: linear-gradient(var(--surface-color), var(--surface-color)), var(--primary-gradient);
+            background-origin: border-box;
+            background-clip: content-box, border-box;
+            box-shadow: var(--active-glow), 0 8px 24px var(--shadow-color);
           }
 
           .card-header {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 14px;
             margin-bottom: 16px;
             min-width: 0;
           }
 
           .avatar {
-            width: 42px;
-            height: 42px;
-            border-radius: 10px;
-            background: var(--primary-color);
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: var(--primary-gradient);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: bold;
-            font-size: 1.2rem;
-            color: var(--vscode-button-foreground, white);
-            box-shadow: 0 4px 10px var(--shadow-color);
+            font-weight: 700;
+            font-size: 1.25rem;
+            color: white;
+            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25);
             object-fit: cover;
+            border: 1.5px solid rgba(255, 255, 255, 0.1);
           }
 
           .user-info { flex: 1; overflow: hidden; min-width: 0; }
           .user-info h4 { 
-            margin: 0 0 2px 0; 
-            font-size: 0.95rem; 
+            margin: 0 0 3px 0; 
+            font-size: 0.98rem; 
+            font-weight: 600;
             white-space: nowrap; 
             overflow: hidden; 
             text-overflow: ellipsis;
@@ -1279,7 +1228,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
           .user-info p { 
             margin: 0; 
-            font-size: 0.75rem; 
+            font-size: 0.78rem; 
             color: var(--text-secondary); 
             white-space: nowrap; 
             overflow: hidden; 
@@ -1287,15 +1236,49 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           .badge {
-            font-size: 0.65rem;
-            padding: 4px 8px;
-            border-radius: 12px;
+            font-size: 0.68rem;
+            padding: 4px 10px;
+            border-radius: 20px;
             font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
           }
+          
           .active-badge {
-            background: var(--glass-bg);
-            color: var(--success-color);
-            border: 1px solid var(--success-color);
+            background: rgba(16, 185, 129, 0.1);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.15);
+            position: relative;
+            padding-inline-start: 22px;
+          }
+          
+          .active-badge::before {
+            content: '';
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 8px #10b981;
+            animation: badgePulse 2s infinite;
+          }
+          [dir="rtl"] .active-badge {
+            padding-inline-start: 10px;
+            padding-inline-end: 22px;
+          }
+          [dir="rtl"] .active-badge::before {
+            left: auto;
+            right: 8px;
+          }
+
+          @keyframes badgePulse {
+            0% { transform: translateY(-50%) scale(0.9); opacity: 0.6; }
+            50% { transform: translateY(-50%) scale(1.2); opacity: 1; }
+            100% { transform: translateY(-50%) scale(0.9); opacity: 0.6; }
           }
 
           .balances-container {
@@ -1303,9 +1286,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             flex-wrap: wrap;
             gap: 8px;
             margin-bottom: 16px;
-            padding: 10px;
-            background: var(--glass-bg);
-            border-radius: 8px;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.01);
+            border-radius: 10px;
             border: 1px solid var(--glass-border);
           }
 
@@ -1314,9 +1297,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             flex-direction: column;
             background: var(--glass-bg);
             padding: 8px 10px;
-            border-radius: 6px;
+            border-radius: 8px;
             flex: 1;
-            min-width: 70px;
+            min-width: 75px;
             text-align: center;
             border: 1px solid var(--glass-border);
           }
@@ -1327,10 +1310,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             margin-bottom: 4px; 
             text-transform: uppercase; 
             letter-spacing: 0.5px;
+            font-weight: 600;
           }
           .balance-value { 
-            font-size: 1.05rem; 
-            font-weight: bold; 
+            font-size: 1.1rem; 
+            font-weight: 700; 
             color: var(--primary-light); 
           }
 
@@ -1338,14 +1322,17 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             display: flex;
             gap: 8px;
             justify-content: flex-end;
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.04);
           }
 
           .credits-container {
             display: flex;
             margin-bottom: 16px;
-            padding: 10px;
-            background: var(--glass-bg);
-            border-radius: 8px;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.01);
+            border-radius: 10px;
             border: 1px solid var(--glass-border);
           }
 
@@ -1357,45 +1344,48 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           .credit-name {
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             color: var(--text-secondary);
-            font-weight: bold;
+            font-weight: 600;
+            letter-spacing: 0.02em;
           }
 
           .credit-value {
-            font-size: 1.1rem;
+            font-size: 1.15rem;
             color: var(--primary-light);
-            font-weight: bold;
+            font-weight: 800;
+            letter-spacing: -0.01em;
           }
 
           .models-section {
-            margin-bottom: 16px;
+            margin-bottom: 14px;
           }
 
           .collapse-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: var(--surface-light);
+            background: rgba(255, 255, 255, 0.02);
             border: 1px solid var(--glass-border);
-            border-radius: 8px;
+            border-radius: 10px;
             cursor: pointer;
             user-select: none;
-            transition: all 0.2s;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
             min-width: 0;
             gap: 6px;
           }
           
           .normal-collapse {
-            padding: 12px 16px;
+            padding: 10px 14px;
           }
           
           .normal-collapse:hover {
             background: var(--hover-bg);
+            border-color: rgba(255, 255, 255, 0.1);
           }
 
           .collapse-title {
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             font-weight: 600;
             color: var(--text-primary);
             white-space: nowrap;
@@ -1403,11 +1393,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           .unified-collapse {
-            padding: 8px 12px;
+            padding: 6px 10px;
           }
           
           .unified-collapse:hover {
             background: var(--hover-bg);
+            border-color: rgba(255, 255, 255, 0.1);
           }
           
           .collapse-header-right {
@@ -1423,12 +1414,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             display: flex;
             align-items: center;
             gap: 6px;
-            background: var(--glass-bg);
-            padding: 4px 6px;
-            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.02);
+            padding: 4px 8px;
+            border-radius: 8px;
             border: 1px solid var(--glass-border);
-            font-size: 0.75rem;
-            transition: all 0.2s;
+            font-size: 0.72rem;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
             cursor: pointer;
             min-width: 0;
             flex-shrink: 1;
@@ -1441,9 +1432,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           .pref-badge.active-model {
-            background: var(--primary-color);
-            color: var(--vscode-button-foreground);
-            border-color: var(--primary-color);
+            background: var(--primary-gradient);
+            color: white;
+            border-color: transparent;
+            box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);
           }
 
           .pref-badge-name {
@@ -1457,26 +1449,27 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           .pref-badge-bar {
-            width: 40px;
+            width: 36px;
             min-width: 24px;
             height: 4px;
-            background: rgba(128,128,128,0.3);
+            background: rgba(255,255,255,0.1);
             border-radius: 2px;
             overflow: hidden;
             flex-shrink: 1;
           }
 
           .pref-badge-val {
-            font-weight: bold;
+            font-weight: 700;
             white-space: nowrap;
             flex-shrink: 0;
             color: inherit;
           }
 
           .collapse-icon {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             color: var(--text-secondary);
-            transition: transform 0.3s ease;
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            margin-inline-end: 4px;
           }
           
           .collapse-header.expanded .collapse-icon {
@@ -1486,7 +1479,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .collapsible-wrapper {
             display: grid;
             grid-template-rows: 0fr;
-            transition: grid-template-rows 0.3s ease-out;
+            transition: grid-template-rows 0.3s cubic-bezier(0.16, 1, 0.3, 1);
           }
 
           .collapsible-wrapper.expanded {
@@ -1500,42 +1493,46 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .models-container {
             display: flex;
             flex-direction: column;
-            gap: 12px;
-            padding-top: 12px;
+            gap: 8px;
+            padding-top: 10px;
           }
 
           .model-card {
-            background: var(--glass-bg);
-            padding: 12px;
-            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.01);
+            padding: 10px 12px;
+            border-radius: 10px;
             border: 1px solid var(--glass-border);
             display: flex;
             flex-direction: column;
-            transition: all 0.2s;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
           }
 
           .model-card.active-model {
-            border: 1px solid var(--focus-border);
-            background: var(--hover-bg);
-            box-shadow: 0 0 8px var(--shadow-color);
+            border-color: var(--focus-border);
+            background: rgba(124, 58, 237, 0.05);
+            box-shadow: 0 0 12px rgba(124, 58, 237, 0.15);
           }
 
           .model-card:hover {
             background: var(--surface-light);
-            border-color: var(--focus-border);
+            border-color: rgba(255, 255, 255, 0.15);
+            transform: translateX(2px);
+          }
+          [dir="rtl"] .model-card:hover {
+            transform: translateX(-2px);
           }
 
           .model-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             gap: 6px;
             min-width: 0;
           }
 
           .model-name {
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             font-weight: 600;
             color: var(--text-primary);
             white-space: nowrap;
@@ -1546,7 +1543,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           .model-reset {
-            font-size: 0.7rem;
+            font-size: 0.68rem;
             color: var(--text-secondary);
             white-space: nowrap;
             flex-shrink: 0;
@@ -1555,7 +1552,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .progress-bar-container {
             width: 100%;
             height: 6px;
-            background: rgba(128,128,128,0.2);
+            background: rgba(255,255,255,0.06);
             border-radius: 3px;
             overflow: hidden;
             margin-bottom: 4px;
@@ -1564,7 +1561,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .progress-bar {
             height: 100%;
             border-radius: 3px;
-            transition: width 0.4s ease;
+            transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
           }
 
           .bg-high { background: var(--success-color); }
@@ -1576,76 +1573,84 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .bg-low-text { color: var(--danger-color); }
 
           .model-percentage {
-            font-size: 0.75rem;
+            font-size: 0.72rem;
             align-self: flex-end;
-            font-weight: bold;
+            font-weight: 700;
           }
 
           .empty-models {
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             color: var(--text-secondary);
             text-align: center;
-            padding: 10px;
+            padding: 12px;
           }
 
           .btn {
-            padding: 6px 14px;
-            border-radius: 4px;
-            font-size: 0.8rem;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.82rem;
             cursor: pointer;
-            font-weight: 500;
-            transition: all 0.2s;
+            font-weight: 600;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
             border: none;
-            color: var(--vscode-button-foreground);
+            color: white;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+          }
+          .btn:active {
+            transform: scale(0.97);
           }
 
           .btn-primary {
-            background: var(--primary-color);
-            border: 1px solid var(--primary-dark);
+            background: var(--primary-gradient);
+            box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);
           }
           .btn-primary:hover { 
-            background: var(--primary-dark); 
-            box-shadow: 0 2px 6px var(--shadow-color);
+            background: var(--primary-gradient-hover); 
+            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.35);
           }
 
           .btn-danger {
-            background: transparent;
-            color: var(--danger-color);
-            border: 1px solid var(--danger-color);
+            background: rgba(239, 68, 68, 0.08);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.15);
           }
           .btn-danger:hover {
-            background: var(--danger-color);
-            color: var(--vscode-button-foreground, white);
+            background: #ef4444;
+            color: white;
+            border-color: transparent;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
           }
 
           .btn-warning {
-            background: var(--warning-color);
-            color: var(--vscode-editor-background, #1e1e1e);
-            border: 1px solid var(--warning-color);
-            font-weight: 600;
+            background: var(--warning-gradient);
+            color: white;
+            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.25);
           }
           .btn-warning:hover {
-            filter: brightness(1.15);
-            box-shadow: 0 2px 8px var(--shadow-color);
+            filter: brightness(1.1);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.35);
           }
 
           .account-card.expired {
-            border: 1px solid var(--warning-color);
-            opacity: 0.92;
+            border: 1px dashed var(--warning-color);
+            opacity: 0.9;
           }
           .account-card.expired:hover {
             border-color: var(--warning-color);
           }
 
           .avatar-expired {
-            opacity: 0.5;
-            filter: grayscale(60%);
+            opacity: 0.4;
+            filter: grayscale(80%);
           }
 
           .expired-badge {
-            background: var(--glass-bg);
+            background: rgba(245, 158, 11, 0.1);
             color: var(--warning-color);
-            border: 1px solid var(--warning-color);
+            border: 1px solid rgba(245, 158, 11, 0.2);
             white-space: nowrap;
           }
 
@@ -1653,26 +1658,27 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 12px 14px;
-            margin-bottom: 16px;
-            background: rgba(204, 167, 0, 0.08);
-            border: 1px solid rgba(204, 167, 0, 0.3);
+            padding: 10px 12px;
+            margin-bottom: 14px;
+            background: rgba(245, 158, 11, 0.05);
+            border: 1px solid rgba(245, 158, 11, 0.15);
             border-radius: 8px;
             animation: subtlePulse 3s ease-in-out infinite;
           }
           .expired-banner-icon {
-            font-size: 1.4rem;
+            font-size: 1.25rem;
             flex-shrink: 0;
           }
           .expired-banner-text {
-            font-size: 0.82rem;
+            font-size: 0.78rem;
             color: var(--warning-color);
             line-height: 1.4;
+            font-weight: 500;
           }
 
           @keyframes subtlePulse {
-            0%, 100% { border-color: rgba(204, 167, 0, 0.3); }
-            50% { border-color: rgba(204, 167, 0, 0.6); }
+            0%, 100% { border-color: rgba(245, 158, 11, 0.15); }
+            50% { border-color: rgba(245, 158, 11, 0.4); }
           }
 
           .empty-state {
@@ -1702,9 +1708,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             .model-name { font-size: 0.78rem; }
             .model-reset { font-size: 0.65rem; }
             .model-percentage { font-size: 0.7rem; }
-            .btn { padding: 5px 10px; font-size: 0.75rem; }
+            .btn { padding: 6px 10px; font-size: 0.75rem; }
             .header-actions h2 { font-size: 0.95rem; }
-            .btn-icon { padding: 4px 8px; font-size: 0.8rem; }
+            .btn-icon { padding: 6px 8px; font-size: 0.8rem; }
           }
 
           @container (max-width: 220px) {
@@ -1723,14 +1729,14 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .search-input {
             width: 100%;
             padding: 9px 34px 9px 12px;
-            background: var(--surface-color);
+            background: rgba(255, 255, 255, 0.01);
             border: 1px solid var(--border-color);
             border-radius: 8px;
             color: var(--text-primary);
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             font-family: inherit;
             outline: none;
-            transition: border-color 0.2s;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
             box-sizing: border-box;
           }
           [dir="rtl"] .search-input {
@@ -1738,6 +1744,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
           .search-input:focus {
             border-color: var(--focus-border);
+            background: var(--surface-color);
+            box-shadow: 0 0 8px rgba(124, 58, 237, 0.15);
           }
           .search-input::placeholder {
             color: var(--text-secondary);
@@ -1798,7 +1806,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             gap: 8px;
             padding: 12px 14px;
             margin-bottom: 16px;
-            background: var(--glass-bg);
+            background: rgba(124, 58, 237, 0.03);
             border: 1px solid var(--focus-border);
             border-radius: 10px;
             animation: fadeIn 0.25s ease;
@@ -1824,7 +1832,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             font-size: 0.72rem;
             color: var(--text-secondary);
             font-weight: 600;
-            background: rgba(128, 128, 128, 0.1);
+            background: rgba(255, 255, 255, 0.05);
             padding: 2px 8px;
             border-radius: 6px;
             border: 1px solid var(--glass-border);
@@ -1853,15 +1861,15 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .refresh-progress-bar-track {
             width: 100%;
             height: 6px;
-            background: rgba(128,128,128,0.2);
+            background: rgba(255,255,255,0.06);
             border-radius: 3px;
             overflow: hidden;
           }
           .refresh-progress-bar-fill {
             height: 100%;
             border-radius: 3px;
-            background: var(--primary-color);
-            transition: width 0.4s ease;
+            background: var(--primary-gradient);
+            transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
             width: 0%;
           }
 
@@ -1870,12 +1878,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             display: none;
             padding: 10px 14px;
             margin-bottom: 16px;
-            background: rgba(115, 201, 145, 0.12);
+            background: rgba(16, 185, 129, 0.08);
             border: 1px solid var(--success-color);
             border-radius: 10px;
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             color: var(--success-color);
-            font-weight: 500;
+            font-weight: 600;
             text-align: center;
             animation: fadeIn 0.25s ease;
           }
@@ -1886,51 +1894,55 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
           /* ── Cancel / Loading bar in header ── */
           .btn-cancel-refresh {
-            background: var(--danger-color);
-            color: var(--vscode-button-foreground, #fff);
-            border: none;
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.25);
             cursor: pointer;
-            padding: 5px 10px;
-            border-radius: 6px;
+            padding: 6px 12px;
+            border-radius: 8px;
             font-size: 0.78rem;
             font-weight: 600;
             display: none;
             align-items: center;
             gap: 4px;
             animation: fadeIn 0.15s ease;
+            transition: all 0.2s;
           }
-          .btn-cancel-refresh:hover { filter: brightness(1.15); }
+          .btn-cancel-refresh:hover { background: #ef4444; color: white; border-color: transparent; }
 
           /* ── Cancel Confirmation Dialog ── */
           .cancel-confirm-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0,0,0,0.45);
+            background: rgba(0,0,0,0.6);
             z-index: 1100;
             display: none;
             align-items: center;
             justify-content: center;
             animation: fadeIn 0.15s ease;
+            backdrop-filter: blur(8px);
           }
           .cancel-confirm-box {
             background: var(--vscode-editor-background);
-            border: 1px solid var(--vscode-widget-border, var(--border-color));
-            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
             padding: 20px 24px;
-            min-width: 220px;
+            min-width: 240px;
             max-width: 320px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            box-shadow: 0 12px 32px rgba(0,0,0,0.4);
             text-align: center;
           }
           .cancel-confirm-box h4 {
             margin: 0 0 8px 0;
-            font-size: 0.95rem;
+            font-size: 0.98rem;
+            font-weight: 700;
             color: var(--text-primary);
           }
           .cancel-confirm-box p {
-            margin: 0 0 16px 0;
+            margin: 0 0 18px 0;
             font-size: 0.82rem;
             color: var(--text-secondary);
+            line-height: 1.4;
           }
           .cancel-confirm-actions {
             display: flex;
@@ -1958,19 +1970,18 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .loading-overlay {
             position: fixed;
             inset: 0;
-            background: var(--vscode-editor-background);
-            opacity: 0.9;
+            background: rgba(0,0,0,0.6);
             z-index: 1000;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             gap: 16px;
-            backdrop-filter: blur(4px);
+            backdrop-filter: blur(8px);
           }
           .loading-spinner {
             width: 36px; height: 36px;
-            border: 3px solid var(--glass-border);
+            border: 3.5px solid rgba(255, 255, 255, 0.1);
             border-top-color: var(--primary-color);
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
@@ -1978,6 +1989,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .loading-text {
             color: var(--text-secondary);
             font-size: 0.85rem;
+            font-weight: 600;
           }
 
           /* ── Dropdown Menu ── */
@@ -1985,23 +1997,24 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .dropdown-menu {
             display: none;
             position: absolute;
-            top: calc(100% + 4px);
+            top: calc(100% + 6px);
             right: 0;
-            min-width: 170px;
+            min-width: 180px;
             background: var(--vscode-dropdown-background, var(--surface-color));
             border: 1px solid var(--vscode-dropdown-border, var(--border-color));
-            border-radius: 6px;
-            box-shadow: 0 4px 16px var(--shadow-color);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
             z-index: 100;
             overflow: hidden;
             animation: fadeIn 0.15s ease;
+            backdrop-filter: blur(10px);
           }
           .dropdown-menu.show { display: block; }
           @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
           .dropdown-item {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
             width: 100%;
             padding: 10px 14px;
             background: none;
@@ -2011,6 +2024,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             cursor: pointer;
             text-align: start;
             transition: background 0.15s;
+            font-weight: 500;
           }
           .dropdown-item:hover { background: var(--vscode-list-hoverBackground, var(--surface-light)); }
           .dropdown-item:disabled {
@@ -2018,7 +2032,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             cursor: not-allowed;
           }
           .dropdown-item:disabled:hover { background: none; }
-          .dropdown-icon { font-size: 1rem; }
+          .dropdown-icon { font-size: 1rem; display: inline-flex; align-items: center; justify-content: center; }
         </style>
       </head>
       <body>
@@ -2734,88 +2748,28 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       allModelEntries.push({ key: k, lowerKey, value, resetTime });
     }
 
-    // Phase 1: Exclude by prefix
+    // Phase 1: Exclude by prefix (chat*, tap*, tab*)
     const afterPrefixFilter = allModelEntries.filter(m => {
       return !m.lowerKey.startsWith('chat')
           && !m.lowerKey.startsWith('tap')
-          && !m.lowerKey.startsWith('tab')
-          && !m.lowerKey.startsWith('gpt');
+          && !m.lowerKey.startsWith('tab');
     });
 
     // Phase 2: Exclude gemini-2.5
     const afterGeminiFilter = afterPrefixFilter.filter(m => !m.lowerKey.includes('gemini-2.5'));
 
-    // Phase 3: Strip -low/-high suffixes and deduplicate
-    const baseKeyMap = new Map<string, { key: string, value: number, resetTime?: string }>();
-    for (const m of afterGeminiFilter) {
-      const baseKey = m.lowerKey.replace(/-(?:low|high)$/, '');
-      if (!baseKeyMap.has(baseKey)) {
-        baseKeyMap.set(baseKey, { key: baseKey, value: m.value, resetTime: m.resetTime });
-      }
-    }
+    // Phase 3: Unconditional exclusion of "lite" models
+    const afterLiteFilter = afterGeminiFilter.filter(m => !m.lowerKey.match(/[-_\s]?lite$/i));
 
-    // Phase 4: Unconditional exclusion of "lite" models
-    const afterLiteFilter = new Map<string, { key: string, value: number, resetTime?: string }>();
-    for (const [baseKey, model] of baseKeyMap) {
-      if (baseKey.match(/[-_\s]?lite$/i)) continue;
-      afterLiteFilter.set(baseKey, model);
-    }
-
-    // Phase 5: Claude version merging
-    const claudeModels: Array<{ baseKey: string, model: { key: string, value: number, resetTime?: string } }> = [];
-    const finalKeys: string[] = [];
-
-    for (const [baseKey, model] of afterLiteFilter) {
-      if (baseKey.includes('claude')) {
-        claudeModels.push({ baseKey, model });
-      } else {
-        finalKeys.push(model.key);
-      }
-    }
-
-    const extractClaudeVersion = (name: string): string => {
-      const match = name.match(/claude-[a-z]+-(\d+(?:-\d+)*)/i);
-      return match ? match[1] : 'unknown';
-    };
-
-    const balanceFingerprint = (m: { value: number, resetTime?: string }) => `${m.value}|${m.resetTime || ''}`;
-
-    const claudeByBalance = new Map<string, Array<{ baseKey: string, model: { key: string, value: number, resetTime?: string } }>>();
-    for (const cm of claudeModels) {
-      const fp = balanceFingerprint(cm.model);
-      if (!claudeByBalance.has(fp)) claudeByBalance.set(fp, []);
-      claudeByBalance.get(fp)!.push(cm);
-    }
-
-    for (const [, group] of claudeByBalance) {
-      if (group.length <= 1) {
-        finalKeys.push(group[0].model.key);
-        continue;
-      }
-      const byVersion = new Map<string, typeof group>();
-      for (const cm of group) {
-        const version = extractClaudeVersion(cm.baseKey);
-        if (!byVersion.has(version)) byVersion.set(version, []);
-        byVersion.get(version)!.push(cm);
-      }
-      for (const [version, versionGroup] of byVersion) {
-        if (versionGroup.length > 1) {
-          finalKeys.push(`claude-${version}-All`);
-        } else {
-          finalKeys.push(versionGroup[0].model.key);
-        }
-      }
-    }
-
-    // Phase 6: Apply friendly names and filter out deprecated keys
-    const friendlyKeys: string[] = [];
-    for (const key of finalKeys) {
-      const friendlyName = getFriendlyModelName(key);
+    // Phase 4: Apply friendly names, filter out deprecated keys, and deduplicate by friendly name
+    const friendlyKeys = new Set<string>();
+    for (const entry of afterLiteFilter) {
+      const friendlyName = getFriendlyModelName(entry.key);
       if (friendlyName) {
-        friendlyKeys.push(friendlyName);
+        friendlyKeys.add(friendlyName);
       }
     }
-    return friendlyKeys;
+    return Array.from(friendlyKeys);
   }
 
   /**
@@ -2870,5 +2824,47 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     return -1; // Model not found
+  }
+
+  /**
+   * Sorts the accounts array based on active status, preferred model balance, account status hierarchy, and alphabetical name.
+   */
+  private sortAccounts(accounts: any[], effectivePreferred: string, pinnedEmailLower: string | null): void {
+    accounts.sort((a, b) => {
+      // 1. Pinned active account always goes first
+      const aActive = pinnedEmailLower !== null && a.email.toLowerCase() === pinnedEmailLower;
+      const bActive = pinnedEmailLower !== null && b.email.toLowerCase() === pinnedEmailLower;
+      if (aActive && !bActive) return -1;
+      if (!aActive && bActive) return 1;
+
+      // 2. Sorting by preferred model balance if selected
+      if (effectivePreferred) {
+        const aVal = this.getModelBalanceValue(a.balances, effectivePreferred);
+        const bVal = this.getModelBalanceValue(b.balances, effectivePreferred);
+        if (aVal !== bVal) {
+          return bVal - aVal; // Descending (highest first)
+        }
+      } else {
+        // 3. Fallback: Sort by account status hierarchy (accounts with quota first)
+        const getStatusWeight = (status: AccountStatus) => {
+          switch (status) {
+            case AccountStatus.ACTIVE: return 0;
+            case AccountStatus.LOW_BALANCE: return 1;
+            case AccountStatus.DEPLETED: return 2;
+            case AccountStatus.TOKEN_EXPIRED: return 3;
+            case AccountStatus.ERROR: return 4;
+            default: return 5;
+          }
+        };
+        const aWeight = getStatusWeight(a.status);
+        const bWeight = getStatusWeight(b.status);
+        if (aWeight !== bWeight) {
+          return aWeight - bWeight;
+        }
+      }
+
+      // 4. Tie-breaker: Alphabetical by display name
+      return a.displayName.localeCompare(b.displayName, undefined, { numeric: true, sensitivity: 'base' });
+    });
   }
 }

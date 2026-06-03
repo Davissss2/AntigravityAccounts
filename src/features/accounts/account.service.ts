@@ -15,6 +15,7 @@ import { I18nService } from '../../i18n/i18n.service';
 import { AccountStatus } from '../../core/domain/models/account.model';
 import { ExtensionConfig } from '../../core/config/extension.config';
 import { generateDeviceProfile } from '../../core/domain/models/device-profile.model';
+import { isEmailMatch } from '../../core/utils/account.utils';
 
 export class AccountService {
   private _onAccountsChanged = new vscode.EventEmitter<void>();
@@ -366,7 +367,7 @@ export class AccountService {
       const isAutoRotate = ExtensionConfig.getInstance().isAutoRotateEnabled();
       if (isAutoRotate && status === AccountStatus.DEPLETED) {
         const activeEmail = await this.getActiveAntigravityEmail();
-        if (activeEmail && activeEmail.toLowerCase() === account.email.toLowerCase()) {
+        if (activeEmail && isEmailMatch(account.email, activeEmail)) {
           Logger.getInstance().info(`Active account ${account.email} is depleted and auto-rotate is enabled.`);
           await this.triggerAutoRotation(account.email);
         }
@@ -466,7 +467,7 @@ export class AccountService {
     const isAutoRotate = ExtensionConfig.getInstance().isAutoRotateEnabled();
     if (isAutoRotate && status === AccountStatus.DEPLETED) {
       const activeEmail = await this.getActiveAntigravityEmail();
-      if (activeEmail && activeEmail.toLowerCase() === email.toLowerCase()) {
+      if (activeEmail && isEmailMatch(email, activeEmail)) {
         Logger.getInstance().info(`Active account ${email} is depleted and auto-rotate is enabled.`);
         await this.triggerAutoRotation(email);
       }
@@ -581,7 +582,7 @@ export class AccountService {
       return aName.localeCompare(bName, undefined, { numeric: true, sensitivity: 'base' });
     });
 
-    const currentIndex = sorted.findIndex(a => a.email.toLowerCase() === depletedEmail.toLowerCase());
+    const currentIndex = sorted.findIndex(a => isEmailMatch(a.email, depletedEmail));
     if (currentIndex === -1) return;
 
     let nextAccount = null;
@@ -599,7 +600,7 @@ export class AccountService {
 
     // Fallback search from the beginning if no candidate succeeded starting after the depleted index
     if (!nextAccount) {
-      nextAccount = sorted.find(a => a.email.toLowerCase() !== depletedEmail.toLowerCase() &&
+      nextAccount = sorted.find(a => !isEmailMatch(a.email, depletedEmail) &&
         (a.status === AccountStatus.ACTIVE || a.status === AccountStatus.LOW_BALANCE));
     }
 
