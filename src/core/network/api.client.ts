@@ -8,6 +8,13 @@
 import { API } from '../constants/app.constants';
 import { Logger } from '../utils/logger';
 
+export class ApiError extends Error {
+  constructor(public status: number, public statusText: string, message?: string) {
+    super(message || `API Error: ${status} ${statusText}`);
+    this.name = 'ApiError';
+  }
+}
+
 interface ApiRequestOptions {
   method?: string;
   headers?: Record<string, string>;
@@ -55,7 +62,7 @@ export class ApiClient {
       const response = await fetch(url, fetchOptions);
 
       if (!response.ok) {
-        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        throw new ApiError(response.status, response.statusText);
       }
 
       const text = await response.text();
@@ -64,6 +71,10 @@ export class ApiClient {
       
       return JSON.parse(text) as T;
     } catch (error: any) {
+      if (error instanceof ApiError) {
+        Logger.getInstance().error(`API Request failed for ${url}`, `${error.status} ${error.statusText}`);
+        throw error;
+      }
       Logger.getInstance().error(`API Request failed for ${url}`, error.message);
       throw error;
     }

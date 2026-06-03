@@ -76,10 +76,10 @@ export class AccountService {
 
         // Determine status based on config thresholds
         const config = ExtensionConfig.getInstance();
-        let finalStatus = balanceInfo.hasError ? AccountStatus.ERROR : AccountStatus.ACTIVE;
+        let finalStatus = balanceInfo.status || (balanceInfo.hasError ? AccountStatus.ERROR : AccountStatus.ACTIVE);
         
         let totalCredits = 0;
-        if (!balanceInfo.hasError) {
+        if (!balanceInfo.hasError && finalStatus !== AccountStatus.INELIGIBLE) {
           const values = Object.values(balanceInfo.balances);
           totalCredits = values.reduce((sum, val) => sum + (typeof val === 'number' ? val : (val?.value || 0)), 0);
 
@@ -105,7 +105,9 @@ export class AccountService {
         }
 
         // 6. Notify User
-        if (balanceInfo.hasError) {
+        if (finalStatus === AccountStatus.INELIGIBLE) {
+          vscode.window.showWarningMessage(i18n.t('service.accountIneligible', { email: profile.email }));
+        } else if (balanceInfo.hasError) {
           vscode.window.showWarningMessage(i18n.t('service.accountAddedErrorBalance', { email: profile.email }));
         } else {
           const formattedBalances = Object.entries(balanceInfo.balances).map(([k, v]) => `${k}: ${v}`).join(' | ');
@@ -128,9 +130,14 @@ export class AccountService {
     const account = await this.accountRepo.getAccount(email);
     if (!account) return;
 
+    const i18n = I18nService.getInstance();
+    if (account.status === AccountStatus.INELIGIBLE) {
+      vscode.window.showErrorMessage(i18n.t('service.switchIneligibleAccount', { email }));
+      return;
+    }
+
     let tokens = await this.accountRepo.getTokens(email);
     if (!tokens) {
-      const i18n = I18nService.getInstance();
       vscode.window.showErrorMessage(i18n.t('service.missingLoginData', { email }));
       return;
     }

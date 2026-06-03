@@ -71,7 +71,8 @@
       "lowBalance": "Saldo bajo",
       "depleted": "Créditos agotados",
       "expired": "Token expirado",
-      "error": "Error de conexión"
+      "error": "Error de conexión",
+      "ineligible": "No elegible"
     },
     "sort": {
       "byBalance": "Ordenar por saldo",
@@ -119,6 +120,7 @@
     "remove": "Eliminar",
     "reAuthenticate": "Volver a iniciar sesión",
     "expiredBanner": "La sesión ha expirado. Inicia sesión de nuevo para restaurar el acceso.",
+    "ineligibleBanner": "Esta cuenta de Google no es elegible para usar Antigravity. Vincula una cuenta compatible.",
     "noAvailableModels": "No hay modelos disponibles",
     "noAccountsRegistered": "Aún no hay cuentas registradas.",
     "addNewAccount": "➕ Agregar nueva cuenta",
@@ -221,7 +223,9 @@
     "switchFailed": "Error al cambiar a la cuenta {{email}}. Comprueba los errores e inténtalo de nuevo.",
     "reAuthSuccess": "✅ Sesión restaurada con éxito para {{email}}.",
     "reAuthFailed": "❌ Error en la reautenticación para {{email}}: {{error}}",
-    "reAuthEmailMismatch": "La cuenta conectada ({{actual}}) no coincide con la cuenta esperada ({{expected}}). Inicia sesión con la cuenta de Google correcta."
+    "reAuthEmailMismatch": "La cuenta conectada ({{actual}}) no coincide con la cuenta esperada ({{expected}}). Inicia sesión con la cuenta de Google correcta.",
+    "accountIneligible": "La cuenta {{email}} no es elegible para Antigravity. Inicia sesión con otra cuenta.",
+    "switchIneligibleAccount": "No se puede cambiar a la cuenta {{email}} porque no es elegible para Antigravity."
   },
   "stateDb": {
     "outdatedAntigravity": "La versión instalada de Antigravity es anterior a la {{minVersion}} y no es compatible.\nActualiza Antigravity a la versión {{minVersion}} o posterior para utilizar el cambio de cuenta.",

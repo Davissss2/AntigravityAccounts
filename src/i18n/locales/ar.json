@@ -71,7 +71,8 @@
       "lowBalance": "رصيد منخفض",
       "depleted": "نفد الرصيد",
       "expired": "التوكن منتهي",
-      "error": "خطأ في الاتصال"
+      "error": "خطأ في الاتصال",
+      "ineligible": "غير مؤهل"
     },
     "sort": {
       "byBalance": "ترتيب حسب الرصيد",
@@ -119,6 +120,7 @@
     "remove": "إزالة",
     "reAuthenticate": "إعادة تسجيل الدخول",
     "expiredBanner": "انتهت صلاحية الجلسة. يرجى إعادة تسجيل الدخول لاستعادة الوصول.",
+    "ineligibleBanner": "حساب Google هذا غير مؤهل لاستخدام Antigravity. يرجى ربط حساب مدعوم.",
     "noAvailableModels": "لا توجد نماذج متاحة",
     "noAccountsRegistered": "لا توجد حسابات مسجلة بعد.",
     "addNewAccount": "➕ إضافة حساب جديد",
@@ -221,7 +223,9 @@
     "switchFailed": "فشل التبديل إلى الحساب {{email}}. يرجى التحقق من الأخطاء والمحاولة مجدداً.",
     "reAuthSuccess": "✅ تم استعادة الجلسة بنجاح لـ {{email}}.",
     "reAuthFailed": "❌ فشلت إعادة المصادقة لـ {{email}}: {{error}}",
-    "reAuthEmailMismatch": "الحساب الذي سجلت الدخول به ({{actual}}) لا يتطابق مع الحساب المتوقع ({{expected}}). يرجى تسجيل الدخول بحساب Google الصحيح."
+    "reAuthEmailMismatch": "الحساب الذي سجلت الدخول به ({{actual}}) لا يتطابق مع الحساب المتوقع ({{expected}}). يرجى تسجيل الدخول بحساب Google الصحيح.",
+    "accountIneligible": "الحساب {{email}} غير مؤهل لـ Antigravity. يرجى تسجيل الدخول بحساب آخر.",
+    "switchIneligibleAccount": "لا يمكن التبديل إلى الحساب {{email}} لأنه غير مؤهل لـ Antigravity."
   },
   "stateDb": {
     "outdatedAntigravity": "إصدار Antigravity المثبت أقدم من {{minVersion}} وغير مدعوم.\nيرجى تحديث Antigravity إلى الإصدار {{minVersion}} أو أحدث لاستخدام ميزة تبديل الحسابات.",

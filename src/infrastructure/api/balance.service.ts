@@ -7,16 +7,17 @@
  * and subject to occasional structure changes.
  */
 
-import { ApiClient } from '../../core/network/api.client';
+import { ApiClient, ApiError } from '../../core/network/api.client';
 import { API } from '../../core/constants/app.constants';
 import { Logger } from '../../core/utils/logger';
-import { AccountPlan } from '../../core/domain/models/account.model';
+import { AccountPlan, AccountStatus } from '../../core/domain/models/account.model';
 
 export interface BalanceResult {
   balances: Record<string, any>;
   plan: AccountPlan;
   projectId?: string;
   hasError: boolean;
+  status?: AccountStatus;
 }
 
 export class BalanceService {
@@ -37,6 +38,11 @@ export class BalanceService {
       const codeAssist = await this.tryLoadCodeAssist(accessToken);
       
       if (codeAssist) {
+        if (codeAssist.ineligible) {
+          result.status = AccountStatus.INELIGIBLE;
+          result.hasError = true;
+          return result;
+        }
         result.plan = this.parsePlanName(codeAssist.planName);
         result.projectId = codeAssist.projectId;
         
@@ -50,6 +56,11 @@ export class BalanceService {
         Logger.getInstance().debug('Attempting fallback daily loadCodeAssist...');
         const fallbackCodeAssist = await this.tryFallbackLoadCodeAssist(accessToken);
         if (fallbackCodeAssist) {
+          if (fallbackCodeAssist.ineligible) {
+            result.status = AccountStatus.INELIGIBLE;
+            result.hasError = true;
+            return result;
+          }
           if (result.plan === AccountPlan.UNKNOWN) {
             result.plan = this.parsePlanName(fallbackCodeAssist.planName);
           }
@@ -87,7 +98,7 @@ export class BalanceService {
 
   // ─── Internal Strategies & Parsers ──────────────────────────────────────────
 
-  private async tryLoadCodeAssist(accessToken: string): Promise<{ balances?: Record<string, number>, planName?: string, projectId?: string } | null> {
+  private async tryLoadCodeAssist(accessToken: string): Promise<{ balances?: Record<string, number>, planName?: string, projectId?: string, ineligible?: boolean } | null> {
     try {
       const data = await ApiClient.request<any>(API.LOAD_CODE_ASSIST, {
         method: 'POST',
@@ -104,14 +115,18 @@ export class BalanceService {
       }
       
       return parsedData;
-    } catch (e) {
-      Logger.getInstance().debug('Primary loadCodeAssist failed or returned 404');
+    } catch (e: any) {
+      if (e instanceof ApiError && (e.status === 403 || e.status === 400)) {
+        Logger.getInstance().warn(`Primary loadCodeAssist failed with status ${e.status} (ineligible account)`);
+        return { ineligible: true };
+      }
+      Logger.getInstance().debug('Primary loadCodeAssist failed or returned 404', e);
       return null;
     }
   }
 
 
-  private async tryFallbackLoadCodeAssist(accessToken: string) {
+  private async tryFallbackLoadCodeAssist(accessToken: string): Promise<{ balances?: Record<string, number>, planName?: string, projectId?: string, ineligible?: boolean } | null> {
     try {
       // Note the difference in body payload structure for the daily API
       const data = await ApiClient.request<any>(API.DAILY_LOAD_CODE_ASSIST, {
@@ -126,8 +141,12 @@ export class BalanceService {
         accessToken
       });
       return this.parseCodeAssistData(data);
-    } catch (e) {
-      Logger.getInstance().debug('Fallback loadCodeAssist failed');
+    } catch (e: any) {
+      if (e instanceof ApiError && (e.status === 403 || e.status === 400)) {
+        Logger.getInstance().warn(`Fallback loadCodeAssist failed with status ${e.status} (ineligible account)`);
+        return { ineligible: true };
+      }
+      Logger.getInstance().debug('Fallback loadCodeAssist failed', e);
       return null;
     }
   }

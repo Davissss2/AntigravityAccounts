@@ -20,6 +20,7 @@ export enum AccountStatus {
   DEPLETED = 'depleted',
   TOKEN_EXPIRED = 'token_expired',
   ERROR = 'error',
+  INELIGIBLE = 'ineligible',
 }
 
 /** Core account data structure */

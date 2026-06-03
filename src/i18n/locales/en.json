@@ -71,7 +71,8 @@
       "lowBalance": "Low Balance",
       "depleted": "Credits Depleted",
       "expired": "Token Expired",
-      "error": "Connection Error"
+      "error": "Connection Error",
+      "ineligible": "Ineligible"
     },
     "sort": {
       "byBalance": "Sort by Balance",
@@ -119,6 +120,7 @@
     "remove": "Remove",
     "reAuthenticate": "Re-sign in",
     "expiredBanner": "Session expired. Please sign in again to restore access.",
+    "ineligibleBanner": "This Google account is not eligible to use Antigravity. Please link a supported account.",
     "noAvailableModels": "No models available",
     "noAccountsRegistered": "No accounts registered yet.",
     "addNewAccount": "➕ Add New Account",
@@ -221,7 +223,9 @@
     "switchFailed": "Failed to switch to account {{email}}. Please check errors and try again.",
     "reAuthSuccess": "✅ Session restored successfully for {{email}}.",
     "reAuthFailed": "❌ Re-authentication failed for {{email}}: {{error}}",
-    "reAuthEmailMismatch": "The signed-in account ({{actual}}) does not match the expected account ({{expected}}). Please sign in with the correct Google account."
+    "reAuthEmailMismatch": "The signed-in account ({{actual}}) does not match the expected account ({{expected}}). Please sign in with the correct Google account.",
+    "accountIneligible": "Account {{email}} is not eligible for Antigravity. Please sign in with a different account.",
+    "switchIneligibleAccount": "Cannot switch to account {{email}} because it is not eligible for Antigravity."
   },
   "stateDb": {
     "outdatedAntigravity": "Installed Antigravity version is older than {{minVersion}} and not supported.\nPlease update Antigravity to version {{minVersion}} or newer to use account switching.",

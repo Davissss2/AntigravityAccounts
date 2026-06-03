@@ -1032,11 +1032,14 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       }
 
       const isExpired = acc.status === AccountStatus.TOKEN_EXPIRED;
+      const isIneligible = acc.status === AccountStatus.INELIGIBLE;
       const activeBadge = acc.isActive
         ? `<div class="badge active-badge">${i18n.t('accounts.active')}</div>`
         : isExpired
           ? `<div class="badge expired-badge">${i18n.t('accounts.expired')}</div>`
-          : '';
+          : isIneligible
+            ? `<div class="badge ineligible-badge">${i18n.t('accounts.status.ineligible')}</div>`
+            : '';
 
       // For expired accounts, show a warning banner instead of models
       const expiredBannerHtml = isExpired ? `
@@ -1046,8 +1049,20 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         </div>
       ` : '';
 
-      // Build card body: models section only for non-expired accounts
-      const cardBody = isExpired ? expiredBannerHtml : `
+      // For ineligible accounts, show an ineligible banner
+      const ineligibleBannerHtml = isIneligible ? `
+        <div class="ineligible-banner">
+          <span class="ineligible-banner-icon">🚫</span>
+          <span class="ineligible-banner-text">${i18n.t('accounts.ineligibleBanner')}</span>
+        </div>
+      ` : '';
+
+      // Build card body: models section only for active/normal accounts
+      const cardBody = isExpired
+        ? expiredBannerHtml
+        : isIneligible
+          ? ineligibleBannerHtml
+          : `
           ${creditsHtml}
           
           <div class="models-section">
@@ -1062,11 +1077,15 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           </div>
       `;
 
-      // Build card actions: re-authenticate for expired, activate for normal
+      // Build card actions: re-authenticate for expired, none (just delete) for ineligible, activate for normal
       let actionsHtml = '';
       if (isExpired) {
         actionsHtml = `
           <button class="btn btn-warning" onclick="sendMessage('reAuthenticate', '${acc.email}')">${i18n.t('accounts.reAuthenticate')}</button>
+          <button class="btn btn-danger" onclick="sendMessage('deleteAccount', '${acc.email}')">${i18n.t('accounts.remove')}</button>
+        `;
+      } else if (isIneligible) {
+        actionsHtml = `
           <button class="btn btn-danger" onclick="sendMessage('deleteAccount', '${acc.email}')">${i18n.t('accounts.remove')}</button>
         `;
       } else {
@@ -1076,10 +1095,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         `;
       }
 
+      const avatarClass = isExpired ? 'avatar-expired' : isIneligible ? 'avatar-ineligible' : '';
+
       return `
-        <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''}" data-email="${acc.email}" data-name="${acc.displayName}">
+        <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''} ${isIneligible ? 'ineligible' : ''}" data-email="${acc.email}" data-name="${acc.displayName}">
           <div class="card-header">
-            ${acc.avatarUrl ? `<img class="avatar ${isExpired ? 'avatar-expired' : ''}" src="${acc.avatarUrl}" alt="${acc.displayName}" />` : `<div class="avatar ${isExpired ? 'avatar-expired' : ''}">${acc.displayName.charAt(0).toUpperCase()}</div>`}
+            ${acc.avatarUrl ? `<img class="avatar ${avatarClass}" src="${acc.avatarUrl}" alt="${acc.displayName}" />` : `<div class="avatar ${avatarClass}">${acc.displayName.charAt(0).toUpperCase()}</div>`}
             <div class="user-info">
               <h4>${acc.displayName}</h4>
               <p>${acc.email}</p>
@@ -1685,15 +1706,35 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             border-color: var(--warning-color);
           }
 
+          .account-card.ineligible {
+            border: 1px dashed var(--danger-color);
+            opacity: 0.95;
+          }
+          .account-card.ineligible:hover {
+            border-color: var(--danger-color);
+          }
+
           .avatar-expired {
             opacity: 0.4;
             filter: grayscale(80%);
+          }
+
+          .avatar-ineligible {
+            opacity: 0.4;
+            filter: grayscale(100%);
           }
 
           .expired-badge {
             background: rgba(245, 158, 11, 0.1);
             color: var(--warning-color);
             border: 1px solid rgba(245, 158, 11, 0.2);
+            white-space: nowrap;
+          }
+
+          .ineligible-badge {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger-color);
+            border: 1px solid rgba(239, 68, 68, 0.2);
             white-space: nowrap;
           }
 
@@ -1719,9 +1760,36 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             font-weight: 500;
           }
 
+          .ineligible-banner {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            margin-bottom: 14px;
+            background: rgba(239, 68, 68, 0.05);
+            border: 1px solid rgba(239, 68, 68, 0.15);
+            border-radius: 8px;
+            animation: redSubtlePulse 3s ease-in-out infinite;
+          }
+          .ineligible-banner-icon {
+            font-size: 1.25rem;
+            flex-shrink: 0;
+          }
+          .ineligible-banner-text {
+            font-size: 0.78rem;
+            color: var(--danger-color);
+            line-height: 1.4;
+            font-weight: 500;
+          }
+
           @keyframes subtlePulse {
             0%, 100% { border-color: rgba(245, 158, 11, 0.15); }
             50% { border-color: rgba(245, 158, 11, 0.4); }
+          }
+
+          @keyframes redSubtlePulse {
+            0%, 100% { border-color: rgba(239, 68, 68, 0.15); }
+            50% { border-color: rgba(239, 68, 68, 0.4); }
           }
 
           .empty-state {
@@ -2896,7 +2964,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             case AccountStatus.DEPLETED: return 2;
             case AccountStatus.TOKEN_EXPIRED: return 3;
             case AccountStatus.ERROR: return 4;
-            default: return 5;
+            case AccountStatus.INELIGIBLE: return 5;
+            default: return 6;
           }
         };
         const aWeight = getStatusWeight(a.status);
