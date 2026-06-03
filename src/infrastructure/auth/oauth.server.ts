@@ -202,6 +202,7 @@ export class OAuthServer {
           <h1>${title}</h1>
           <p>${message}</p>
           <button class="btn" onclick="closeWindow()">${I18nService.getInstance().t('oauth.closeWindow')}</button>
+          <div id="close-helper" style="margin-top: 18px; font-size: 0.92rem; color: #a78bfa; display: none; line-height: 1.5; padding: 10px; border-radius: 6px; background: rgba(167, 139, 250, 0.08); border: 1px dashed rgba(167, 139, 250, 0.3);"></div>
         </div>
         <script>
           function closeWindow() {
@@ -214,16 +215,29 @@ export class OAuthServer {
             // Fallback if the browser blocks closing
             setTimeout(() => {
               const btn = document.querySelector('.btn');
+              const helper = document.getElementById('close-helper');
               if (btn) {
                 // Set text based on language if possible, fallback to Spanish/English
                 const isEs = document.documentElement.lang === 'es';
                 const isAr = document.documentElement.lang === 'ar';
                 if (isEs) {
-                  btn.innerText = 'Puedes cerrar esta pestaña';
+                  btn.innerText = 'Cerrar pestaña';
+                  if (helper) {
+                    helper.innerText = '⚠️ Por seguridad de tu navegador, debes cerrar esta pestaña manualmente haciendo clic en la "X" de arriba.';
+                    helper.style.display = 'block';
+                  }
                 } else if (isAr) {
-                  btn.innerText = 'يمكنك إغلاق هذه الصفحة';
+                  btn.innerText = 'إغلاق الصفحة';
+                  if (helper) {
+                    helper.innerText = '⚠️ من أجل أمان متصفحك، يرجى إغلاق هذه الصفحة يدوياً بالضغط على زر الإغلاق في الأعلى.';
+                    helper.style.display = 'block';
+                  }
                 } else {
-                  btn.innerText = 'You can close this tab';
+                  btn.innerText = 'Close Tab';
+                  if (helper) {
+                    helper.innerText = '⚠️ Due to browser security restrictions, please close this tab manually by clicking the "X" on the tab.';
+                    helper.style.display = 'block';
+                  }
                 }
                 btn.style.backgroundColor = '#475569';
               }

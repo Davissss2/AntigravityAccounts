@@ -475,6 +475,7 @@ export class AccountService {
 
     // Update global refresh timestamp
     await this.accountRepo.setBalancesLastRefreshed(Date.now());
+    this._onAccountsChanged.fire();
   }
 
   /**

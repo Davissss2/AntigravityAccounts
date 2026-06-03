@@ -22,29 +22,29 @@ export function getFriendlyModelName(key: string): string | null {
   }
   
   // Precise mapping of current active IDE models
-  if (lower === 'gemini-3.5-flash-extra-low') return 'Gemini 3.5 Flash (Low)';
-  if (lower === 'gemini-3.5-flash-low') return 'Gemini 3.5 Flash (Medium)';
-  if (lower === 'gemini-3.5-flash-medium') return 'Gemini 3.5 Flash (High)';
-  if (lower === 'gemini-3.5-flash-high') return 'Gemini 3.5 Flash (High)';
-  if (lower === 'gemini-3.5-flash') return 'Gemini 3.5 Flash (High)';
+  if (lower === 'gemini-3.5-flash-extra-low') return '3.5 Flash (Med)';
+  if (lower === 'gemini-3.5-flash-low') return '3.5 Flash (High)';
+  if (lower === 'gemini-3.5-flash-medium') return '3.5 Flash (High)';
+  if (lower === 'gemini-3.5-flash-high') return '3.5 Flash (High)';
+  if (lower === 'gemini-3.5-flash') return '3.5 Flash (High)';
   
-  if (lower === 'gemini-3.1-pro-low') return 'Gemini 3.1 Pro (Low)';
-  if (lower === 'gemini-3.1-pro-high') return 'Gemini 3.1 Pro (High)';
+  if (lower === 'gemini-3.1-pro-low') return '3.1 Pro (Low)';
+  if (lower === 'gemini-3.1-pro-high') return '3.1 Pro (High)';
   
-  if (lower === 'gpt-oss-120b-medium') return 'GPT-OSS 120B (Medium)';
+  if (lower === 'gpt-oss-120b-medium') return 'GPT-OSS 120B';
   
   // Dynamic Claude formatting
   if (lower.startsWith('claude-sonnet-')) {
     const version = lower.replace('claude-sonnet-', '').replace(/-/g, '.');
-    return `Claude Sonnet ${version} (Thinking)`;
+    return `Sonnet ${version}`;
   }
   if (lower.startsWith('claude-opus-')) {
     const version = lower.replace('claude-opus-', '').replace('-thinking', '').replace(/-/g, '.');
-    return `Claude Opus ${version} (Thinking)`;
+    return `Opus ${version}`;
   }
   if (lower.startsWith('claude-') && lower.endsWith('-all')) {
     const version = lower.replace('claude-', '').replace('-all', '').replace(/-/g, '.');
-    return `Claude ${version} (Thinking)`;
+    return `Claude ${version}`;
   }
   
   // Fallback: format unrecognized keys nicely

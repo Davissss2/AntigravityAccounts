@@ -377,21 +377,24 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     // Show progress banner for single account refresh
     this._view?.webview.postMessage({ command: 'refreshStarted', totalAccounts: 1 });
 
-    // Refresh this single account with progress banner
-    await this.accountService.refreshSingleAccountBalance(activeAccount.email, {
-      onStart: (email: string) => {
-        this._view?.webview.postMessage({ command: 'accountRefreshStart', email, currentIndex: 1, totalAccounts: 1 });
-      },
-      onDone: (email: string, updatedBalances?: Record<string, any>, updatedStatus?: string) => {
-        this._view?.webview.postMessage({ command: 'accountRefreshDone', email, balances: updatedBalances, status: updatedStatus });
-      }
-    });
-
-    // Tell webview refresh is finished
-    this._view?.webview.postMessage({ command: 'refreshFinished', wasCancelled: false });
-
-    // Re-render to apply updated data and sorting
-    await this.refresh();
+    try {
+      // Refresh this single account with progress banner
+      await this.accountService.refreshSingleAccountBalance(activeAccount.email, {
+        onStart: (email: string) => {
+          this._view?.webview.postMessage({ command: 'accountRefreshStart', email, currentIndex: 1, totalAccounts: 1 });
+        },
+        onDone: (email: string, updatedBalances?: Record<string, any>, updatedStatus?: string) => {
+          this._view?.webview.postMessage({ command: 'accountRefreshDone', email, balances: updatedBalances, status: updatedStatus });
+        }
+      });
+    } catch (e: any) {
+      Logger.getInstance().error(`Error during active account refresh for ${activeAccount.email}`, e);
+    } finally {
+      // Tell webview refresh is finished
+      this._view?.webview.postMessage({ command: 'refreshFinished', wasCancelled: false });
+      // Re-render to apply updated data and sorting
+      await this.refresh();
+    }
   }
 
   private async getDisplayOrderEmails(): Promise<string[]> {
@@ -755,14 +758,13 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     // Extract available model keys from all accounts with balances (after filtering)
     // and guarantee that standard IDE models are always present in the list.
     const availableModelKeysSet = new Set<string>([
-      'Claude Sonnet 4.6 (Thinking)',
-      'Claude Opus 4.6 (Thinking)',
-      'Gemini 3.1 Pro (Low)',
-      'Gemini 3.1 Pro (High)',
-      'Gemini 3.5 Flash (Low)',
-      'Gemini 3.5 Flash (Medium)',
-      'Gemini 3.5 Flash (High)',
-      'GPT-OSS 120B (Medium)'
+      'Sonnet 4.6',
+      'Opus 4.6',
+      '3.1 Pro (Low)',
+      '3.1 Pro (High)',
+      '3.5 Flash (Med)',
+      '3.5 Flash (High)',
+      'GPT-OSS 120B'
     ]);
 
     accounts.forEach(a => {
@@ -787,6 +789,27 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
     // Read stored preference (null = never set, "" = explicitly none)
     let preferredModel = await this.accountRepo.getPreferredModel();
+
+    // Normalize legacy names to the new shortened names
+    if (preferredModel) {
+      const legacyMap: Record<string, string> = {
+        'Gemini 3.5 Flash (Low)': '3.5 Flash (Med)',
+        'Gemini 3.5 Flash (Medium)': '3.5 Flash (High)',
+        'Gemini 3.5 Flash (High)': '3.5 Flash (High)',
+        'Gemini 3.1 Pro (Low)': '3.1 Pro (Low)',
+        'Gemini 3.1 Pro (High)': '3.1 Pro (High)',
+        'GPT-OSS 120B (Medium)': 'GPT-OSS 120B',
+        'Claude Sonnet 4.6 (Thinking)': 'Sonnet 4.6',
+        'Claude Opus 4.6 (Thinking)': 'Opus 4.6'
+      };
+      
+      const normalized = legacyMap[preferredModel];
+      if (normalized) {
+        preferredModel = normalized;
+        await this.accountRepo.setPreferredModel(normalized); // Migrate in storage
+      }
+    }
+
     if (preferredModel === null && availableModelKeys.length > 0) {
       // Auto-detect: find newest Claude model
       preferredModel = this.findNewestClaudeKey(availableModelKeys) || '';
@@ -1826,8 +1849,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             gap: 8px;
             padding: 12px 14px;
             margin-bottom: 16px;
-            background: rgba(124, 58, 237, 0.03);
-            border: 1px solid var(--focus-border);
+            background: rgba(124, 58, 237, 0.05);
+            border: 1px solid rgba(124, 58, 237, 0.3);
             border-radius: 10px;
             animation: fadeIn 0.25s ease;
             position: relative;
