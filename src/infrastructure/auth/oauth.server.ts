@@ -196,13 +196,39 @@ export class OAuthServer {
           <div class="icon">${icon}</div>
           <h1>${title}</h1>
           <p>${message}</p>
-          <button class="btn" onclick="window.close()">${I18nService.getInstance().t('oauth.closeWindow')}</button>
+          <button class="btn" onclick="closeWindow()">${I18nService.getInstance().t('oauth.closeWindow')}</button>
         </div>
         <script>
+          function closeWindow() {
+            try {
+              window.open('', '_self', '');
+              window.close();
+            } catch (e) {
+              console.error(e);
+            }
+            // Fallback if the browser blocks closing
+            setTimeout(() => {
+              const btn = document.querySelector('.btn');
+              if (btn) {
+                // Set text based on language if possible, fallback to Spanish/English
+                const isEs = document.documentElement.lang === 'es';
+                const isAr = document.documentElement.lang === 'ar';
+                if (isEs) {
+                  btn.innerText = 'Puedes cerrar esta pestaña';
+                } else if (isAr) {
+                  btn.innerText = 'يمكنك إغلاق هذه الصفحة';
+                } else {
+                  btn.innerText = 'You can close this tab';
+                }
+                btn.style.backgroundColor = '#475569';
+              }
+            }, 300);
+          }
+
           // Attempt to auto-close the window after 3 seconds on success
           if (${isSuccess}) {
             setTimeout(() => {
-              try { window.close(); } catch(e) {}
+              closeWindow();
             }, 3000);
           }
         </script>
