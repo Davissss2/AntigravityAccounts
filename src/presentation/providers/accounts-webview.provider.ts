@@ -2884,7 +2884,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       }
 
       // 4. Tie-breaker: Alphabetical by display name
-      return a.displayName.localeCompare(b.displayName, undefined, { numeric: true, sensitivity: 'base' });
+      const nameA = a.displayName || a.alias || a.name || a.email || '';
+      const nameB = b.displayName || b.alias || b.name || b.email || '';
+      return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
     });
   }
 }

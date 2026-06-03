@@ -123,9 +123,14 @@ export class OAuthServer {
     const color = isSuccess ? '#22c55e' : '#ef4444'; // Green for success, Red for error
     const icon = isSuccess ? '✅' : '❌';
     
+    const locale = I18nService.getInstance().getLocale();
+    const isRtl = locale === 'ar';
+    const lang = locale || 'en';
+    const dir = isRtl ? 'rtl' : 'ltr';
+    
     return `
       <!DOCTYPE html>
-      <html lang="ar" dir="rtl">
+      <html lang="${lang}" dir="${dir}">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
