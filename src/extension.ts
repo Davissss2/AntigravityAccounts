@@ -141,7 +141,15 @@ function registerCommands(
 
   const accountsProvider = new AccountsWebviewProvider(context.extensionUri, accountRepo, accountService);
   disposables.push(
-    vscode.window.registerWebviewViewProvider(AccountsWebviewProvider.viewType, accountsProvider)
+    vscode.window.registerWebviewViewProvider(
+      AccountsWebviewProvider.viewType,
+      accountsProvider,
+      {
+        webviewOptions: {
+          retainContextWhenHidden: true
+        }
+      }
+    )
   );
 
   // Listen for account state changes to update UI

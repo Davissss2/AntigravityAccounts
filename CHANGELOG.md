@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Per-Account Refresh**: Added a manual refresh icon directly on each account card to force a scan of that specific account.
 - **Refreshed Visuals**: Shimmering/glowing border animations on active cards, and a spinning refresh icon next to the account name during scanning.
 
+### Fixed
+- **Settings Modal**: Resolved an issue where clicking Settings did not open the modal directly due to type safety compilation errors.
+- **Refresh Interruption on Hide**: Configured `retainContextWhenHidden` via provider registration options so background refreshes continue running when switching views (e.g. to search or explorer).
+
 ## [0.1.4] - 2026-05-13
 
 ### Improved
