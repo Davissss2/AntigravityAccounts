@@ -2554,6 +2554,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             alert("JS Error: " + message + " at line " + lineno + ":" + colno + "\nStack:\n" + (error ? error.stack : 'No stack'));
             return false;
           };
+        </script>
+        <script>
           const availableModelKeys = ${JSON.stringify(availableModelKeys)};
           const currentPreferredModel = ${JSON.stringify(effectivePreferred)};
           const hasAccounts = ${accounts.length > 0};
@@ -2772,6 +2774,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           let state = vscode.getState() || { activeModels: {} };
+          if (!state) state = { activeModels: {} };
+          if (!state.activeModels) state.activeModels = {};
           
           function applyActiveModels() {
              document.querySelectorAll('.account-card').forEach(card => {
@@ -2811,10 +2815,14 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           // Run immediately on load
-          document.querySelectorAll('.models-container').forEach(container => {
-             container.originalOrder = Array.from(container.children);
-          });
-          applyActiveModels();
+          try {
+             document.querySelectorAll('.models-container').forEach(container => {
+                container.originalOrder = Array.from(container.children);
+             });
+             applyActiveModels();
+          } catch (err) {
+             console.error("Error on load:", err);
+          }
 
           let pendingModelKey = null;
 
