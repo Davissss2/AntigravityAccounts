@@ -2,20 +2,31 @@
   <defs>
     <!-- Background Gradient -->
     <radialGradient id="bgGrad" cx="50%" cy="50%" r="70%">
-      <stop offset="0%" stop-color="#0f091a" />
-      <stop offset="100%" stop-color="#040207" />
+      <stop offset="0%" stop-color="#120c24" />
+      <stop offset="100%" stop-color="#05030a" />
     </radialGradient>
 
-    <!-- Professional Yellow/Gold Gradient -->
-    <linearGradient id="bananaGrad" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#e6ad00" />
-      <stop offset="50%" stop-color="#ffd000" />
-      <stop offset="100%" stop-color="#ffeb60" />
+    <!-- Gradients matching the user's logo -->
+    <linearGradient id="bluePurple" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2563eb" />
+      <stop offset="50%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#8b5cf6" />
+    </linearGradient>
+
+    <linearGradient id="magentaPink" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8b5cf6" />
+      <stop offset="50%" stop-color="#d946ef" />
+      <stop offset="100%" stop-color="#ec4899" />
+    </linearGradient>
+
+    <linearGradient id="cyanBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06b6d4" />
+      <stop offset="100%" stop-color="#3b82f6" />
     </linearGradient>
 
     <!-- Neon Glow Filter -->
     <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feGaussianBlur stdDeviation="8" result="blur" />
       <feComposite in="SourceGraphic" in2="blur" operator="over" />
     </filter>
   </defs>
@@ -23,29 +34,19 @@
   <!-- Background Base -->
   <rect width="512" height="512" rx="100" fill="url(#bgGrad)" />
 
-  <!-- Outer Orbit (Static, elegant, thin) -->
-  <ellipse cx="256" cy="256" rx="190" ry="70" fill="none" stroke="#ff007f" stroke-width="2" transform="rotate(-30 256 256)" opacity="0.3" />
-  <ellipse cx="256" cy="256" rx="170" ry="60" fill="none" stroke="#00ffff" stroke-width="3" transform="rotate(30 256 256)" opacity="0.6" filter="url(#neonGlow)" />
+  <!-- Stylized AG logo elements -->
+  <!-- A Left stroke (ribbon) -->
+  <path d="M 155,370 L 225,130 L 265,130 L 195,370 Z" fill="url(#bluePurple)" />
+  <!-- A Crossbar -->
+  <path d="M 180,270 L 255,270 L 245,300 L 170,300 Z" fill="url(#bluePurple)" />
 
-  <!-- The Levitating Cyber Banana -->
-  <g transform="translate(0, -10)">
-    <!-- Aura glow behind banana -->
-    <path d="M 170,300 C 210,360 280,360 320,300 C 345,260 350,230 350,200 C 320,240 260,250 200,225 C 185,250 175,275 170,300 Z" fill="#ffd000" opacity="0.1" filter="url(#neonGlow)" />
+  <!-- Combined right of A and back of G -->
+  <path d="M 245,130 C 310,130 360,180 360,245 C 360,310 310,360 245,360 C 215,360 195,345 195,345 L 215,315 C 215,315 230,328 245,328 C 290,328 325,293 325,245 C 325,197 290,162 245,162 L 235,162 Z" fill="url(#magentaPink)" />
+  <!-- G Inner shelf -->
+  <path d="M 255,230 L 325,230 L 325,260 L 255,260 Z" fill="url(#magentaPink)" />
 
-    <!-- Main Banana Body -->
-    <path d="M 170,300 C 210,360 280,360 320,300 C 345,260 350,230 350,200 C 320,240 260,250 200,225 C 185,250 175,275 170,300 Z" fill="url(#bananaGrad)" />
-
-    <!-- Stem (top right) -->
-    <path d="M 350,200 L 358,190 C 361,187 365,191 362,194 L 351,205 Z" fill="#1b1625" />
-
-    <!-- Tip (bottom left) -->
-    <path d="M 170,300 L 162,308 C 159,311 163,315 166,312 L 173,303 Z" fill="#1b1625" />
-
-    <!-- Cybernetic laser stripe (one single elegant cut) -->
-    <path d="M 215,248 C 245,275 285,270 310,252" fill="none" stroke="#00ffff" stroke-width="3.5" stroke-linecap="round" filter="url(#neonGlow)" />
-
-    <!-- Technical Node Points -->
-    <circle cx="215" cy="248" r="3" fill="#ffffff" />
-    <circle cx="310" cy="252" r="3" fill="#ffffff" />
-  </g>
+  <!-- Sleek tilted planetary ring/orbit wrapping around AG -->
+  <ellipse cx="256" cy="250" rx="200" ry="45" fill="none" stroke="url(#cyanBlue)" stroke-width="14" transform="rotate(-15 256 250)" filter="url(#neonGlow)" />
+  <!-- Arrow head on the planetary ring -->
+  <polygon points="310,210 345,195 320,238" fill="url(#cyanBlue)" filter="url(#neonGlow)" />
 </svg>
