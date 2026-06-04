@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#0f091a" />
+      <stop offset="100%" stop-color="#040207" />
+    </radialGradient>
+
+    <!-- Professional Yellow/Gold Gradient -->
+    <linearGradient id="bananaGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#e6ad00" />
+      <stop offset="50%" stop-color="#ffd000" />
+      <stop offset="100%" stop-color="#ffeb60" />
+    </linearGradient>
+
+    <!-- Neon Glow Filter -->
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="512" height="512" rx="100" fill="url(#bgGrad)" />
+
+  <!-- Outer Orbit (Static, elegant, thin) -->
+  <ellipse cx="256" cy="256" rx="190" ry="70" fill="none" stroke="#ff007f" stroke-width="2" transform="rotate(-30 256 256)" opacity="0.3" />
+  <ellipse cx="256" cy="256" rx="170" ry="60" fill="none" stroke="#00ffff" stroke-width="3" transform="rotate(30 256 256)" opacity="0.6" filter="url(#neonGlow)" />
+
+  <!-- The Levitating Cyber Banana -->
+  <g transform="translate(0, -10)">
+    <!-- Aura glow behind banana -->
+    <path d="M 170,300 C 210,360 280,360 320,300 C 345,260 350,230 350,200 C 320,240 260,250 200,225 C 185,250 175,275 170,300 Z" fill="#ffd000" opacity="0.1" filter="url(#neonGlow)" />
+
+    <!-- Main Banana Body -->
+    <path d="M 170,300 C 210,360 280,360 320,300 C 345,260 350,230 350,200 C 320,240 260,250 200,225 C 185,250 175,275 170,300 Z" fill="url(#bananaGrad)" />
+
+    <!-- Stem (top right) -->
+    <path d="M 350,200 L 358,190 C 361,187 365,191 362,194 L 351,205 Z" fill="#1b1625" />
+
+    <!-- Tip (bottom left) -->
+    <path d="M 170,300 L 162,308 C 159,311 163,315 166,312 L 173,303 Z" fill="#1b1625" />
+
+    <!-- Cybernetic laser stripe (one single elegant cut) -->
+    <path d="M 215,248 C 245,275 285,270 310,252" fill="none" stroke="#00ffff" stroke-width="3.5" stroke-linecap="round" filter="url(#neonGlow)" />
+
+    <!-- Technical Node Points -->
+    <circle cx="215" cy="248" r="3" fill="#ffffff" />
+    <circle cx="310" cy="252" r="3" fill="#ffffff" />
+  </g>
+</svg>

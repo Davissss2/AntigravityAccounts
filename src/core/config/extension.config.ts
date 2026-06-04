@@ -7,7 +7,7 @@
 
 import * as vscode from 'vscode';
 
-const CONFIG_SECTION = 'antigravityHub';
+const CONFIG_SECTION = 'antigravityAccount';
 
 export class ExtensionConfig {
   private static instance: ExtensionConfig;

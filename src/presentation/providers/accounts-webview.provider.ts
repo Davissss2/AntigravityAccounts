@@ -958,7 +958,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       // Generate Models HTML
       const modelsHtml = processedModels.length > 0
         ? processedModels.map(m => {
-            const displayKey = m.key.endsWith('image') ? `${m.key} 🖼️` : m.key;
+            const displayKey = m.key.endsWith('image')
+              ? `${m.key} <svg class="icon-svg icon-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`
+              : m.key;
             const timeStr = formatTime(m.resetTime);
             
             // Determine progress bar color class and alert
@@ -967,7 +969,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             
             if (m.value < 20) {
                 colorClass = 'bg-low';
-                alertIcon = ` <span title="${i18n.t('webview.veryLowBalance')}">❗</span>`;
+                alertIcon = ` <svg class="icon-svg icon-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" title="${i18n.t('webview.veryLowBalance')}"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
             } else if (m.value < 32) {
                 colorClass = 'bg-low';
             } else if (m.value < 60) {
@@ -994,7 +996,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       const wrapperId = `collapse-${acc.email.replace(/[@.]/g, '-')}`;
       
       if (preferredModelData) {
-         const displayKey = preferredModelData.key.endsWith('image') ? `${preferredModelData.key} 🖼️` : preferredModelData.key;
+         const displayKey = preferredModelData.key.endsWith('image')
+           ? `${preferredModelData.key} <svg class="icon-svg icon-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`
+           : preferredModelData.key;
          const timeStr = formatTime(preferredModelData.resetTime);
          
          let colorClass = 'bg-high';
@@ -1002,7 +1006,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
          
          if (preferredModelData.value < 20) {
              colorClass = 'bg-low';
-             alertIcon = ` <span title="${i18n.t('webview.veryLowBalance')}">❗</span>`;
+             alertIcon = ` <svg class="icon-svg icon-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" title="${i18n.t('webview.veryLowBalance')}"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
          } else if (preferredModelData.value < 32) {
              colorClass = 'bg-low';
          } else if (preferredModelData.value < 60) {
@@ -1018,7 +1022,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                  <div class="pref-badge-bar"><div class="progress-bar ${colorClass}" style="width: ${preferredModelData.value}%"></div></div>
                  <span class="pref-badge-val ${colorClass}-text">${preferredModelData.value}%${alertIcon}</span>
                </div>
-               <span class="collapse-icon">▼</span>
+               <svg class="chevron-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </div>
          </div>
          `;
@@ -1026,7 +1030,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
          collapseHeaderHtml = `
          <div class="collapse-header normal-collapse" onclick="toggleModels(this, '${wrapperId}')" title="${i18n.t('webview.showAvailableModels')}">
             <span class="collapse-title">${i18n.t('accounts.availableModels', { count: processedModels.length })}</span>
-            <span class="collapse-icon">▼</span>
+            <svg class="chevron-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
          </div>
          `;
       }
@@ -1044,7 +1048,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       // For expired accounts, show a warning banner instead of models
       const expiredBannerHtml = isExpired ? `
         <div class="expired-banner">
-          <span class="expired-banner-icon">⚠️</span>
+          <span class="expired-banner-icon"><svg class="icon-svg icon-warning" style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
           <span class="expired-banner-text">${i18n.t('accounts.expiredBanner')}</span>
         </div>
       ` : '';
@@ -1052,7 +1056,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       // For ineligible accounts, show an ineligible banner
       const ineligibleBannerHtml = isIneligible ? `
         <div class="ineligible-banner">
-          <span class="ineligible-banner-icon">🚫</span>
+          <span class="ineligible-banner-icon"><svg class="icon-svg icon-error" style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></span>
           <span class="ineligible-banner-text">${i18n.t('accounts.ineligibleBanner')}</span>
         </div>
       ` : '';
@@ -1117,7 +1121,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       `;
     }).join('') : `
       <div class="empty-state">
-        <div class="empty-icon">📭</div>
+        <div class="empty-state-svg">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:64px; height:64px; color:var(--text-secondary);"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><polyline points="14 12 14 14 10 14 10 12"/></svg>
+        </div>
         <p>${i18n.t('accounts.noAccountsRegistered')}</p>
         <button class="btn btn-primary main-btn" onclick="sendMessage('addAccount')">${i18n.t('accounts.addNewAccount')}</button>
       </div>
@@ -1538,6 +1544,50 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           
           .collapse-header.expanded .collapse-icon {
             transform: rotate(180deg);
+          }
+
+          .icon-svg {
+            width: 14px;
+            height: 14px;
+            display: inline-block;
+            vertical-align: middle;
+            stroke-width: 2.5px;
+          }
+          .btn-icon .icon-svg {
+            width: 16px;
+            height: 16px;
+          }
+          .chevron-svg {
+            width: 12px;
+            height: 12px;
+            color: var(--text-secondary);
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            margin-inline-end: 4px;
+            vertical-align: middle;
+          }
+          .collapse-header.expanded .chevron-svg {
+            transform: rotate(180deg);
+          }
+          .icon-warning {
+            color: var(--warning-color);
+            margin-inline-start: 4px;
+          }
+          .icon-error {
+            color: var(--danger-color);
+          }
+          .icon-image {
+            margin-inline-start: 4px;
+            opacity: 0.8;
+          }
+          .empty-state-svg {
+            color: var(--text-secondary);
+            opacity: 0.4;
+            margin-bottom: 16px;
+            animation: floatAnimation 4s ease-in-out infinite;
+          }
+          @keyframes floatAnimation {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
           }
 
           .collapsible-wrapper {
@@ -2156,11 +2206,20 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         <div class="header-actions">
           <h2>${i18n.t('accounts.title')}</h2>
           <div style="display:flex;align-items:center;gap:4px;">
-            <button id="cancelRefreshBtn" class="btn-cancel-refresh" onclick="showCancelConfirm()" title="${i18n.t('accounts.cancelRefresh')}">✖ ${i18n.t('accounts.cancelRefresh')}</button>
-            <button id="refreshBtn" class="btn-icon" onclick="handleRefresh()" title="${i18n.t('commands.refreshBalances.title')}">🔄</button>
-            <button id="addBtn" class="btn-icon" onclick="sendMessage('addAccount')" title="${i18n.t('commands.addAccount.title')}">➕</button>
+            <button id="cancelRefreshBtn" class="btn-cancel-refresh" onclick="showCancelConfirm()" title="${i18n.t('accounts.cancelRefresh')}">
+              <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px; height:12px; margin-inline-end: 4px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              ${i18n.t('accounts.cancelRefresh')}
+            </button>
+            <button id="refreshBtn" class="btn-icon" onclick="handleRefresh()" title="${i18n.t('commands.refreshBalances.title')}">
+              <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            </button>
+            <button id="addBtn" class="btn-icon" onclick="sendMessage('addAccount')" title="${i18n.t('commands.addAccount.title')}">
+              <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
             <div class="menu-wrapper">
-              <button class="btn-icon" onclick="toggleMenu(event)" title="${i18n.t('accounts.more')}" id="menuBtn">⋮</button>
+              <button class="btn-icon" onclick="toggleMenu(event)" title="${i18n.t('accounts.more')}" id="menuBtn">
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+              </button>
               <div class="dropdown-menu" id="dropdownMenu">
                 <button class="dropdown-item" onclick="handleMenuAction('export')" ${accounts.length === 0 ? 'disabled' : ''}>
                   <span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8.5 2.5l3.5 3.5-1.5 1.5L8.5 5.5v7h-1v-7L5.5 7.5 4 6l4-3.5zM14 14v1H2v-1h12z"/></svg></span> ${i18n.t('accounts.exportAccounts')}
@@ -2180,7 +2239,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         ${accounts.length > 0 ? `
         <div class="search-container" id="searchContainer">
           <input type="text" id="searchInput" class="search-input" placeholder="${i18n.t('accounts.searchPlaceholder')}" autocomplete="off" />
-          <button class="search-clear-btn" id="searchClearBtn" onclick="clearSearch()">✕</button>
+          <button class="search-clear-btn" id="searchClearBtn" onclick="clearSearch()">
+            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>` : ''}
 
         <div id="accounts-list">
@@ -2202,7 +2263,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           ${accountCardsHtml}
           <!-- Search No Results -->
           <div id="searchNoResults" class="search-no-results">
-            <div class="search-no-results-icon">🔍</div>
+            <div class="search-no-results-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:48px; height:48px; opacity:0.4; color:var(--text-secondary); margin-bottom: 8px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </div>
             <p>${i18n.t('accounts.noSearchResults')}</p>
           </div>
         </div>

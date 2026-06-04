@@ -6,9 +6,9 @@
  */
 
 // ── Extension Identity ──
-export const EXTENSION_ID = 'antigravity-hub';
-export const EXTENSION_DISPLAY_NAME = 'Antigravity Hub';
-export const EXTENSION_PREFIX = 'antigravity-hub';
+export const EXTENSION_ID = 'antigravity-account';
+export const EXTENSION_DISPLAY_NAME = 'Antigravity Account';
+export const EXTENSION_PREFIX = 'antigravity-account';
 
 // ── OAuth Configuration ──
 export const OAUTH = {
@@ -54,9 +54,9 @@ export const STORAGE_KEYS = {
 
 // ── Secret Storage Key Prefixes ──
 export const SECRET_KEYS = {
-  REFRESH_TOKEN: (email: string) => `antigravityHub.secure.${email}.refreshToken`,
-  ACCESS_TOKEN: (email: string) => `antigravityHub.secure.${email}.accessToken`,
-  METADATA: (email: string) => `antigravityHub.secure.${email}.metadata`,
+  REFRESH_TOKEN: (email: string) => `antigravityAccount.secure.${email}.refreshToken`,
+  ACCESS_TOKEN: (email: string) => `antigravityAccount.secure.${email}.accessToken`,
+  METADATA: (email: string) => `antigravityAccount.secure.${email}.metadata`,
 } as const;
 
 // ── State Database Keys ──

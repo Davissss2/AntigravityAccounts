@@ -32,7 +32,7 @@ import { AccountsWebviewProvider } from './presentation/providers/accounts-webvi
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = Logger.getInstance();
-  logger.info('Antigravity Hub is activating...');
+  logger.info('Antigravity Account is activating...');
 
   // ── Initialize Configuration ──
   const config = ExtensionConfig.getInstance();
@@ -74,7 +74,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // ── Listen for configuration changes ──
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e: vscode.ConfigurationChangeEvent) => {
-      if (e.affectsConfiguration('antigravityHub.language')) {
+      if (e.affectsConfiguration('antigravityAccount.language')) {
         updateLanguage();
       }
     })
@@ -82,7 +82,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 
 
-  logger.info('Antigravity Hub activated successfully.');
+  logger.info('Antigravity Account activated successfully.');
 }
 
 /**
@@ -91,7 +91,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
  */
 export function deactivate(): void {
   const logger = Logger.getInstance();
-  logger.info('Antigravity Hub deactivated.');
+  logger.info('Antigravity Account deactivated.');
 }
 
 /**
@@ -154,22 +154,22 @@ function registerCommands(
   // No longer syncing on startup, webview detects it dynamically on render.
 
   disposables.push(
-    vscode.commands.registerCommand('antigravity-hub.openPanel', () => {
+    vscode.commands.registerCommand('antigravity-account.openPanel', () => {
       // Focus the webview panel in the sidebar
-      vscode.commands.executeCommand('antigravity-hub.accountsView.focus');
+      vscode.commands.executeCommand('antigravity-account.accountsView.focus');
     })
   );
 
 
 
   disposables.push(
-    vscode.commands.registerCommand('antigravity-hub.addAccount', async () => {
+    vscode.commands.registerCommand('antigravity-account.addAccount', async () => {
       await accountService.addAccountWorkflow();
     })
   );
 
   disposables.push(
-    vscode.commands.registerCommand('antigravity-hub.switchAccount', async () => {
+    vscode.commands.registerCommand('antigravity-account.switchAccount', async () => {
       // Temporary quick pick until UI is built
       const accounts = await accountRepo.getAccountSummaries();
       if (accounts.length === 0) {
@@ -205,13 +205,13 @@ function registerCommands(
   );
 
   disposables.push(
-    vscode.commands.registerCommand('antigravity-hub.refreshBalances', async () => {
+    vscode.commands.registerCommand('antigravity-account.refreshBalances', async () => {
       await accountService.refreshBalancesWorkflow(true);
     })
   );
 
   disposables.push(
-    vscode.commands.registerCommand('antigravity-hub.setLanguage', async () => {
+    vscode.commands.registerCommand('antigravity-account.setLanguage', async () => {
       const languages = [
         { label: i18n.t('webview.languageAuto'), description: 'auto' },
         ...i18n.getAvailableLocales().map((locale) => ({
@@ -225,9 +225,9 @@ function registerCommands(
       });
 
       if (picked) {
-        const extConfig = vscode.workspace.getConfiguration('antigravityHub');
+        const extConfig = vscode.workspace.getConfiguration('antigravityAccount');
         await extConfig.update('language', picked.description, vscode.ConfigurationTarget.Global);
-        vscode.commands.executeCommand('antigravity-hub.openPanel'); // trigger webview focus to reflect changes if possible
+        vscode.commands.executeCommand('antigravity-account.openPanel'); // trigger webview focus to reflect changes if possible
       }
     })
   );
@@ -240,8 +240,8 @@ function registerCommands(
  * 1. Sanitizes any account email containing typo domains like ".con" -> ".com"
  *    inside the globalState accounts list and the active account key.
  * 2. Migrates all stored secrets (refresh token, access token, metadata, deviceProfile)
- *    from the conflict-prone prefix "antigravity.account.*" to the isolated prefix "antigravityHub.secure.*".
- * 3. Wipes old "antigravity.account.*" keys from SecretStorage to prevent IDE 500 crashes.
+ *    from conflict-prone prefixes to the isolated prefix "antigravityAccount.secure.*".
+ * 3. Wipes old keys from SecretStorage to prevent IDE 500 crashes.
  * 4. Renames legacy Antigravity directory to prevent recurring settings migration popups in the 2.0 IDE.
  */
 async function migrateAndSanitizeStorage(context: vscode.ExtensionContext): Promise<void> {
@@ -256,7 +256,10 @@ async function migrateAndSanitizeStorage(context: vscode.ExtensionContext): Prom
       const oldAppDataDir = path.join(appDataDir, 'Antigravity');
       const backupOldAppDataDir = path.join(appDataDir, 'Antigravity_pre20_backup');
 
-      if (fs.existsSync(oldAppDataDir) && !fs.existsSync(backupOldAppDataDir)) {
+      // Do not rename if we are currently running from 'Antigravity' directory
+      const isRunningFromOldDir = path.basename(currentDataPath).toLowerCase() === 'antigravity';
+
+      if (!isRunningFromOldDir && fs.existsSync(oldAppDataDir) && !fs.existsSync(backupOldAppDataDir)) {
         logger.info(`Detected legacy Antigravity data folder at: ${oldAppDataDir}. Renaming to disable IDE migration prompts...`);
         fs.renameSync(oldAppDataDir, backupOldAppDataDir);
         logger.info(`Successfully renamed legacy Antigravity data folder to ${backupOldAppDataDir}`);
@@ -320,23 +323,33 @@ async function migrateAndSanitizeStorage(context: vscode.ExtensionContext): Prom
       }
 
       for (const srcEmail of sourceEmailsToCheck) {
-        // Old keys:
-        const oldRefKey = `antigravity.account.${srcEmail}.refreshToken`;
-        const oldAccKey = `antigravity.account.${srcEmail}.accessToken`;
-        const oldMetaKey = `antigravity.account.${srcEmail}.metadata`;
-        const oldProfileKey = `antigravity.account.${srcEmail}.deviceProfile`;
+        // Old legacy keys:
+        const oldLegacyKeys = {
+          ref: `antigravity.account.${srcEmail}.refreshToken`,
+          acc: `antigravity.account.${srcEmail}.accessToken`,
+          meta: `antigravity.account.${srcEmail}.metadata`,
+          profile: `antigravity.account.${srcEmail}.deviceProfile`
+        };
 
-        // New isolated keys:
-        const newRefKey = `antigravityHub.secure.${email}.refreshToken`;
-        const newAccKey = `antigravityHub.secure.${email}.accessToken`;
-        const newMetaKey = `antigravityHub.secure.${email}.metadata`;
-        const newProfileKey = `antigravityHub.secure.${email}.deviceProfile`;
+        // Old Hub keys:
+        const oldHubKeys = {
+          ref: `antigravityHub.secure.${srcEmail}.refreshToken`,
+          acc: `antigravityHub.secure.${srcEmail}.accessToken`,
+          meta: `antigravityHub.secure.${srcEmail}.metadata`,
+          profile: `antigravityHub.secure.${srcEmail}.deviceProfile`
+        };
 
-        // Retrieve from old keys
-        const refreshToken = await secrets.get(oldRefKey);
-        const accessToken = await secrets.get(oldAccKey);
-        const metadata = await secrets.get(oldMetaKey);
-        const deviceProfile = await secrets.get(oldProfileKey);
+        // New isolated keys for Antigravity Account extension:
+        const newRefKey = `antigravityAccount.secure.${email}.refreshToken`;
+        const newAccKey = `antigravityAccount.secure.${email}.accessToken`;
+        const newMetaKey = `antigravityAccount.secure.${email}.metadata`;
+        const newProfileKey = `antigravityAccount.secure.${email}.deviceProfile`;
+
+        // Retrieve from old keys, prioritizing Hub keys over older legacy keys
+        const refreshToken = (await secrets.get(oldHubKeys.ref)) || (await secrets.get(oldLegacyKeys.ref));
+        const accessToken = (await secrets.get(oldHubKeys.acc)) || (await secrets.get(oldLegacyKeys.acc));
+        const metadata = (await secrets.get(oldHubKeys.meta)) || (await secrets.get(oldLegacyKeys.meta));
+        const deviceProfile = (await secrets.get(oldHubKeys.profile)) || (await secrets.get(oldLegacyKeys.profile));
 
         if (refreshToken || accessToken || metadata || deviceProfile) {
           logger.info(`Migrating credentials for account: ${srcEmail} -> ${email}`);
@@ -348,10 +361,15 @@ async function migrateAndSanitizeStorage(context: vscode.ExtensionContext): Prom
         }
 
         // Clean up old keys unconditionally from SecretStorage
-        await secrets.delete(oldRefKey);
-        await secrets.delete(oldAccKey);
-        await secrets.delete(oldMetaKey);
-        await secrets.delete(oldProfileKey);
+        await secrets.delete(oldLegacyKeys.ref);
+        await secrets.delete(oldLegacyKeys.acc);
+        await secrets.delete(oldLegacyKeys.meta);
+        await secrets.delete(oldLegacyKeys.profile);
+
+        await secrets.delete(oldHubKeys.ref);
+        await secrets.delete(oldHubKeys.acc);
+        await secrets.delete(oldHubKeys.meta);
+        await secrets.delete(oldHubKeys.profile);
       }
     }
 

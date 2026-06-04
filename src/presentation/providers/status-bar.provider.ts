@@ -23,7 +23,7 @@ export class StatusBarProvider implements vscode.Disposable {
   ) {
     // Create item aligned to the right, priority 100 (pushes it to the far right)
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    this.statusBarItem.command = 'antigravity-hub.switchAccount';
+    this.statusBarItem.command = 'antigravity-account.switchAccount';
     
     // Perform initial render
     this.update();

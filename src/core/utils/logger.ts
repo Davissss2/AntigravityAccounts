@@ -20,7 +20,7 @@ export class Logger {
   private level: LogLevel = LogLevel.INFO;
 
   private constructor() {
-    this.outputChannel = vscode.window.createOutputChannel('Antigravity Hub');
+    this.outputChannel = vscode.window.createOutputChannel('Antigravity Account');
   }
 
   static getInstance(): Logger {
@@ -75,7 +75,7 @@ export class Logger {
 
     // Also log errors to console for debugging
     if (level === LogLevel.ERROR) {
-      console.error(`[Antigravity Hub] ${message}`, ...args);
+      console.error(`[Antigravity Account] ${message}`, ...args);
     }
   }
 }

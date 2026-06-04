@@ -134,7 +134,7 @@ export class OAuthServer {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Antigravity Hub - Authentication</title>
+        <title>Antigravity Account - Authentication</title>
         <style>
           body {
             background-color: #110c18;

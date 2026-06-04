@@ -1,15 +1,15 @@
 {
-  "name": "antigravity-hub",
-  "displayName": "Antigravity Hub",
+  "name": "antigravity-account",
+  "displayName": "Antigravity Account",
   "description": "Manage multiple Antigravity accounts seamlessly - switch, monitor credits, and auto-rotate with one click.",
   "version": "0.1.5",
-  "publisher": "devhakeem5",
+  "publisher": "Davissss2",
   "repository": {
     "type": "git",
-    "url": "https://github.com/devhakeem5/antigravity-hub-extension"
+    "url": "https://github.com/Davissss2/AntigravityAccounts"
   },
   "bugs": {
-    "url": "https://github.com/devhakeem5/antigravity-hub-extension/issues"
+    "url": "https://github.com/Davissss2/AntigravityAccounts/issues"
   },
   "license": "MIT",
   "engines": {
@@ -45,45 +45,45 @@
   "contributes": {
     "commands": [
       {
-        "command": "antigravity-hub.openPanel",
+        "command": "antigravity-account.openPanel",
         "title": "Open Account Manager",
-        "category": "Antigravity Hub"
+        "category": "Antigravity Account"
       },
       {
-        "command": "antigravity-hub.addAccount",
+        "command": "antigravity-account.addAccount",
         "title": "Add Account",
-        "category": "Antigravity Hub"
+        "category": "Antigravity Account"
       },
       {
-        "command": "antigravity-hub.switchAccount",
+        "command": "antigravity-account.switchAccount",
         "title": "Switch Account",
-        "category": "Antigravity Hub"
+        "category": "Antigravity Account"
       },
       {
-        "command": "antigravity-hub.refreshBalances",
+        "command": "antigravity-account.refreshBalances",
         "title": "Refresh All Balances",
-        "category": "Antigravity Hub"
+        "category": "Antigravity Account"
       },
       {
-        "command": "antigravity-hub.setLanguage",
+        "command": "antigravity-account.setLanguage",
         "title": "Set Language",
-        "category": "Antigravity Hub"
+        "category": "Antigravity Account"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "antigravity-hub",
-          "title": "Antigravity Hub",
+          "id": "antigravity-account",
+          "title": "Antigravity Account",
           "icon": "resources/icons/sidebar-icon.svg"
         }
       ]
     },
     "views": {
-      "antigravity-hub": [
+      "antigravity-account": [
         {
           "type": "webview",
-          "id": "antigravity-hub.accountsView",
+          "id": "antigravity-account.accountsView",
           "name": "Accounts",
           "icon": "resources/icons/sidebar-icon.svg"
         }
@@ -91,30 +91,30 @@
     },
     "keybindings": [
       {
-        "command": "antigravity-hub.openPanel",
+        "command": "antigravity-account.openPanel",
         "key": "ctrl+shift+a",
         "mac": "cmd+shift+a"
       },
       {
-        "command": "antigravity-hub.switchAccount",
+        "command": "antigravity-account.switchAccount",
         "key": "ctrl+shift+s",
         "mac": "cmd+shift+s"
       },
       {
-        "command": "antigravity-hub.addAccount",
+        "command": "antigravity-account.addAccount",
         "key": "ctrl+shift+n",
         "mac": "cmd+shift+n"
       },
       {
-        "command": "antigravity-hub.refreshBalances",
+        "command": "antigravity-account.refreshBalances",
         "key": "ctrl+shift+r",
         "mac": "cmd+shift+r"
       }
     ],
     "configuration": {
-      "title": "Antigravity Hub",
+      "title": "Antigravity Account",
       "properties": {
-        "antigravityHub.language": {
+        "antigravityAccount.language": {
           "type": "string",
           "default": "auto",
           "enum": [
@@ -131,25 +131,25 @@
           ],
           "description": "Display language for the extension UI"
         },
-        "antigravityHub.autoRefreshEnabled": {
+        "antigravityAccount.autoRefreshEnabled": {
           "type": "boolean",
           "default": false,
           "description": "Enable automatic balance refresh when opening the extension panel"
         },
-        "antigravityHub.refreshIntervalMinutes": {
+        "antigravityAccount.refreshIntervalMinutes": {
           "type": "number",
           "default": 30,
           "minimum": 1,
           "maximum": 120,
           "description": "Interval in minutes for automatic balance refresh"
         },
-        "antigravityHub.lowCreditThreshold": {
+        "antigravityAccount.lowCreditThreshold": {
           "type": "number",
           "default": 100,
           "minimum": 10,
           "description": "Credit threshold for low balance warning"
         },
-        "antigravityHub.autoRotateEnabled": {
+        "antigravityAccount.autoRotateEnabled": {
           "type": "boolean",
           "default": false,
           "description": "Automatically switch to another account when the active account's credits are depleted"
