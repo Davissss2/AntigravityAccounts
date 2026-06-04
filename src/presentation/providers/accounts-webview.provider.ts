@@ -2550,6 +2550,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         </div>
 
         <script>
+          window.onerror = function(message, source, lineno, colno, error) {
+            alert("JS Error: " + message + " at line " + lineno + ":" + colno + "\nStack:\n" + (error ? error.stack : 'No stack'));
+            return false;
+          };
           const availableModelKeys = ${JSON.stringify(availableModelKeys)};
           const currentPreferredModel = ${JSON.stringify(effectivePreferred)};
           const hasAccounts = ${accounts.length > 0};
@@ -2869,14 +2873,18 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           });
 
           function handleMenuAction(action) {
-            const m = document.getElementById('dropdownMenu');
-            if (m) m.classList.remove('show');
-            if (action === 'export') {
-              sendMessage('exportAccounts');
-            } else if (action === 'import') {
-              sendMessage('importAccounts');
-            } else if (action === 'settings') {
-              openSettings();
+            try {
+              const m = document.getElementById('dropdownMenu');
+              if (m) m.classList.remove('show');
+              if (action === 'export') {
+                sendMessage('exportAccounts');
+              } else if (action === 'import') {
+                sendMessage('importAccounts');
+              } else if (action === 'settings') {
+                openSettings();
+              }
+            } catch (err) {
+              alert("Error in handleMenuAction: " + err.message + "\nStack:\n" + err.stack);
             }
           }
 
@@ -2949,12 +2957,13 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           function openSettings() {
-            const modal = document.getElementById('settingsModal');
-            const select = document.getElementById('preferredModelSelect');
-            const helpText = document.getElementById('settingsHelpText');
-            
-            // Populate preferred model options
-            select.innerHTML = '<option value="">${i18n.t('webview.noSelectionDefault')}</option>';
+            try {
+              const modal = document.getElementById('settingsModal');
+              const select = document.getElementById('preferredModelSelect');
+              const helpText = document.getElementById('settingsHelpText');
+              
+              // Populate preferred model options
+              select.innerHTML = '<option value="">${i18n.t('webview.noSelectionDefault')}</option>';
             
             if (!hasAccounts || availableModelKeys.length === 0) {
               select.disabled = true;
@@ -3007,6 +3016,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
             modal.style.display = 'flex';
             attachIntervalListener();
+            } catch (err) {
+              alert("Error in openSettings: " + err.message + "\nStack:\n" + err.stack);
+            }
           }
 
           function closeSettings() {
