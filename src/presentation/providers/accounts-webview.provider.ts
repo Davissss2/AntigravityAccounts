@@ -52,7 +52,7 @@ interface LegacyExportPayload {
 }
 
 export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = 'antigravity-hub.accountsView';
+  public static readonly viewType = 'antigravity-account.accountsView';
   private _view?: vscode.WebviewView;
 
   /**
@@ -96,7 +96,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage(async (message) => {
       switch (message.command) {
         case 'addAccount':
-          vscode.commands.executeCommand('antigravity-hub.addAccount');
+          vscode.commands.executeCommand('antigravity-account.addAccount');
           break;
         case 'switchAccount':
           if (message.email) {
@@ -155,18 +155,18 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             await this.accountRepo.setPreferredModel(message.preferredModel);
           }
           if (message.autoRefreshEnabled !== undefined) {
-            await vscode.workspace.getConfiguration('antigravityHub').update('autoRefreshEnabled', message.autoRefreshEnabled, vscode.ConfigurationTarget.Global);
+            await vscode.workspace.getConfiguration('antigravityAccount').update('autoRefreshEnabled', message.autoRefreshEnabled, vscode.ConfigurationTarget.Global);
           }
           if (message.autoRotateEnabled !== undefined) {
-            await vscode.workspace.getConfiguration('antigravityHub').update('autoRotateEnabled', message.autoRotateEnabled, vscode.ConfigurationTarget.Global);
+            await vscode.workspace.getConfiguration('antigravityAccount').update('autoRotateEnabled', message.autoRotateEnabled, vscode.ConfigurationTarget.Global);
           }
           if (message.refreshIntervalMinutes !== undefined) {
-            await vscode.workspace.getConfiguration('antigravityHub').update('refreshIntervalMinutes', message.refreshIntervalMinutes, vscode.ConfigurationTarget.Global);
+            await vscode.workspace.getConfiguration('antigravityAccount').update('refreshIntervalMinutes', message.refreshIntervalMinutes, vscode.ConfigurationTarget.Global);
           }
           if (message.language !== undefined) {
-            const currentLang = vscode.workspace.getConfiguration('antigravityHub').get<string>('language');
+            const currentLang = vscode.workspace.getConfiguration('antigravityAccount').get<string>('language');
             if (currentLang !== message.language) {
-              await vscode.workspace.getConfiguration('antigravityHub').update('language', message.language, vscode.ConfigurationTarget.Global);
+              await vscode.workspace.getConfiguration('antigravityAccount').update('language', message.language, vscode.ConfigurationTarget.Global);
               // Give VS Code a moment to apply the config change and trigger the listener
               setTimeout(() => {
                 this.refresh();
@@ -748,10 +748,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       </html>`;
     }
 
-    const configLanguage = vscode.workspace.getConfiguration('antigravityHub').get<string>('language', 'auto');
-    const configAutoRefresh = vscode.workspace.getConfiguration('antigravityHub').get<boolean>('autoRefreshEnabled', true);
-    const configAutoRotate = vscode.workspace.getConfiguration('antigravityHub').get<boolean>('autoRotateEnabled', false);
-    const configRefreshInterval = vscode.workspace.getConfiguration('antigravityHub').get<number>('refreshIntervalMinutes', 15);
+    const configLanguage = vscode.workspace.getConfiguration('antigravityAccount').get<string>('language', 'auto');
+    const configAutoRefresh = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('autoRefreshEnabled', true);
+    const configAutoRotate = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('autoRotateEnabled', false);
+    const configRefreshInterval = vscode.workspace.getConfiguration('antigravityAccount').get<number>('refreshIntervalMinutes', 15);
     const accounts = await this.accountRepo.getAccountSummaries();
 
     // ── Preferred Model Resolution ──

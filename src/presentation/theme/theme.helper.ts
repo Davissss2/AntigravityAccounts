@@ -31,7 +31,7 @@ export class ThemeHelper {
         
         // Resolve path to our global theme CSS
         const themeUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(extensionUri, 'src', 'presentation', 'theme', 'global.css')
+            vscode.Uri.joinPath(extensionUri, 'dist', 'presentation', 'theme', 'global.css')
         );
 
         // Content Security Policy to ensure security inside Webview
