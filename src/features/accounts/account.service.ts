@@ -229,6 +229,7 @@ export class AccountService {
       signal?: AbortSignal;
       orderedEmails?: string[];
       onlyEmails?: string[];
+      force?: boolean;
     }
   ): Promise<void> {
     // ── Guard: Prevent concurrent or rapid-fire refreshes ──
@@ -282,12 +283,28 @@ export class AccountService {
     let successCount = 0;
     const config = ExtensionConfig.getInstance();
     let accountsProcessed = 0;
+    const activeEmail = await this.getActiveAntigravityEmail();
 
     for (const account of accounts) {
       // ── Check for cancellation ──
       if (options?.signal?.aborted) {
         Logger.getInstance().info('Refresh cancelled by user.');
         break;
+      }
+
+      // ── Check cache if not forced ──
+      if (!options?.force) {
+        const isActive = activeEmail && isEmailMatch(account.email, activeEmail);
+        if (!isActive && account.lastRefreshedAt) {
+          const lastRefreshed = new Date(account.lastRefreshedAt).getTime();
+          const cacheDurationDays = ExtensionConfig.getInstance().getCacheDurationDays();
+          const cacheDurationMs = cacheDurationDays * 24 * 60 * 60 * 1000;
+          if (Date.now() - lastRefreshed < cacheDurationMs) {
+            Logger.getInstance().info(`Skipping refresh for cached account: ${account.email}`);
+            options?.onAccountDone?.(account.email, account.balances, account.status);
+            continue;
+          }
+        }
       }
 
       // ── Anti-Ban: Random delay between accounts (3s to 7s) to prevent rate limiting ──

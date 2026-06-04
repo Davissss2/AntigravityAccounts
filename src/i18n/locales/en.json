@@ -129,7 +129,8 @@
     "importAccounts": "Import Accounts",
     "settings": "Settings",
     "searchPlaceholder": "Search by name or email...",
-    "noSearchResults": "No accounts match your search."
+    "noSearchResults": "No accounts match your search.",
+    "refreshThisAccount": "Refresh this account"
   },
   "statusBar": {
     "noAccount": "No account",
@@ -208,7 +209,21 @@
     "immediateConfirmCancel": "Cancel",
     "notAntigravityTitle": "Antigravity Required",
     "notAntigravityMessage": "This extension is designed to work exclusively with the Antigravity code editor. It cannot function with other editors.",
-    "downloadAntigravity": "Download Antigravity"
+    "downloadAntigravity": "Download Antigravity",
+    "sortBy": "Sort by",
+    "sortDefault": "Default Sort",
+    "sortNameAsc": "Name (A-Z)",
+    "sortNameDesc": "Name (Z-A)",
+    "sortDateAdded": "Date Added",
+    "sortQuota": "Remaining Quota",
+    "scanSegment": "Scan Segment",
+    "scanAll": "Scan All",
+    "scanWithQuota": "Scan With Quota",
+    "scanWithoutQuota": "Scan Without Quota",
+    "cacheDurationLabel": "Cache Validity Duration",
+    "cacheDurationDescription": "Saves time by not scanning this account if it was refreshed within this period.",
+    "day": "Day",
+    "days": "Days"
   },
   "service": {
     "generatingDeviceProfile": "Generating device profile...",

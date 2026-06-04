@@ -11,7 +11,7 @@
   "bugs": {
     "url": "https://github.com/Davissss2/AntigravityAccounts/issues"
   },
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -153,6 +153,32 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically switch to another account when the active account's credits are depleted"
+        },
+        "antigravityAccount.cacheDurationDays": {
+          "type": "number",
+          "default": 7,
+          "minimum": 1,
+          "maximum": 30,
+          "description": "Number of days that scanned account balances are cached before requiring a refresh"
+        },
+        "antigravityAccount.sortBy": {
+          "type": "string",
+          "default": "default",
+          "enum": [
+            "default",
+            "name-asc",
+            "name-desc",
+            "date-added",
+            "quota"
+          ],
+          "enumDescriptions": [
+            "Default (Preferred model / Status)",
+            "Name (A-Z)",
+            "Name (Z-A)",
+            "Date Added (Newest first)",
+            "Remaining Quota (Highest first)"
+          ],
+          "description": "Sorting order for accounts in the list"
         }
       }
     }

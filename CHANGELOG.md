@@ -5,6 +5,15 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2026-06-04
+
+### Added
+- **Filtering & Sorting Toolbar**: Visual controls for sorting accounts (Default, Name A-Z, Name Z-A, Date Added, Remaining Quota) and segment scanning (All, With Quota, Without Quota).
+- **Local Scanning Cache**: New `cacheDurationDays` setting to cache account balance status and skip scanning recently updated accounts, reducing API hits and rate limiting.
+- **Real-Time Card Updates**: The panel UI now updates cards in real-time as they finish scanning instead of waiting for the full process to complete.
+- **Per-Account Refresh**: Added a manual refresh icon directly on each account card to force a scan of that specific account.
+- **Refreshed Visuals**: Shimmering/glowing border animations on active cards, and a spinning refresh icon next to the account name during scanning.
+
 ## [0.1.4] - 2026-05-13
 
 ### Improved

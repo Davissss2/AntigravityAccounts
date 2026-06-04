@@ -129,7 +129,8 @@
     "importAccounts": "Importar cuentas",
     "settings": "Configuración",
     "searchPlaceholder": "Buscar por nombre o correo electrónico...",
-    "noSearchResults": "Ninguna cuenta coincide con tu búsqueda."
+    "noSearchResults": "Ninguna cuenta coincide con tu búsqueda.",
+    "refreshThisAccount": "Refrescar esta cuenta"
   },
   "statusBar": {
     "noAccount": "Sin cuenta",
@@ -208,7 +209,21 @@
     "immediateConfirmCancel": "Cancelar",
     "notAntigravityTitle": "Se requiere Antigravity",
     "notAntigravityMessage": "Esta extensión está diseñada para funcionar exclusivamente con el editor de código Antigravity. No puede funcionar con otros editores.",
-    "downloadAntigravity": "Descargar Antigravity"
+    "downloadAntigravity": "Descargar Antigravity",
+    "sortBy": "Ordenar por",
+    "sortDefault": "Orden por defecto",
+    "sortNameAsc": "Nombre (A-Z)",
+    "sortNameDesc": "Nombre (Z-A)",
+    "sortDateAdded": "Fecha de adición",
+    "sortQuota": "Cuota restante",
+    "scanSegment": "Escanear segmento",
+    "scanAll": "Escanear todas",
+    "scanWithQuota": "Escanear con cuota",
+    "scanWithoutQuota": "Escanear sin cuota",
+    "cacheDurationLabel": "Duración de validez de caché",
+    "cacheDurationDescription": "Ahorra tiempo al no escanear esta cuenta si se actualizó dentro de este período.",
+    "day": "Día",
+    "days": "Días"
   },
   "service": {
     "generatingDeviceProfile": "Generando perfil de dispositivo...",

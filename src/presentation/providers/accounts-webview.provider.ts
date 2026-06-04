@@ -127,7 +127,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             // Search mode with no visible results — do nothing
             break;
           }
-          await this.handleProgressiveRefresh(true, message.filteredEmails || undefined);
+          await this.handleProgressiveRefresh(true, message.filteredEmails || undefined, true);
+          break;
+        case 'refreshSingleAccount':
+          if (message.email) {
+            await this.handleSingleAccountRefresh(message.email);
+          }
           break;
         case 'searchChanged':
           this._searchQuery = message.query || '';
@@ -153,6 +158,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         case 'saveSettings':
           if (message.preferredModel !== undefined) {
             await this.accountRepo.setPreferredModel(message.preferredModel);
+          }
+          if (message.sortBy !== undefined) {
+            await vscode.workspace.getConfiguration('antigravityAccount').update('sortBy', message.sortBy, vscode.ConfigurationTarget.Global);
+          }
+          if (message.cacheDurationDays !== undefined) {
+            await vscode.workspace.getConfiguration('antigravityAccount').update('cacheDurationDays', message.cacheDurationDays, vscode.ConfigurationTarget.Global);
           }
           if (message.autoRefreshEnabled !== undefined) {
             await vscode.workspace.getConfiguration('antigravityAccount').update('autoRefreshEnabled', message.autoRefreshEnabled, vscode.ConfigurationTarget.Global);
@@ -303,7 +314,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
    * show a small loading indicator on each card individually instead of
    * a full-screen overlay.
    */
-  private async handleProgressiveRefresh(notify: boolean = true, onlyEmails?: string[]): Promise<void> {
+  private async handleProgressiveRefresh(notify: boolean = true, onlyEmails?: string[], force: boolean = false): Promise<void> {
     // Step 0: Detect and pin active account BEFORE starting the balance refresh.
     // This is an independent verification — it always runs regardless of cooldowns.
     await this.detectAndPinActiveAccount();
@@ -334,12 +345,22 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         signal,
         orderedEmails,
         onlyEmails,
+        force,
         onAccountStart: (email: string) => {
           currentIndex++;
           this._view?.webview.postMessage({ command: 'accountRefreshStart', email, currentIndex, totalAccounts });
         },
-        onAccountDone: (email: string, updatedBalances?: Record<string, any>, updatedStatus?: string) => {
-          this._view?.webview.postMessage({ command: 'accountRefreshDone', email, balances: updatedBalances, status: updatedStatus });
+        onAccountDone: async (email: string, updatedBalances?: Record<string, any>, updatedStatus?: string) => {
+          const account = await this.accountRepo.getAccount(email);
+          let cardHtml = '';
+          if (account) {
+            const preferredModel = await this.accountRepo.getPreferredModel();
+            const effectivePreferred = preferredModel || '';
+            const isPinned = this._pinnedActiveEmail && isEmailMatch(account.email, this._pinnedActiveEmail);
+            account.isActive = !!isPinned;
+            cardHtml = this.renderAccountCard(account, effectivePreferred);
+          }
+          this._view?.webview.postMessage({ command: 'accountRefreshDone', email, html: cardHtml, balances: updatedBalances, status: updatedStatus });
         },
         onComplete: () => {
           this.refresh();
@@ -393,6 +414,39 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       // Tell webview refresh is finished
       this._view?.webview.postMessage({ command: 'refreshFinished', wasCancelled: false });
       // Re-render to apply updated data and sorting
+      await this.refresh();
+    }
+  }
+
+  /**
+   * Refreshes a single account's balance manually.
+   * Sends the updated card HTML back to the webview progressively.
+   */
+  private async handleSingleAccountRefresh(email: string): Promise<void> {
+    try {
+      this._view?.webview.postMessage({ command: 'refreshStarted', totalAccounts: 1 });
+      
+      await this.accountService.refreshSingleAccountBalance(email, {
+        onStart: (email: string) => {
+          this._view?.webview.postMessage({ command: 'accountRefreshStart', email, currentIndex: 1, totalAccounts: 1 });
+        },
+        onDone: async (email: string, updatedBalances?: Record<string, any>, updatedStatus?: string) => {
+          const account = await this.accountRepo.getAccount(email);
+          let cardHtml = '';
+          if (account) {
+            const preferredModel = await this.accountRepo.getPreferredModel();
+            const effectivePreferred = preferredModel || '';
+            const isPinned = this._pinnedActiveEmail && isEmailMatch(account.email, this._pinnedActiveEmail);
+            account.isActive = !!isPinned;
+            cardHtml = this.renderAccountCard(account, effectivePreferred);
+          }
+          this._view?.webview.postMessage({ command: 'accountRefreshDone', email, html: cardHtml, balances: updatedBalances, status: updatedStatus });
+        }
+      });
+    } catch (e: any) {
+      Logger.getInstance().error(`Error during manual single account refresh for ${email}`, e);
+    } finally {
+      this._view?.webview.postMessage({ command: 'refreshFinished', wasCancelled: false });
       await this.refresh();
     }
   }
@@ -752,6 +806,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const configAutoRefresh = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('autoRefreshEnabled', true);
     const configAutoRotate = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('autoRotateEnabled', false);
     const configRefreshInterval = vscode.workspace.getConfiguration('antigravityAccount').get<number>('refreshIntervalMinutes', 15);
+    const configSortBy = vscode.workspace.getConfiguration('antigravityAccount').get<string>('sortBy', 'default');
+    const configCacheDurationDays = vscode.workspace.getConfiguration('antigravityAccount').get<number>('cacheDurationDays', 7);
     const accounts = await this.accountRepo.getAccountSummaries();
 
     // ── Preferred Model Resolution ──
@@ -1258,8 +1314,96 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           .account-card.active {
-            border: 1px solid var(--success-color);
-            box-shadow: 0 0 10px rgba(16, 185, 129, 0.15), 0 4px 12px var(--shadow-color);
+            border: 1.5px solid transparent;
+            background: linear-gradient(var(--surface-color), var(--surface-color)) padding-box,
+                        var(--primary-gradient) border-box;
+            box-shadow: var(--active-glow), 0 4px 12px var(--shadow-color);
+          }
+
+          .account-card.refreshing {
+            border-color: var(--primary-light) !important;
+            box-shadow: 0 0 15px rgba(167, 139, 250, 0.25), 0 4px 12px var(--shadow-color);
+            opacity: 0.85;
+            animation: cardRefreshPulse 2s infinite ease-in-out;
+          }
+          @keyframes cardRefreshPulse {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 0.95; }
+          }
+
+          .btn-card-refresh {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 2px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            opacity: 0.6;
+          }
+          .btn-card-refresh:hover {
+            color: var(--primary-light);
+            background: var(--surface-light);
+            opacity: 1;
+            transform: rotate(45deg);
+          }
+          .btn-card-refresh .icon-svg {
+            width: 12px;
+            height: 12px;
+          }
+          .account-card.refreshing .btn-card-refresh {
+            animation: spin 1s linear infinite;
+            pointer-events: none;
+            opacity: 1;
+          }
+
+          /* ── Toolbar ── */
+          .toolbar-container {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+          }
+          .toolbar-sort, .toolbar-scan {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 6px 10px;
+            box-sizing: border-box;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          }
+          .toolbar-sort:hover, .toolbar-scan:hover {
+            border-color: var(--focus-border);
+            background: var(--surface-light);
+          }
+          .toolbar-sort select, .toolbar-scan select {
+            flex: 1;
+            background: transparent;
+            color: var(--text-primary);
+            border: none;
+            font-size: 0.78rem;
+            font-weight: 500;
+            outline: none;
+            cursor: pointer;
+            width: 100%;
+          }
+          .toolbar-sort select option, .toolbar-scan select option {
+            background: var(--surface-color);
+            color: var(--text-primary);
+          }
+          .toolbar-label {
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
           }
 
           .card-header {
@@ -2242,6 +2386,26 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           <button class="search-clear-btn" id="searchClearBtn" onclick="clearSearch()">
             <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
+        </div>
+        <div class="toolbar-container">
+          <div class="toolbar-sort">
+            <span class="toolbar-label">${i18n.t('webview.sortBy')}:</span>
+            <select id="sortSelect" onchange="handleSortChange()">
+              <option value="default" ${configSortBy === 'default' ? 'selected' : ''}>${i18n.t('webview.sortDefault')}</option>
+              <option value="name-asc" ${configSortBy === 'name-asc' ? 'selected' : ''}>${i18n.t('webview.sortNameAsc')}</option>
+              <option value="name-desc" ${configSortBy === 'name-desc' ? 'selected' : ''}>${i18n.t('webview.sortNameDesc')}</option>
+              <option value="date-added" ${configSortBy === 'date-added' ? 'selected' : ''}>${i18n.t('webview.sortDateAdded')}</option>
+              <option value="quota" ${configSortBy === 'quota' ? 'selected' : ''}>${i18n.t('webview.sortQuota')}</option>
+            </select>
+          </div>
+          <div class="toolbar-scan">
+            <select id="scanSelect" onchange="handleScanChange()">
+              <option value="">⚡ ${i18n.t('webview.scanSegment')}</option>
+              <option value="all">${i18n.t('webview.scanAll')}</option>
+              <option value="with-quota">${i18n.t('webview.scanWithQuota')}</option>
+              <option value="without-quota">${i18n.t('webview.scanWithoutQuota')}</option>
+            </select>
+          </div>
         </div>` : ''}
 
         <div id="accounts-list">
@@ -2308,6 +2472,29 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               </p>
             </div>
 
+            <div style="margin-bottom: 16px;">
+              <label for="sortBySettingsSelect" style="display:block; margin-bottom:8px; font-weight:bold;">${i18n.t('webview.sortBy')}</label>
+              <select id="sortBySettingsSelect" style="width:100%; padding:8px; background:var(--vscode-dropdown-background); color:var(--vscode-dropdown-foreground); border:1px solid var(--vscode-dropdown-border); border-radius:4px;">
+                <option value="default" ${configSortBy === 'default' ? 'selected' : ''}>${i18n.t('webview.sortDefault')}</option>
+                <option value="name-asc" ${configSortBy === 'name-asc' ? 'selected' : ''}>${i18n.t('webview.sortNameAsc')}</option>
+                <option value="name-desc" ${configSortBy === 'name-desc' ? 'selected' : ''}>${i18n.t('webview.sortNameDesc')}</option>
+                <option value="date-added" ${configSortBy === 'date-added' ? 'selected' : ''}>${i18n.t('webview.sortDateAdded')}</option>
+                <option value="quota" ${configSortBy === 'quota' ? 'selected' : ''}>${i18n.t('webview.sortQuota')}</option>
+              </select>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+              <label for="cacheDurationSelect" style="display:block; margin-bottom:8px; font-weight:bold;">${i18n.t('webview.cacheDurationLabel')}</label>
+              <select id="cacheDurationSelect" style="width:100%; padding:8px; background:var(--vscode-dropdown-background); color:var(--vscode-dropdown-foreground); border:1px solid var(--vscode-dropdown-border); border-radius:4px;">
+                <option value="1" ${configCacheDurationDays === 1 ? 'selected' : ''}>1 ${i18n.t('webview.day')}</option>
+                <option value="3" ${configCacheDurationDays === 3 ? 'selected' : ''}>3 ${i18n.t('webview.days')}</option>
+                <option value="7" ${configCacheDurationDays === 7 ? 'selected' : ''}>7 ${i18n.t('webview.days')}</option>
+                <option value="14" ${configCacheDurationDays === 14 ? 'selected' : ''}>14 ${i18n.t('webview.days')}</option>
+                <option value="30" ${configCacheDurationDays === 30 ? 'selected' : ''}>30 ${i18n.t('webview.days')}</option>
+              </select>
+              <p style="font-size:0.82em; opacity:0.65; margin:6px 0 0 0;">${i18n.t('webview.cacheDurationDescription')}</p>
+            </div>
+
             <div style="border-top: 1px solid var(--border-color); padding-top: 16px; margin-bottom: 16px;">
               <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
                 <label for="autoRefreshToggle" style="font-weight:bold; cursor:pointer;">${i18n.t('webview.autoRefreshLabel')}</label>
@@ -2369,6 +2556,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           const currentAutoRefresh = ${configAutoRefresh};
           const currentAutoRotate = ${configAutoRotate};
           const currentRefreshInterval = ${configRefreshInterval};
+          const currentSortBy = ${JSON.stringify(configSortBy)};
+          const currentCacheDurationDays = ${configCacheDurationDays};
           const isRtlDir = ${isRtl};
           const savedSearchQuery = ${JSON.stringify(this._searchQuery)};
           
@@ -2415,6 +2604,60 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             } else {
               sendMessage('refreshAccounts');
             }
+          }
+
+          function handleSortChange() {
+            const select = document.getElementById('sortSelect');
+            const sortBy = select.value;
+            vscode.postMessage({
+              command: 'saveSettings',
+              sortBy: sortBy
+            });
+            // Show loading overlay briefly
+            vscode.postMessage({ command: 'showLoading' });
+          }
+
+          function handleScanChange() {
+            const select = document.getElementById('scanSelect');
+            const segment = select.value;
+            if (!segment) return;
+
+            // Reset select value to default placeholder immediately
+            select.value = '';
+
+            let targetEmails = [];
+            const cards = document.querySelectorAll('.account-card');
+
+            if (segment === 'all') {
+              targetEmails = Array.from(cards).map(c => c.dataset.email);
+            } else if (segment === 'with-quota') {
+              targetEmails = Array.from(cards)
+                .filter(c => c.dataset.status === 'active' || c.dataset.status === 'low_balance')
+                .map(c => c.dataset.email);
+            } else if (segment === 'without-quota') {
+              targetEmails = Array.from(cards)
+                .filter(c => c.dataset.status === 'depleted' || c.dataset.status === 'token_expired' || c.dataset.status === 'ineligible' || c.dataset.status === 'error')
+                .map(c => c.dataset.email);
+            }
+
+            if (targetEmails.length === 0) return;
+
+            vscode.postMessage({
+              command: 'refreshAccounts',
+              filteredEmails: targetEmails
+            });
+          }
+
+          function handleSingleRefresh(btn, email) {
+            // Find the closest account-card element
+            const card = btn.closest('.account-card');
+            if (card) {
+              card.classList.add('refreshing');
+            }
+            vscode.postMessage({
+              command: 'refreshSingleAccount',
+              email: email
+            });
           }
 
           // ── Search ──
@@ -2752,6 +2995,16 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               onAutoRotateToggle();
             }
 
+            // Reset sort-by and cache-duration to current values
+            const sortBySettingsSelect = document.getElementById('sortBySettingsSelect');
+            if (sortBySettingsSelect) {
+              sortBySettingsSelect.value = currentSortBy;
+            }
+            const cacheDurationSelect = document.getElementById('cacheDurationSelect');
+            if (cacheDurationSelect) {
+              cacheDurationSelect.value = String(currentCacheDurationDays);
+            }
+
             modal.style.display = 'flex';
             attachIntervalListener();
           }
@@ -2774,13 +3027,20 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             const intervalSelect = document.getElementById('refreshIntervalSelect');
             const refreshInterval = intervalSelect ? parseInt(intervalSelect.value) : 15;
             
+            const sortBySettingsSelect = document.getElementById('sortBySettingsSelect');
+            const selectedSortBy = sortBySettingsSelect ? sortBySettingsSelect.value : 'default';
+            const cacheDurationSelect = document.getElementById('cacheDurationSelect');
+            const selectedCacheDuration = cacheDurationSelect ? parseInt(cacheDurationSelect.value) : 7;
+
             vscode.postMessage({
               command: 'saveSettings',
               language: selectedLang,
               preferredModel: selectedModel,
               autoRefreshEnabled: autoRefreshEnabled,
               autoRotateEnabled: autoRotateEnabled,
-              refreshIntervalMinutes: refreshInterval
+              refreshIntervalMinutes: refreshInterval,
+              sortBy: selectedSortBy,
+              cacheDurationDays: selectedCacheDuration
             });
             closeSettings();
             // Show loading overlay briefly since the webview will be re-rendered
@@ -2868,9 +3128,66 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
             } else if (msg.command === 'accountRefreshStart') {
               updateProgressBanner(msg.email, msg.currentIndex, msg.totalAccounts);
+              const card = document.querySelector('.account-card[data-email="' + msg.email + '"]');
+              if (card) {
+                card.classList.add('refreshing');
+              }
 
             } else if (msg.command === 'accountRefreshDone') {
-              // No per-card UI updates needed; progress banner is updated on accountRefreshStart
+              const oldCard = document.querySelector('.account-card[data-email="' + msg.email + '"]');
+              if (oldCard && msg.html) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(msg.html, 'text/html');
+                const newCard = doc.querySelector('.account-card');
+                
+                if (newCard) {
+                  // Preserve collapse expanded state
+                  const oldWrapper = oldCard.querySelector('.collapsible-wrapper');
+                  const newWrapper = newCard.querySelector('.collapsible-wrapper');
+                  if (oldWrapper && newWrapper && oldWrapper.classList.contains('expanded')) {
+                    newWrapper.classList.add('expanded');
+                  }
+                  
+                  const oldHeader = oldCard.querySelector('.collapse-header');
+                  const newHeader = newCard.querySelector('.collapse-header');
+                  if (oldHeader && newHeader && oldHeader.classList.contains('expanded')) {
+                    newHeader.classList.add('expanded');
+                  }
+
+                  // Replace oldCard with newCard in the DOM
+                  oldCard.replaceWith(newCard);
+                  
+                  // Initialize the model container's originalOrder on the new card
+                  const container = newCard.querySelector('.models-container');
+                  if (container) {
+                    container.originalOrder = Array.from(container.children);
+                  }
+                  
+                  // Apply active model styling to the new card
+                  const email = newCard.dataset.email;
+                  const activeModelKey = state.activeModels[email];
+                  if (activeModelKey && container) {
+                    container.innerHTML = '';
+                    container.originalOrder.forEach(el => {
+                       el.classList.remove('active-model');
+                       container.appendChild(el);
+                    });
+                    
+                    const preferredHeader = newCard.querySelector('.preferred-model-card');
+                    if (preferredHeader) {
+                       preferredHeader.classList.remove('active-model');
+                    }
+                    
+                    const targetModel = container.querySelector('.model-card[data-model-key="' + activeModelKey + '"]');
+                    if (targetModel) {
+                       container.prepend(targetModel);
+                       targetModel.classList.add('active-model');
+                    } else if (preferredHeader && preferredHeader.dataset.modelKey === activeModelKey) {
+                       preferredHeader.classList.add('active-model');
+                    }
+                  }
+                }
+              }
 
             } else if (msg.command === 'refreshFinished') {
               isRefreshing = false;
@@ -3004,6 +3321,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
    * Sorts the accounts array based on active status, preferred model balance, account status hierarchy, and alphabetical name.
    */
   private sortAccounts(accounts: any[], effectivePreferred: string, pinnedEmailLower: string | null): void {
+    const sortBy = ExtensionConfig.getInstance().getSortBy();
+
     accounts.sort((a, b) => {
       // 1. Pinned active account always goes first
       const aActive = pinnedEmailLower !== null && a.email.toLowerCase() === pinnedEmailLower;
@@ -3011,30 +3330,71 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       if (aActive && !bActive) return -1;
       if (!aActive && bActive) return 1;
 
-      // 2. Sorting by preferred model balance if selected
-      if (effectivePreferred) {
-        const aVal = this.getModelBalanceValue(a.balances, effectivePreferred);
-        const bVal = this.getModelBalanceValue(b.balances, effectivePreferred);
-        if (aVal !== bVal) {
-          return bVal - aVal; // Descending (highest first)
+      switch (sortBy) {
+        case 'name-asc': {
+          const nameA = a.displayName || a.alias || a.name || a.email || '';
+          const nameB = b.displayName || b.alias || b.name || b.email || '';
+          return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
         }
-      } else {
-        // 3. Fallback: Sort by account status hierarchy (accounts with quota first)
-        const getStatusWeight = (status: AccountStatus) => {
-          switch (status) {
-            case AccountStatus.ACTIVE: return 0;
-            case AccountStatus.LOW_BALANCE: return 1;
-            case AccountStatus.DEPLETED: return 2;
-            case AccountStatus.TOKEN_EXPIRED: return 3;
-            case AccountStatus.ERROR: return 4;
-            case AccountStatus.INELIGIBLE: return 5;
-            default: return 6;
+        case 'name-desc': {
+          const nameA = a.displayName || a.alias || a.name || a.email || '';
+          const nameB = b.displayName || b.alias || b.name || b.email || '';
+          return nameB.localeCompare(nameA, undefined, { numeric: true, sensitivity: 'base' });
+        }
+        case 'date-added': {
+          const dateA = a.addedAt ? new Date(a.addedAt).getTime() : 0;
+          const dateB = b.addedAt ? new Date(b.addedAt).getTime() : 0;
+          return dateB - dateA; // Newest first
+        }
+        case 'quota': {
+          const getRemainingQuotaSum = (balances: Record<string, any> | undefined) => {
+            if (!balances) return -1;
+            let sum = 0;
+            let count = 0;
+            for (const [k, rawV] of Object.entries(balances)) {
+              if (typeof rawV === 'object' && rawV !== null && 'value' in rawV) {
+                sum += rawV.value;
+                count++;
+              }
+            }
+            return count > 0 ? sum / count : -1;
+          };
+          const aQuota = getRemainingQuotaSum(a.balances);
+          const bQuota = getRemainingQuotaSum(b.balances);
+          if (aQuota !== bQuota) {
+            return bQuota - aQuota; // Descending (highest remaining percentage first)
           }
-        };
-        const aWeight = getStatusWeight(a.status);
-        const bWeight = getStatusWeight(b.status);
-        if (aWeight !== bWeight) {
-          return aWeight - bWeight;
+          break;
+        }
+        case 'default':
+        default: {
+          // 2. Sorting by preferred model balance if selected
+          if (effectivePreferred) {
+            const aVal = this.getModelBalanceValue(a.balances, effectivePreferred);
+            const bVal = this.getModelBalanceValue(b.balances, effectivePreferred);
+            if (aVal !== bVal) {
+              return bVal - aVal; // Descending (highest first)
+            }
+          } else {
+            // 3. Fallback: Sort by account status hierarchy (accounts with quota first)
+            const getStatusWeight = (status: AccountStatus) => {
+              switch (status) {
+                case AccountStatus.ACTIVE: return 0;
+                case AccountStatus.LOW_BALANCE: return 1;
+                case AccountStatus.DEPLETED: return 2;
+                case AccountStatus.TOKEN_EXPIRED: return 3;
+                case AccountStatus.ERROR: return 4;
+                case AccountStatus.INELIGIBLE: return 5;
+                default: return 6;
+              }
+            };
+            const aWeight = getStatusWeight(a.status);
+            const bWeight = getStatusWeight(b.status);
+            if (aWeight !== bWeight) {
+              return aWeight - bWeight;
+            }
+          }
+          break;
         }
       }
 
@@ -3043,5 +3403,301 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       const nameB = b.displayName || b.alias || b.name || b.email || '';
       return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
     });
+  }
+
+  /**
+   * Renders the HTML template for a single account card.
+   */
+  private renderAccountCard(acc: Account, effectivePreferred: string): string {
+    const i18n = I18nService.getInstance();
+    const displayName = acc.alias || acc.name || acc.email;
+    
+    const formatTime = (resetTimeStr?: string) => {
+       if (!resetTimeStr) return i18n.t('webview.unspecified');
+       const date = new Date(resetTimeStr);
+       const diffMs = date.getTime() - Date.now();
+       if (diffMs <= 0) return i18n.t('webview.availableNow');
+       
+       const totalHours = Math.floor(diffMs / (1000 * 60 * 60));
+       const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+       
+       if (totalHours >= 24) {
+         const days = Math.floor(totalHours / 24);
+         const remainingHours = totalHours % 24;
+         if (remainingHours === 0) {
+           return i18n.t('webview.renewsInDaysMins', { days, mins });
+         }
+         return i18n.t('webview.renewsInDaysHoursMins', { days, hours: remainingHours, mins });
+       }
+       
+       return i18n.t('webview.renewsInHoursMins', { hours: totalHours, mins });
+    };
+
+    // Process balances according to display rules
+    let processedModels: Array<{ key: string, value: number, resetTime?: string }> = [];
+    let creditBalances: Array<{ key: string, value: number }> = [];
+    
+    if (acc.balances) {
+      // ── Collect all model entries, separate credits from models ──
+      const allModelEntries: Array<{ key: string, lowerKey: string, value: number, resetTime?: string }> = [];
+
+      for (const [k, rawV] of Object.entries(acc.balances)) {
+        if (!k) continue;
+        const lowerKey = k.toLowerCase();
+        
+        let value: number;
+        let resetTime: string | undefined;
+        
+        if (typeof rawV === 'object' && rawV !== null && 'value' in rawV) {
+           value = rawV.value;
+           resetTime = rawV.resetTime;
+        } else {
+           value = typeof rawV === 'number' ? rawV : Number(rawV);
+           creditBalances.push({ key: k, value });
+           continue;
+        }
+
+        allModelEntries.push({ key: k, lowerKey, value, resetTime });
+      }
+
+      // ── Phase 1 (FIRST exclusion): Remove models by prefix ──
+      const afterPrefixFilter = allModelEntries.filter(m => {
+        return !m.lowerKey.startsWith('chat')
+            && !m.lowerKey.startsWith('tap')
+            && !m.lowerKey.startsWith('tab');
+      });
+
+      // ── Phase 2: Exclude gemini-2.5 ──
+      const afterGeminiFilter = afterPrefixFilter.filter(m => !m.lowerKey.includes('gemini-2.5'));
+
+      // ── Phase 3: Unconditional exclusion of "lite" models ──
+      const afterLiteFilter = afterGeminiFilter.filter(m => !m.lowerKey.match(/[-_\s]?lite$/i));
+
+      // ── Phase 4: Apply friendly names, filter out deprecated keys, and deduplicate by friendly name ──
+      const friendlyModelMap = new Map<string, { key: string, value: number, resetTime?: string }>();
+      for (const entry of afterLiteFilter) {
+        const friendlyName = getFriendlyModelName(entry.key);
+        if (friendlyName) {
+          if (!friendlyModelMap.has(friendlyName)) {
+            friendlyModelMap.set(friendlyName, { key: friendlyName, value: entry.value, resetTime: entry.resetTime });
+          }
+        }
+      }
+      processedModels = Array.from(friendlyModelMap.values());
+    }
+
+    // Sort processedModels
+    processedModels.sort((a, b) => {
+       const aCritical = a.value < 20;
+       const bCritical = b.value < 20;
+       
+       const timeA = a.resetTime ? new Date(a.resetTime).getTime() : 0;
+       const timeB = b.resetTime ? new Date(b.resetTime).getTime() : 0;
+       
+       if (aCritical && !bCritical) return 1; // b is better (>= 20%), put a lower
+       if (!aCritical && bCritical) return -1;
+       
+       if (aCritical && bCritical) {
+          if (timeA && timeB && timeA !== timeB) return timeA - timeB;
+          return a.value - b.value;
+       }
+       
+       if (a.value !== b.value) return b.value - a.value;
+       if (timeA && timeB) return timeA - timeB;
+       return 0;
+    });
+
+    // Move preferred model to top of the list if set
+    let preferredModelData: { key: string, value: number, resetTime?: string } | null = null;
+    if (effectivePreferred) {
+      const prefIdx = processedModels.findIndex(m =>
+        m.key.toLowerCase() === effectivePreferred.toLowerCase()
+      );
+      if (prefIdx > -1) {
+        const [prefModel] = processedModels.splice(prefIdx, 1);
+        preferredModelData = prefModel;
+      } else {
+        preferredModelData = {
+          key: effectivePreferred,
+          value: 0,
+          resetTime: undefined
+        };
+      }
+    }
+
+    // Generate Credits HTML
+    const creditsHtml = creditBalances.length > 0 
+      ? `<div class="credits-container">` + creditBalances.map(c => `
+        <div class="credit-badge">
+          <span class="credit-name">${c.key.replace(/_/g, ' ').toUpperCase()}</span>
+          <span class="credit-value">${c.value.toLocaleString()}</span>
+        </div>
+      `).join('') + `</div>`
+      : '';
+
+    // Generate Models HTML
+    const modelsHtml = processedModels.length > 0
+      ? processedModels.map(m => {
+          const displayKey = m.key.endsWith('image')
+            ? `${m.key} <svg class="icon-svg icon-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`
+            : m.key;
+          const timeStr = formatTime(m.resetTime);
+          
+          let colorClass = 'bg-high';
+          let alertIcon = '';
+          
+          if (m.value < 20) {
+              colorClass = 'bg-low';
+              alertIcon = ` <svg class="icon-svg icon-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" title="${i18n.t('webview.veryLowBalance')}"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+          } else if (m.value < 32) {
+              colorClass = 'bg-low';
+          } else if (m.value < 60) {
+              colorClass = 'bg-med';
+          }
+
+          return `
+          <div class="model-card" data-model-key="${m.key}" onclick="selectModel(this, '${acc.email}', '${m.key}')" style="cursor: pointer;" title="${i18n.t('webview.selectThisModel')}">
+            <div class="model-header">
+              <span class="model-name">${displayKey}</span>
+              <span class="model-reset">${timeStr}</span>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar ${colorClass}" style="width: ${m.value}%"></div>
+            </div>
+            <div class="model-percentage ${colorClass}-text">${m.value}%${alertIcon}</div>
+          </div>
+          `;
+        }).join('')
+      : `<div class="empty-models">${i18n.t('accounts.noAvailableModels')}</div>`;
+
+    // Generate Collapse Header HTML
+    let collapseHeaderHtml = '';
+    const wrapperId = `collapse-${acc.email.replace(/[@.]/g, '-')}`;
+    
+    if (preferredModelData) {
+       const displayKey = preferredModelData.key.endsWith('image')
+         ? `${preferredModelData.key} <svg class="icon-svg icon-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`
+         : preferredModelData.key;
+       const timeStr = formatTime(preferredModelData.resetTime);
+       
+       let colorClass = 'bg-high';
+       let alertIcon = '';
+       
+       if (preferredModelData.value < 20) {
+           colorClass = 'bg-low';
+           alertIcon = ` <svg class="icon-svg icon-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" title="${i18n.t('webview.veryLowBalance')}"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+       } else if (preferredModelData.value < 32) {
+           colorClass = 'bg-low';
+       } else if (preferredModelData.value < 60) {
+           colorClass = 'bg-med';
+       }
+
+       collapseHeaderHtml = `
+       <div class="collapse-header unified-collapse" onclick="toggleModels(this, '${wrapperId}')" title="${i18n.t('webview.showAvailableModels')}">
+          <span class="collapse-title">${i18n.t('accounts.models')}</span>
+          <div class="collapse-header-right">
+             <div class="pref-badge preferred-model-card" data-model-key="${preferredModelData.key}" onclick="event.stopPropagation(); selectModel(this, '${acc.email}', '${preferredModelData.key}')" title="${i18n.t('webview.activatePreferredModel')}">
+               <span class="pref-badge-name">${displayKey}</span>
+               <div class="pref-badge-bar"><div class="progress-bar ${colorClass}" style="width: ${preferredModelData.value}%"></div></div>
+               <span class="pref-badge-val ${colorClass}-text">${preferredModelData.value}%${alertIcon}</span>
+             </div>
+             <svg class="chevron-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+       </div>
+       `;
+    } else {
+       collapseHeaderHtml = `
+       <div class="collapse-header normal-collapse" onclick="toggleModels(this, '${wrapperId}')" title="${i18n.t('webview.showAvailableModels')}">
+          <span class="collapse-title">${i18n.t('accounts.availableModels', { count: processedModels.length })}</span>
+          <svg class="chevron-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+       </div>
+       `;
+    }
+
+    const isExpired = acc.status === AccountStatus.TOKEN_EXPIRED;
+    const isIneligible = acc.status === AccountStatus.INELIGIBLE;
+    const activeBadge = acc.isActive
+      ? `<div class="badge active-badge">${i18n.t('accounts.active')}</div>`
+      : isExpired
+        ? `<div class="badge expired-badge">${i18n.t('accounts.expired')}</div>`
+        : isIneligible
+          ? `<div class="badge ineligible-badge">${i18n.t('accounts.status.ineligible')}</div>`
+          : '';
+
+    const expiredBannerHtml = isExpired ? `
+      <div class="expired-banner">
+        <span class="expired-banner-icon"><svg class="icon-svg icon-warning" style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+        <span class="expired-banner-text">${i18n.t('accounts.expiredBanner')}</span>
+      </div>
+    ` : '';
+
+    const ineligibleBannerHtml = isIneligible ? `
+      <div class="ineligible-banner">
+        <span class="ineligible-banner-icon"><svg class="icon-svg icon-error" style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></span>
+        <span class="ineligible-banner-text">${i18n.t('accounts.ineligibleBanner')}</span>
+      </div>
+    ` : '';
+
+    const cardBody = isExpired
+      ? expiredBannerHtml
+      : isIneligible
+        ? ineligibleBannerHtml
+        : `
+        ${creditsHtml}
+        
+        <div class="models-section">
+          ${collapseHeaderHtml}
+          <div class="collapsible-wrapper" id="${wrapperId}">
+            <div class="collapsible-inner">
+              <div class="models-container">
+                ${modelsHtml}
+              </div>
+            </div>
+          </div>
+        </div>
+    `;
+
+    let actionsHtml = '';
+    if (isExpired) {
+      actionsHtml = `
+        <button class="btn btn-warning" onclick="sendMessage('reAuthenticate', '${acc.email}')">${i18n.t('accounts.reAuthenticate')}</button>
+        <button class="btn btn-danger" onclick="sendMessage('deleteAccount', '${acc.email}')">${i18n.t('accounts.remove')}</button>
+      `;
+    } else if (isIneligible) {
+      actionsHtml = `
+        <button class="btn btn-danger" onclick="sendMessage('deleteAccount', '${acc.email}')">${i18n.t('accounts.remove')}</button>
+      `;
+    } else {
+      actionsHtml = `
+        ${!acc.isActive ? `<button class="btn btn-primary" onclick="handleSwitchAccount(this, '${acc.email}')">${i18n.t('accounts.activate')}</button>` : ''}
+        <button class="btn btn-danger" onclick="sendMessage('deleteAccount', '${acc.email}')">${i18n.t('accounts.remove')}</button>
+      `;
+    }
+
+    const avatarClass = isExpired ? 'avatar-expired' : isIneligible ? 'avatar-ineligible' : '';
+
+    return `
+      <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''} ${isIneligible ? 'ineligible' : ''} ${acc.status === AccountStatus.DEPLETED ? 'depleted' : ''}" data-email="${acc.email}" data-name="${displayName}" data-status="${acc.status}">
+        <div class="card-header">
+          ${acc.avatarUrl ? `<img class="avatar ${avatarClass}" src="${acc.avatarUrl}" alt="${displayName}" />` : `<div class="avatar ${avatarClass}">${displayName.charAt(0).toUpperCase()}</div>`}
+          <div class="user-info">
+            <h4 style="display: flex; align-items: center; gap: 6px;">
+              ${displayName}
+              <button class="btn-card-refresh" onclick="event.stopPropagation(); handleSingleRefresh(this, '${acc.email}')" title="${i18n.t('accounts.refreshThisAccount')}">
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              </button>
+            </h4>
+            <p>${acc.email}</p>
+          </div>
+          ${activeBadge}
+        </div>
+        
+        ${cardBody}
+
+        <div class="card-actions">
+          ${actionsHtml}
+        </div>
+      </div>
+    `;
   }
 }

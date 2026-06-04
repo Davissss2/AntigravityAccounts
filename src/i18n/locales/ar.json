@@ -129,7 +129,8 @@
     "importAccounts": "استيراد حسابات",
     "settings": "الإعدادات",
     "searchPlaceholder": "ابحث بالاسم أو البريد الإلكتروني...",
-    "noSearchResults": "لا توجد حسابات تطابق بحثك."
+    "noSearchResults": "لا توجد حسابات تطابق بحثك.",
+    "refreshThisAccount": "تحديث هذا الحساب"
   },
   "statusBar": {
     "noAccount": "لا يوجد حساب",
@@ -185,7 +186,7 @@
     "activatePreferredModel": "تنشيط هذا المودل المفضل",
     "preferredModelSort": "النموذج المفضل للترتيب",
     "noSelectionDefault": "بدون تحديد (ترتيب افتراضي)",
-    "sortExplanation": "سيتم ترتيب الحسابات وفقاً لرصيد هذا النموذج أولاً.",
+    "sortExplanation": "سيتم ترتيب الحسابات وفقاً لرصيد هذا نموذج أولاً.",
     "loginRequired": "سجل الدخول لحساب لتمكين هذا الخيار",
     "activating": "جاري التنشيط...",
     "language": "اللغة",
@@ -208,7 +209,21 @@
     "immediateConfirmCancel": "إلغاء",
     "notAntigravityTitle": "يتطلب محرر Antigravity",
     "notAntigravityMessage": "هذه الإضافة مصممة للعمل حصرياً مع محرر الأكواد Antigravity. لا يمكنها العمل مع محررات أخرى.",
-    "downloadAntigravity": "تنزيل Antigravity"
+    "downloadAntigravity": "تنزيل Antigravity",
+    "sortBy": "ترتيب حسب",
+    "sortDefault": "الترتيب الافتراضي",
+    "sortNameAsc": "الاسم (أ-ي)",
+    "sortNameDesc": "الاسم (ي-أ)",
+    "sortDateAdded": "تاريخ الإضافة",
+    "sortQuota": "الرصيد المتبقي",
+    "scanSegment": "فحص جزء من الحسابات",
+    "scanAll": "فحص الكل",
+    "scanWithQuota": "فحص الحسابات برصيد",
+    "scanWithoutQuota": "فحص الحسابات بدون رصيد",
+    "cacheDurationLabel": "فترة صلاحية التخزين المؤقت",
+    "cacheDurationDescription": "يوفر الوقت بعدم فحص هذا الحساب إذا تم تحديثه خلال هذه الفترة.",
+    "day": "يوم",
+    "days": "أيام"
   },
   "service": {
     "generatingDeviceProfile": "جاري إنشاء بصمة الجهاز...",

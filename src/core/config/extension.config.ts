@@ -65,6 +65,20 @@ export class ExtensionConfig {
   }
 
   /**
+   * Get the cache validity duration in days
+   */
+  getCacheDurationDays(): number {
+    return this.getConfig().get<number>('cacheDurationDays', 7);
+  }
+
+  /**
+   * Get the sorting method
+   */
+  getSortBy(): string {
+    return this.getConfig().get<string>('sortBy', 'default');
+  }
+
+  /**
    * Get the extension context (for services that need it)
    */
   getContext(): vscode.ExtensionContext {
