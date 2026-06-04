@@ -18,9 +18,6 @@
 
 **Antigravity Account** is the ultimate companion extension for users of the Antigravity desktop application. Designed to supercharge your workflow, this tool provides seamless multi-account management directly within VS Code, eliminating the hassle of manual logins.
 
-<p align="center">
-  <img src="resources/accounts-panel.png" alt="Antigravity Account Panel" width="80%" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);" />
-</p>
 
 ## ✨ Features
 
