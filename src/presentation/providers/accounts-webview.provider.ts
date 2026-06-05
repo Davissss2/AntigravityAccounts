@@ -836,6 +836,16 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const configLowCreditNotifications = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('lowCreditNotificationsEnabled', true);
     const configRefreshInterval = vscode.workspace.getConfiguration('antigravityAccount').get<number>('refreshIntervalMinutes', 15);
     const configSortBy = vscode.workspace.getConfiguration('antigravityAccount').get<string>('sortBy', 'default');
+    const getSortByLabel = (val: string) => {
+      switch(val) {
+        case 'name-asc': return i18n.t('webview.sortNameAsc');
+        case 'name-desc': return i18n.t('webview.sortNameDesc');
+        case 'date-added': return i18n.t('webview.sortDateAdded');
+        case 'quota': return i18n.t('webview.sortQuota');
+        case 'default':
+        default: return i18n.t('webview.sortDefault');
+      }
+    };
     const configCacheDurationDays = vscode.workspace.getConfiguration('antigravityAccount').get<number>('cacheDurationDays', 7);
     const accounts = await this.accountRepo.getAccountSummaries();
 
@@ -1121,6 +1131,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             margin-bottom: 16px;
           }
           .toolbar-sort, .toolbar-scan {
+            position: relative;
             flex: 1;
             display: flex;
             align-items: center;
@@ -1140,17 +1151,15 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             background: var(--surface-light);
           }
           .toolbar-sort select, .toolbar-scan select {
-            flex: 1;
-            background: transparent;
-            color: var(--text-primary);
-            border: none;
-            font-size: 0.78rem;
-            font-weight: 500;
-            outline: none;
-            cursor: pointer;
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
-            user-select: none;
-            -webkit-user-select: none;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+            -webkit-appearance: none;
+            appearance: none;
           }
           .toolbar-sort select option, .toolbar-scan select option {
             background: var(--surface-color);
@@ -2184,9 +2193,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           </button>
         </div>
         <div class="toolbar-container">
-          <label class="toolbar-sort" for="sortSelect">
-            <span class="toolbar-label">${i18n.t('webview.sortBy')}:</span>
-            <select id="sortSelect" onchange="handleSortChange()">
+          <label class="toolbar-sort" for="sortSelect" style="position: relative;">
+            <span class="toolbar-label" id="sortLabelDisplay">${i18n.t('webview.sortBy')}: <span class="toolbar-value" style="color: var(--text-primary); font-size: 0.78rem; font-weight: 500; text-transform: none; margin-inline-start: 4px;">${getSortByLabel(configSortBy || 'default')}</span></span>
+            <select id="sortSelect" onchange="handleSortChange()" style="position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; -webkit-appearance: none; appearance: none;">
               <option value="default" ${configSortBy === 'default' ? 'selected' : ''}>${i18n.t('webview.sortDefault')}</option>
               <option value="name-asc" ${configSortBy === 'name-asc' ? 'selected' : ''}>${i18n.t('webview.sortNameAsc')}</option>
               <option value="name-desc" ${configSortBy === 'name-desc' ? 'selected' : ''}>${i18n.t('webview.sortNameDesc')}</option>
@@ -2194,8 +2203,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               <option value="quota" ${configSortBy === 'quota' ? 'selected' : ''}>${i18n.t('webview.sortQuota')}</option>
             </select>
           </label>
-          <label class="toolbar-scan" for="scanSelect">
-            <select id="scanSelect" onchange="handleScanChange()">
+          <label class="toolbar-scan" for="scanSelect" style="position: relative;">
+            <span class="toolbar-label" id="scanLabelDisplay">⚡ ${i18n.t('webview.scanSegment')}</span>
+            <select id="scanSelect" onchange="handleScanChange()" style="position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; -webkit-appearance: none; appearance: none;">
               <option value="">⚡ ${i18n.t('webview.scanSegment')}</option>
               <option value="all">${i18n.t('webview.scanAll')}</option>
               <option value="with-quota">${i18n.t('webview.scanWithQuota')}</option>
@@ -2449,6 +2459,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           function handleSortChange() {
             const select = document.getElementById('sortSelect');
             const sortBy = select.value;
+            const labelDisplay = document.getElementById('sortLabelDisplay');
+            if (labelDisplay) {
+              const selectedText = select.options[select.selectedIndex].text;
+              labelDisplay.innerHTML = '${i18n.t('webview.sortBy')}: <span class="toolbar-value" style="color: var(--text-primary); font-size: 0.78rem; font-weight: 500; text-transform: none; margin-inline-start: 4px;">' + selectedText + '</span>';
+            }
             vscode.postMessage({
               command: 'saveSettings',
               sortBy: sortBy

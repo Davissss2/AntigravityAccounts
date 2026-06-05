@@ -19,28 +19,36 @@ function syncToIDE() {
   try {
     const pkgPath = path.join(__dirname, '..', 'package.json');
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-    const version = pkg.version;
-    const extensionDirName = `davissss2.antigravity-account-${version}`;
     const homeDir = os.homedir();
-    const targetBaseDir = path.join(homeDir, '.antigravity-ide', 'extensions', extensionDirName);
+    const extensionsDir = path.join(homeDir, '.antigravity-ide', 'extensions');
     
-    if (!fs.existsSync(targetBaseDir)) {
-      console.warn(`Local IDE extension target directory not found: ${targetBaseDir}`);
-      console.warn('Skipping automatic sync to IDE folder.');
+    if (!fs.existsSync(extensionsDir)) {
+      console.warn(`Local IDE extensions directory not found: ${extensionsDir}`);
       return;
     }
 
-    const targetDistDir = path.join(targetBaseDir, 'dist');
-    const targetThemeDir = path.join(targetDistDir, 'presentation', 'theme');
-
-    fs.mkdirSync(targetDistDir, { recursive: true });
-    fs.copyFileSync('dist/extension.js', path.join(targetDistDir, 'extension.js'));
+    const files = fs.readdirSync(extensionsDir);
+    const targetDirs = files.filter(f => f.startsWith('davissss2.antigravity-account-'));
     
-    fs.mkdirSync(targetThemeDir, { recursive: true });
-    fs.copyFileSync('dist/presentation/theme/global.css', path.join(targetThemeDir, 'global.css'));
+    if (targetDirs.length === 0) {
+      console.warn('No active extension folder found in IDE extensions directory.');
+      return;
+    }
 
-    fs.copyFileSync(pkgPath, path.join(targetBaseDir, 'package.json'));
-    console.log(`Synced built files to IDE extensions folder: ${targetBaseDir}`);
+    for (const dir of targetDirs) {
+      const targetBaseDir = path.join(extensionsDir, dir);
+      const targetDistDir = path.join(targetBaseDir, 'dist');
+      const targetThemeDir = path.join(targetDistDir, 'presentation', 'theme');
+
+      fs.mkdirSync(targetDistDir, { recursive: true });
+      fs.copyFileSync('dist/extension.js', path.join(targetDistDir, 'extension.js'));
+      
+      fs.mkdirSync(targetThemeDir, { recursive: true });
+      fs.copyFileSync('dist/presentation/theme/global.css', path.join(targetThemeDir, 'global.css'));
+
+      fs.copyFileSync(pkgPath, path.join(targetBaseDir, 'package.json'));
+      console.log(`Synced built files to IDE extensions folder: ${targetBaseDir}`);
+    }
   } catch (err) {
     console.error('Failed to sync to IDE extension folder:', err.message);
   }
