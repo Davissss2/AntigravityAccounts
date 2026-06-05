@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Deduplicated Card Rendering**: Cleaned up the template structure to resolve inconsistencies where manually refreshed cards lost alias rename controls and initial cards lacked manual refresh buttons. Both buttons are now unified on the card header.
 - **Native Dropdown Triggering**: Replaced container elements in the sort and scan toolbar dropdowns with `<label>` tags linked to select elements, resolving clicking capture issues and preventing highlight behavior.
+- **Compact Toolbar Layout**: Implemented responsive container queries (`@container (max-width: 340px)`) to hide the "Sort by" label prefix and transition the scan action to a shorter "Refresh" text label on narrow sidebars, preventing layout squeezing or horizontal screen overflow.
 
 ## [0.1.8] - 2026-06-05
 

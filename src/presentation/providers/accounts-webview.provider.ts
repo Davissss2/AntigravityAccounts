@@ -1803,6 +1803,16 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .main-btn { margin-top: 16px; padding: 10px 24px; font-size: 0.95rem; width: 100%;}
 
           /* ── Responsive: Container Queries for narrow sidebar ── */
+          @container (max-width: 340px) {
+            .toolbar-container { gap: 4px; }
+            .toolbar-sort, .toolbar-scan { padding: 5px 6px; }
+            .toolbar-label-prefix { display: none; }
+            .scan-text-long { display: none !important; }
+            .scan-text-short { display: inline !important; }
+            .toolbar-value { font-size: 0.72rem !important; }
+            .toolbar-label { font-size: 0.72rem; }
+          }
+
           @container (max-width: 280px) {
             body { padding: 10px; }
             .account-card { padding: 12px; }
@@ -2194,7 +2204,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         </div>
         <div class="toolbar-container">
           <label class="toolbar-sort" for="sortSelect" style="position: relative;">
-            <span class="toolbar-label" id="sortLabelDisplay">${i18n.t('webview.sortBy')}: <span class="toolbar-value" style="color: var(--text-primary); font-size: 0.78rem; font-weight: 500; text-transform: none; margin-inline-start: 4px;">${getSortByLabel(configSortBy || 'default')}</span></span>
+            <span class="toolbar-label" id="sortLabelDisplay"><span class="toolbar-label-prefix">${i18n.t('webview.sortBy')}: </span><span class="toolbar-value" style="color: var(--text-primary); font-size: 0.78rem; font-weight: 500; text-transform: none; margin-inline-start: 4px;">${getSortByLabel(configSortBy || 'default')}</span></span>
             <select id="sortSelect" onchange="handleSortChange()" style="position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; -webkit-appearance: none; appearance: none;">
               <option value="default" ${configSortBy === 'default' ? 'selected' : ''}>${i18n.t('webview.sortDefault')}</option>
               <option value="name-asc" ${configSortBy === 'name-asc' ? 'selected' : ''}>${i18n.t('webview.sortNameAsc')}</option>
@@ -2204,7 +2214,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             </select>
           </label>
           <label class="toolbar-scan" for="scanSelect" style="position: relative;">
-            <span class="toolbar-label" id="scanLabelDisplay">⚡ ${i18n.t('webview.scanSegment')}</span>
+            <span class="toolbar-label" id="scanLabelDisplay">⚡ <span class="scan-text-long">${i18n.t('webview.scanSegment')}</span><span class="scan-text-short" style="display: none;">${i18n.t('common.refresh')}</span></span>
             <select id="scanSelect" onchange="handleScanChange()" style="position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; -webkit-appearance: none; appearance: none;">
               <option value="">⚡ ${i18n.t('webview.scanSegment')}</option>
               <option value="all">${i18n.t('webview.scanAll')}</option>
@@ -2462,7 +2472,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             const labelDisplay = document.getElementById('sortLabelDisplay');
             if (labelDisplay) {
               const selectedText = select.options[select.selectedIndex].text;
-              labelDisplay.innerHTML = '${i18n.t('webview.sortBy')}: <span class="toolbar-value" style="color: var(--text-primary); font-size: 0.78rem; font-weight: 500; text-transform: none; margin-inline-start: 4px;">' + selectedText + '</span>';
+              labelDisplay.innerHTML = '<span class="toolbar-label-prefix">${i18n.t('webview.sortBy')}: </span><span class="toolbar-value" style="color: var(--text-primary); font-size: 0.78rem; font-weight: 500; text-transform: none; margin-inline-start: 4px;">' + selectedText + '</span>';
             }
             vscode.postMessage({
               command: 'saveSettings',
