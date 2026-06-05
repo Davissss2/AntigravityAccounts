@@ -5,6 +5,15 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] - 2026-06-05
+
+### Added
+- **Cooldown Auto-Queue**: Instead of showing blocking cooldown messages when requesting rapid balance updates, refreshes are now automatically scheduled to run as soon as the cooldown period expires.
+
+### Fixed
+- **Deduplicated Card Rendering**: Cleaned up the template structure to resolve inconsistencies where manually refreshed cards lost alias rename controls and initial cards lacked manual refresh buttons. Both buttons are now unified on the card header.
+- **Native Dropdown Triggering**: Replaced container elements in the sort and scan toolbar dropdowns with `<label>` tags linked to select elements, resolving clicking capture issues and preventing highlight behavior.
+
 ## [0.1.8] - 2026-06-05
 
 ### Added

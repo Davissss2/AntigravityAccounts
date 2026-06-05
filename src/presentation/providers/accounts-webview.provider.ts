@@ -158,6 +158,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           this._searchQuery = message.query || '';
           break;
         case 'cancelRefresh':
+          this.accountService.cancelQueue();
           if (this._refreshAbortController) {
             this._refreshAbortController.abort();
             this._refreshAbortController = null;
@@ -927,289 +928,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
     // Generate HTML for each account card
     const accountCardsHtml = accounts.length > 0 ? accounts.map(acc => {
-      // Process balances according to display rules
-      let processedModels: Array<{ key: string, value: number, resetTime?: string }> = [];
-      let creditBalances: Array<{ key: string, value: number }> = [];
-      
-      if (acc.balances) {
-        // ── Phase 0: Collect all model entries, separate credits from models ──
-        const allModelEntries: Array<{ key: string, lowerKey: string, value: number, resetTime?: string }> = [];
-
-        for (const [k, rawV] of Object.entries(acc.balances)) {
-          if (!k) continue;
-          const lowerKey = k.toLowerCase();
-          
-          let value: number;
-          let resetTime: string | undefined;
-          
-          // Structural detection: objects with 'value' property are models (from fetchAvailableModels)
-          // Plain numbers are credits (from codeAssist/fetchCredits)
-          if (typeof rawV === 'object' && rawV !== null && 'value' in rawV) {
-             value = rawV.value;
-             resetTime = rawV.resetTime;
-          } else {
-             // Plain number = credit
-             value = typeof rawV === 'number' ? rawV : Number(rawV);
-             creditBalances.push({ key: k, value });
-             continue;
-          }
-
-          allModelEntries.push({ key: k, lowerKey, value, resetTime });
-        }
-
-        // ── Phase 1 (FIRST exclusion): Remove models by prefix ──
-        // Excludes: chat*, tap*, tab* (but NOT gpt*)
-        const afterPrefixFilter = allModelEntries.filter(m => {
-          return !m.lowerKey.startsWith('chat')
-              && !m.lowerKey.startsWith('tap')
-              && !m.lowerKey.startsWith('tab');
-        });
-
-        // ── Phase 2: Exclude gemini-2.5 ──
-        const afterGeminiFilter = afterPrefixFilter.filter(m => !m.lowerKey.includes('gemini-2.5'));
-
-        // ── Phase 3: Unconditional exclusion of "lite" models ──
-        const afterLiteFilter = afterGeminiFilter.filter(m => !m.lowerKey.match(/[-_\s]?lite$/i));
-
-        // ── Phase 4: Apply friendly names, filter out deprecated keys, and deduplicate by friendly name ──
-        const friendlyModelMap = new Map<string, { key: string, value: number, resetTime?: string }>();
-        for (const entry of afterLiteFilter) {
-          const friendlyName = getFriendlyModelName(entry.key);
-          if (friendlyName) {
-            if (!friendlyModelMap.has(friendlyName)) {
-              friendlyModelMap.set(friendlyName, { key: friendlyName, value: entry.value, resetTime: entry.resetTime });
-            }
-          }
-        }
-        processedModels = Array.from(friendlyModelMap.values());
-      }
-
-      // Sort processedModels
-      processedModels.sort((a, b) => {
-         const aCritical = a.value < 20;
-         const bCritical = b.value < 20;
-         
-         const timeA = a.resetTime ? new Date(a.resetTime).getTime() : 0;
-         const timeB = b.resetTime ? new Date(b.resetTime).getTime() : 0;
-         
-         if (aCritical && !bCritical) return 1; // b is better (>= 20%), put a lower
-         if (!aCritical && bCritical) return -1;
-         
-         if (aCritical && bCritical) {
-            // both < 20%, sort by reset time (shortest first)
-            if (timeA && timeB && timeA !== timeB) return timeA - timeB;
-            return a.value - b.value; // tie breaker
-         }
-         
-         // both >= 20%, sort by value descending
-         if (a.value !== b.value) return b.value - a.value;
-         
-         // equal value, sort by reset time (shortest first)
-         if (timeA && timeB) return timeA - timeB;
-         return 0;
-      });
-
-      // Move preferred model to top of the list if set, and extract it for the collapse header
-      let preferredModelData: { key: string, value: number, resetTime?: string } | null = null;
-      if (effectivePreferred) {
-        const prefIdx = processedModels.findIndex(m =>
-          m.key.toLowerCase() === effectivePreferred.toLowerCase()
-        );
-        if (prefIdx > -1) {
-          const [prefModel] = processedModels.splice(prefIdx, 1);
-          preferredModelData = prefModel;
-        } else {
-          // Preferred model is not present in this account's balances list.
-          // Render a placeholder with 0% to represent it at-a-glance.
-          preferredModelData = {
-            key: effectivePreferred,
-            value: 0,
-            resetTime: undefined
-          };
-        }
-      }
-
-      // Generate Credits HTML (google_one_ai)
-      const creditsHtml = creditBalances.length > 0 
-        ? `<div class="credits-container">` + creditBalances.map(c => `
-          <div class="credit-badge">
-            <span class="credit-name">${c.key.replace(/_/g, ' ').toUpperCase()}</span>
-            <span class="credit-value">${c.value.toLocaleString()}</span>
-          </div>
-        `).join('') + `</div>`
-        : '';
-
-      // Generate Models HTML
-      const modelsHtml = processedModels.length > 0
-        ? processedModels.map(m => {
-            const displayKey = m.key.endsWith('image')
-              ? `${m.key} <svg class="icon-svg icon-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`
-              : m.key;
-            const timeStr = formatTime(m.resetTime);
-            
-            // Determine progress bar color class and alert
-            let colorClass = 'bg-high';
-            let alertIcon = '';
-            
-            if (m.value < 20) {
-                colorClass = 'bg-low';
-                alertIcon = ` <svg class="icon-svg icon-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" title="${i18n.t('webview.veryLowBalance')}"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
-            } else if (m.value < 32) {
-                colorClass = 'bg-low';
-            } else if (m.value < 60) {
-                colorClass = 'bg-med';
-            }
-
-            return `
-            <div class="model-card" data-model-key="${m.key}" onclick="selectModel(this, '${acc.email}', '${m.key}')" style="cursor: pointer;" title="${i18n.t('webview.selectThisModel')}">
-              <div class="model-header">
-                <span class="model-name">${displayKey}</span>
-                <span class="model-reset">${timeStr}</span>
-              </div>
-              <div class="progress-bar-container">
-                <div class="progress-bar ${colorClass}" style="width: ${m.value}%"></div>
-              </div>
-              <div class="model-percentage ${colorClass}-text">${m.value}%${alertIcon}</div>
-            </div>
-            `;
-          }).join('')
-        : `<div class="empty-models">${i18n.t('accounts.noAvailableModels')}</div>`;
-
-      // Generate Collapse Header HTML
-      let collapseHeaderHtml = '';
-      const wrapperId = `collapse-${acc.email.replace(/[@.]/g, '-')}`;
-      
-      if (preferredModelData) {
-         const displayKey = preferredModelData.key.endsWith('image')
-           ? `${preferredModelData.key} <svg class="icon-svg icon-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`
-           : preferredModelData.key;
-         const timeStr = formatTime(preferredModelData.resetTime);
-         
-         let colorClass = 'bg-high';
-         let alertIcon = '';
-         
-         if (preferredModelData.value < 20) {
-             colorClass = 'bg-low';
-             alertIcon = ` <svg class="icon-svg icon-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" title="${i18n.t('webview.veryLowBalance')}"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
-         } else if (preferredModelData.value < 32) {
-             colorClass = 'bg-low';
-         } else if (preferredModelData.value < 60) {
-             colorClass = 'bg-med';
-         }
-
-         collapseHeaderHtml = `
-         <div class="collapse-header unified-collapse" onclick="toggleModels(this, '${wrapperId}')" title="${i18n.t('webview.showAvailableModels')}">
-            <span class="collapse-title">${i18n.t('accounts.models')}</span>
-            <div class="collapse-header-right">
-               <div class="pref-badge preferred-model-card" data-model-key="${preferredModelData.key}" onclick="event.stopPropagation(); selectModel(this, '${acc.email}', '${preferredModelData.key}')" title="${i18n.t('webview.activatePreferredModel')}">
-                 <span class="pref-badge-name">${displayKey}</span>
-                 <div class="pref-badge-bar"><div class="progress-bar ${colorClass}" style="width: ${preferredModelData.value}%"></div></div>
-                 <span class="pref-badge-val ${colorClass}-text">${preferredModelData.value}%${alertIcon}</span>
-               </div>
-               <svg class="chevron-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            </div>
-         </div>
-         `;
-      } else {
-         collapseHeaderHtml = `
-         <div class="collapse-header normal-collapse" onclick="toggleModels(this, '${wrapperId}')" title="${i18n.t('webview.showAvailableModels')}">
-            <span class="collapse-title">${i18n.t('accounts.availableModels', { count: processedModels.length })}</span>
-            <svg class="chevron-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-         </div>
-         `;
-      }
-
-      const isExpired = acc.status === AccountStatus.TOKEN_EXPIRED;
-      const isIneligible = acc.status === AccountStatus.INELIGIBLE;
-      const activeBadge = acc.isActive
-        ? `<div class="badge active-badge">${i18n.t('accounts.active')}</div>`
-        : isExpired
-          ? `<div class="badge expired-badge">${i18n.t('accounts.expired')}</div>`
-          : isIneligible
-            ? `<div class="badge ineligible-badge">${i18n.t('accounts.status.ineligible')}</div>`
-            : '';
-
-      // For expired accounts, show a warning banner instead of models
-      const expiredBannerHtml = isExpired ? `
-        <div class="expired-banner">
-          <span class="expired-banner-icon"><svg class="icon-svg icon-warning" style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
-          <span class="expired-banner-text">${i18n.t('accounts.expiredBanner')}</span>
-        </div>
-      ` : '';
-
-      // For ineligible accounts, show an ineligible banner
-      const ineligibleBannerHtml = isIneligible ? `
-        <div class="ineligible-banner">
-          <span class="ineligible-banner-icon"><svg class="icon-svg icon-error" style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></span>
-          <span class="ineligible-banner-text">${i18n.t('accounts.ineligibleBanner')}</span>
-        </div>
-      ` : '';
-
-      // Build card body: models section only for active/normal accounts
-      const cardBody = isExpired
-        ? expiredBannerHtml
-        : isIneligible
-          ? ineligibleBannerHtml
-          : `
-          ${creditsHtml}
-          
-          <div class="models-section">
-            ${collapseHeaderHtml}
-            <div class="collapsible-wrapper" id="${wrapperId}">
-              <div class="collapsible-inner">
-                <div class="models-container">
-                  ${modelsHtml}
-                </div>
-              </div>
-            </div>
-          </div>
-      `;
-
-      // Build card actions: re-authenticate for expired, none (just delete) for ineligible, activate for normal
-      let actionsHtml = '';
-      if (isExpired) {
-        actionsHtml = `
-          <button class="btn btn-warning" onclick="sendMessage('reAuthenticate', '${acc.email}')">${i18n.t('accounts.reAuthenticate')}</button>
-          <button class="btn btn-danger" onclick="sendMessage('deleteAccount', '${acc.email}')">${i18n.t('accounts.remove')}</button>
-        `;
-      } else if (isIneligible) {
-        actionsHtml = `
-          <button class="btn btn-danger" onclick="sendMessage('deleteAccount', '${acc.email}')">${i18n.t('accounts.remove')}</button>
-        `;
-      } else {
-        actionsHtml = `
-          ${!acc.isActive ? `<button class="btn btn-primary" onclick="handleSwitchAccount(this, '${acc.email}')">${i18n.t('accounts.activate')}</button>` : ''}
-          <button class="btn btn-danger" onclick="sendMessage('deleteAccount', '${acc.email}')">${i18n.t('accounts.remove')}</button>
-        `;
-      }
-
-      const avatarClass = isExpired ? 'avatar-expired' : isIneligible ? 'avatar-ineligible' : '';
-      const safeEmailId = acc.email.replace(/[@.]/g, '-');
-
-      return `
-        <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''} ${isIneligible ? 'ineligible' : ''}" data-email="${acc.email}" data-name="${acc.displayName}" data-alias="${acc.alias || ''}">
-          <div class="card-header">
-            ${acc.avatarUrl ? `<img class="avatar ${avatarClass}" src="${acc.avatarUrl}" alt="${acc.displayName}" />` : `<div class="avatar ${avatarClass}">${acc.displayName.charAt(0).toUpperCase()}</div>`}
-            <div class="user-info">
-              <div class="name-container" style="display:flex; align-items:center; gap:6px;">
-                <h4 class="display-name-text" id="name-display-${safeEmailId}">${acc.displayName}</h4>
-                <input type="text" class="edit-alias-input" id="name-input-${safeEmailId}" value="${acc.alias || ''}" placeholder="${i18n.t('webview.editAliasPlaceholder')}" style="display:none; padding:2px 6px; font-size:0.9em; font-family:inherit; background:var(--vscode-input-background); color:var(--vscode-input-foreground); border:1px solid var(--vscode-input-border); border-radius:3px; max-width:130px;" onkeydown="handleAliasKey(event, '${acc.email}')" onblur="saveAlias('${acc.email}')" />
-                <button class="edit-alias-btn" id="edit-btn-${safeEmailId}" onclick="startEditAlias('${acc.email}')" title="${i18n.t('webview.editAliasTooltip')}" style="background:none; border:none; padding:2px; cursor:pointer; color:var(--text-secondary); opacity:0.6; display:flex; align-items:center;">
-                  <svg class="icon-svg" style="width:13px; height:13px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                </button>
-              </div>
-              <p>${acc.email}</p>
-            </div>
-            ${activeBadge}
-          </div>
-          
-          ${cardBody}
-
-          <div class="card-actions">
-            ${actionsHtml}
-          </div>
-        </div>
-      `;
+      return this.renderAccountCard(acc, effectivePreferred);
     }).join('') : `
       <div class="empty-state">
         <div class="empty-state-svg">
@@ -2465,7 +2184,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           </button>
         </div>
         <div class="toolbar-container">
-          <div class="toolbar-sort">
+          <label class="toolbar-sort" for="sortSelect">
             <span class="toolbar-label">${i18n.t('webview.sortBy')}:</span>
             <select id="sortSelect" onchange="handleSortChange()">
               <option value="default" ${configSortBy === 'default' ? 'selected' : ''}>${i18n.t('webview.sortDefault')}</option>
@@ -2474,15 +2193,15 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               <option value="date-added" ${configSortBy === 'date-added' ? 'selected' : ''}>${i18n.t('webview.sortDateAdded')}</option>
               <option value="quota" ${configSortBy === 'quota' ? 'selected' : ''}>${i18n.t('webview.sortQuota')}</option>
             </select>
-          </div>
-          <div class="toolbar-scan">
+          </label>
+          <label class="toolbar-scan" for="scanSelect">
             <select id="scanSelect" onchange="handleScanChange()">
               <option value="">⚡ ${i18n.t('webview.scanSegment')}</option>
               <option value="all">${i18n.t('webview.scanAll')}</option>
               <option value="with-quota">${i18n.t('webview.scanWithQuota')}</option>
               <option value="without-quota">${i18n.t('webview.scanWithoutQuota')}</option>
             </select>
-          </div>
+          </label>
         </div>` : ''}
 
         <div id="accounts-list">
@@ -3216,10 +2935,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             const displayEl = document.getElementById('name-display-' + safeId);
             const inputEl = document.getElementById('name-input-' + safeId);
             const editBtn = document.getElementById('edit-btn-' + safeId);
+            const refreshBtn = document.getElementById('refresh-btn-' + safeId);
             
             if (displayEl && inputEl && editBtn) {
               displayEl.style.display = 'none';
               editBtn.style.display = 'none';
+              if (refreshBtn) refreshBtn.style.display = 'none';
               inputEl.style.display = 'inline-block';
               inputEl.focus();
               inputEl.select();
@@ -3231,11 +2952,13 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             const displayEl = document.getElementById('name-display-' + safeId);
             const inputEl = document.getElementById('name-input-' + safeId);
             const editBtn = document.getElementById('edit-btn-' + safeId);
+            const refreshBtn = document.getElementById('refresh-btn-' + safeId);
             
             if (displayEl && inputEl && editBtn) {
               inputEl.style.display = 'none';
               displayEl.style.display = 'block';
               editBtn.style.display = 'inline-block';
+              if (refreshBtn) refreshBtn.style.display = 'inline-block';
               const card = document.querySelector('.account-card[data-email="' + email + '"]');
               if (card) {
                 inputEl.value = card.getAttribute('data-alias') || '';
@@ -3248,6 +2971,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             const displayEl = document.getElementById('name-display-' + safeId);
             const inputEl = document.getElementById('name-input-' + safeId);
             const editBtn = document.getElementById('edit-btn-' + safeId);
+            const refreshBtn = document.getElementById('refresh-btn-' + safeId);
             
             if (inputEl && inputEl.style.display !== 'none') {
               const newValue = inputEl.value.trim();
@@ -3255,6 +2979,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               inputEl.style.display = 'none';
               if (displayEl) displayEl.style.display = 'block';
               if (editBtn) editBtn.style.display = 'inline-block';
+              if (refreshBtn) refreshBtn.style.display = 'inline-block';
               
               vscode.postMessage({
                 command: 'updateAlias',
@@ -3274,24 +2999,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             }
           }
 
-          // Delegate click on toolbar containers to trigger the underlying select picker
-          document.addEventListener('click', function(e) {
-            const container = e.target.closest('.toolbar-sort, .toolbar-scan');
-            if (container) {
-              const select = container.querySelector('select');
-              if (select && e.target !== select) {
-                if (typeof select.showPicker === 'function') {
-                  try {
-                    select.showPicker();
-                  } catch (err) {
-                    select.focus();
-                  }
-                } else {
-                  select.focus();
-                }
-              }
-            }
-          });
+
 
           // ── Progressive refresh messages ──
           function setActionsDisabled(disabled) {
@@ -3472,8 +3180,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       let resetTime: string | undefined;
 
       if (typeof rawV === 'object' && rawV !== null && 'value' in rawV) {
-        value = rawV.value;
-        resetTime = rawV.resetTime;
+        const obj = rawV as any;
+        value = typeof obj.value === 'number' ? obj.value : Number(obj.value);
+        resetTime = obj.resetTime;
       } else {
         continue; // Skip credits
       }
@@ -3649,9 +3358,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
   /**
    * Renders the HTML template for a single account card.
    */
-  private renderAccountCard(acc: Account, effectivePreferred: string): string {
+  private renderAccountCard(acc: any, effectivePreferred: string): string {
     const i18n = I18nService.getInstance();
-    const displayName = acc.alias || acc.name || acc.email;
+    const displayName = acc.alias || acc.name || acc.displayName || acc.email;
     
     const formatTime = (resetTimeStr?: string) => {
        if (!resetTimeStr) return i18n.t('webview.unspecified');
@@ -3690,8 +3399,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         let resetTime: string | undefined;
         
         if (typeof rawV === 'object' && rawV !== null && 'value' in rawV) {
-           value = rawV.value;
-           resetTime = rawV.resetTime;
+           const obj = rawV as any;
+           value = typeof obj.value === 'number' ? obj.value : Number(obj.value);
+           resetTime = obj.resetTime;
         } else {
            value = typeof rawV === 'number' ? rawV : Number(rawV);
            creditBalances.push({ key: k, value });
@@ -3916,18 +3626,23 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     const avatarClass = isExpired ? 'avatar-expired' : isIneligible ? 'avatar-ineligible' : '';
+    const safeEmailId = acc.email.replace(/[@.]/g, '-');
 
     return `
-      <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''} ${isIneligible ? 'ineligible' : ''} ${acc.status === AccountStatus.DEPLETED ? 'depleted' : ''}" data-email="${acc.email}" data-name="${displayName}" data-status="${acc.status}">
+      <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''} ${isIneligible ? 'ineligible' : ''} ${acc.status === AccountStatus.DEPLETED ? 'depleted' : ''}" data-email="${acc.email}" data-name="${displayName}" data-alias="${acc.alias || ''}" data-status="${acc.status}">
         <div class="card-header">
           ${acc.avatarUrl ? `<img class="avatar ${avatarClass}" src="${acc.avatarUrl}" alt="${displayName}" />` : `<div class="avatar ${avatarClass}">${displayName.charAt(0).toUpperCase()}</div>`}
           <div class="user-info">
-            <h4 style="display: flex; align-items: center; gap: 6px;">
-              ${displayName}
-              <button class="btn-card-refresh" onclick="event.stopPropagation(); handleSingleRefresh(this, '${acc.email}')" title="${i18n.t('accounts.refreshThisAccount')}">
+            <div class="name-container" style="display:flex; align-items:center; gap:6px;">
+              <h4 class="display-name-text" id="name-display-${safeEmailId}" style="margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;">${displayName}</h4>
+              <input type="text" class="edit-alias-input" id="name-input-${safeEmailId}" value="${acc.alias || ''}" placeholder="${i18n.t('webview.editAliasPlaceholder')}" style="display:none; padding:2px 6px; font-size:0.9em; font-family:inherit; background:var(--vscode-input-background); color:var(--vscode-input-foreground); border:1px solid var(--vscode-input-border); border-radius:3px; max-width:130px;" onkeydown="handleAliasKey(event, '${acc.email}')" onblur="saveAlias('${acc.email}')" />
+              <button class="edit-alias-btn" id="edit-btn-${safeEmailId}" onclick="startEditAlias('${acc.email}')" title="${i18n.t('webview.editAliasTooltip')}" style="background:none; border:none; padding:2px; cursor:pointer; color:var(--text-secondary); opacity:0.6; display:flex; align-items:center;">
+                <svg class="icon-svg" style="width:13px; height:13px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              </button>
+              <button class="btn-card-refresh" id="refresh-btn-${safeEmailId}" onclick="event.stopPropagation(); handleSingleRefresh(this, '${acc.email}')" title="${i18n.t('accounts.refreshThisAccount')}">
                 <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
               </button>
-            </h4>
+            </div>
             <p>${acc.email}</p>
           </div>
           ${activeBadge}

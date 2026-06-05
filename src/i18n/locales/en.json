@@ -233,6 +233,7 @@
   },
   "service": {
     "generatingDeviceProfile": "Generating device profile...",
+    "refreshQueued": "Scan is on cooldown. It will start automatically in {{seconds}} seconds...",
     "accountAddedErrorBalance": "Account {{email}} added, but fetching balance failed. Will retry later.",
     "accountAddedSuccess": "Account {{email}} added successfully. Balances: [{{balances}}]",
     "accountAddError": "Error adding account: {{error}}",

@@ -233,6 +233,7 @@
   },
   "service": {
     "generatingDeviceProfile": "جاري إنشاء بصمة الجهاز...",
+    "refreshQueued": "عملية الفحص في فترة التهدئة. ستبدأ تلقائيًا بعد {{seconds}} ثوانٍ...",
     "accountAddedErrorBalance": "تمت إضافة الحساب {{email}}، ولكن فشل جلب الرصيد. سيتم المحاولة لاحقاً.",
     "accountAddedSuccess": "تم إضافة الحساب {{email}} بنجاح. الأرصدة: [{{balances}}]",
     "accountAddError": "خطأ أثناء إضافة الحساب: {{error}}",

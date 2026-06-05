@@ -26,12 +26,23 @@ export class AccountService {
     this._onAccountsChanged.fire();
   }
 
+  /** Cancel any scheduled queued refresh */
+  public cancelQueue(): void {
+    if (this._queuedTimeout) {
+      clearTimeout(this._queuedTimeout);
+      this._queuedTimeout = null;
+      Logger.getInstance().info('Queued refresh cancelled.');
+    }
+  }
+
   /** Timestamp of the last successful refresh start (ms) */
   private _lastRefreshTime: number = 0;
   /** Minimum interval between refreshes in milliseconds (30 seconds) */
   private static readonly REFRESH_COOLDOWN_MS = 30_000;
   /** Whether a refresh is currently in progress */
   private _isRefreshing: boolean = false;
+  /** Timeout for automatic queued refresh */
+  private _queuedTimeout: NodeJS.Timeout | null = null;
 
   constructor(
     private authService: AuthService,
@@ -245,12 +256,28 @@ export class AccountService {
     const now = Date.now();
     const elapsed = now - this._lastRefreshTime;
     if (elapsed < AccountService.REFRESH_COOLDOWN_MS) {
-      const remainingSec = Math.ceil((AccountService.REFRESH_COOLDOWN_MS - elapsed) / 1000);
-      Logger.getInstance().info(`Refresh cooldown active. ${remainingSec}s remaining.`);
+      const remainingMs = AccountService.REFRESH_COOLDOWN_MS - elapsed;
+      const remainingSec = Math.ceil(remainingMs / 1000);
+      Logger.getInstance().info(`Refresh cooldown active. Queueing next refresh in ${remainingSec}s.`);
+      
+      this.cancelQueue();
+      
       if (notify) {
         const i18n = I18nService.getInstance();
-        vscode.window.showInformationMessage(i18n.t('service.refreshCooldown', { seconds: remainingSec }));
+        vscode.window.showInformationMessage(
+          i18n.t('service.refreshQueued', { seconds: remainingSec })
+        );
       }
+
+      this._queuedTimeout = setTimeout(async () => {
+        this._queuedTimeout = null;
+        try {
+          await this.refreshBalancesWorkflow(notify, options);
+        } catch (err) {
+          Logger.getInstance().error('Error executing queued refresh balances', err);
+        }
+      }, remainingMs);
+
       return;
     }
 

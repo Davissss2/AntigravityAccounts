@@ -233,6 +233,7 @@
   },
   "service": {
     "generatingDeviceProfile": "Generando perfil de dispositivo...",
+    "refreshQueued": "El escáner está en enfriamiento. Se iniciará automáticamente en {{seconds}} segundos...",
     "accountAddedErrorBalance": "Cuenta {{email}} agregada, pero falló al obtener el saldo. Se reintentará más tarde.",
     "accountAddedSuccess": "Cuenta {{email}} agregada con éxito. Saldos: [{{balances}}]",
     "accountAddError": "Error al agregar la cuenta: {{error}}",
