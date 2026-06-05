@@ -5,9 +5,13 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.8] - 2026-06-04
+## [0.1.8] - 2026-06-05
 
 ### Added
+- **Account Aliases**: Inline editing (pencil button next to account names) to assign custom nicknames (e.g., "Work", "Personal") directly from the sidebar.
+- **Customizable Low Credit Notifications**: Integrated settings toggle in sidebar and package.json to enable/disable native alerts when model credits run low.
+- **Visual Upgrades**: Modern gradient progress bars (Emerald/Teal, Amber, Red/Rose) with a glassmorphic shimmer micro-animation.
+- **Watch & Auto-Sync**: Developer automation script to watch files and compile/sync assets directly to the active IDE extensions directory in real-time.
 - **Filtering & Sorting Toolbar**: Visual controls for sorting accounts (Default, Name A-Z, Name Z-A, Date Added, Remaining Quota) and segment scanning (All, With Quota, Without Quota).
 - **Local Scanning Cache**: New `cacheDurationDays` setting to cache account balance status and skip scanning recently updated accounts, reducing API hits and rate limiting.
 - **Real-Time Card Updates**: The panel UI now updates cards in real-time as they finish scanning instead of waiting for the full process to complete.

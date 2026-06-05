@@ -65,6 +65,13 @@ export class ExtensionConfig {
   }
 
   /**
+   * Whether low credit notifications are enabled
+   */
+  isLowCreditNotificationsEnabled(): boolean {
+    return this.getConfig().get<boolean>('lowCreditNotificationsEnabled', true);
+  }
+
+  /**
    * Get the cache validity duration in days
    */
   getCacheDurationDays(): number {

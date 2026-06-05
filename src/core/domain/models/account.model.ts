@@ -89,6 +89,7 @@ export interface AccountTokens {
 export interface AccountSummary {
   email: string;
   displayName: string; // alias || name || email
+  alias?: string;
   avatarUrl?: string;
   balances?: Record<string, any>;
   status: AccountStatus;

@@ -149,6 +149,11 @@
           "minimum": 10,
           "description": "Credit threshold for low balance warning"
         },
+        "antigravityAccount.lowCreditNotificationsEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable native notifications when account credit balance falls below the threshold or gets depleted"
+        },
         "antigravityAccount.autoRotateEnabled": {
           "type": "boolean",
           "default": false,
@@ -185,8 +190,8 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
-    "build": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:sql.js --format=cjs --platform=node --minify && node -e \"const fs = require('fs'); fs.mkdirSync('dist/presentation/theme', { recursive: true }); fs.copyFileSync('src/presentation/theme/global.css', 'dist/presentation/theme/global.css');\"",
-    "watch": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:sql.js --format=cjs --platform=node --sourcemap --watch",
+    "build": "node scripts/build.js",
+    "watch": "node scripts/build.js --watch",
     "compile": "tsc -p ./",
     "lint": "eslint src --ext ts",
     "package": "npx -y @vscode/vsce package",

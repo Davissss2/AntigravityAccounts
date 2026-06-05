@@ -94,7 +94,21 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
     // Handle messages sent from the Webview HTML UI
     webviewView.webview.onDidReceiveMessage(async (message) => {
+      Logger.getInstance().info(`[Webview Message] Received: ${JSON.stringify(message)}`);
       switch (message.command) {
+        case 'logError':
+          Logger.getInstance().error(`[Webview JS Error] ${message.message} at ${message.source}:${message.lineno}:${message.colno}. Stack: ${message.stack}`);
+          break;
+        case 'consoleLog':
+          const logMsg = `[Webview Console] [${message.level}] ${message.args.join(' ')}`;
+          if (message.level === 'error') {
+            Logger.getInstance().error(logMsg);
+          } else if (message.level === 'warn') {
+            Logger.getInstance().warn(logMsg);
+          } else {
+            Logger.getInstance().info(logMsg);
+          }
+          break;
         case 'addAccount':
           vscode.commands.executeCommand('antigravity-account.addAccount');
           break;
@@ -110,6 +124,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             } else {
               this._view?.webview.postMessage({ command: 'accountSwitchCancelled', email: message.email });
             }
+          }
+          break;
+        case 'updateAlias':
+          if (message.email && message.alias !== undefined) {
+            await this.accountRepo.updateAccount(message.email, { alias: message.alias.trim() || undefined });
+            this.accountService.emitAccountsChanged();
           }
           break;
         case 'deleteAccount':
@@ -170,6 +190,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
           if (message.autoRotateEnabled !== undefined) {
             await vscode.workspace.getConfiguration('antigravityAccount').update('autoRotateEnabled', message.autoRotateEnabled, vscode.ConfigurationTarget.Global);
+          }
+          if (message.lowCreditNotificationsEnabled !== undefined) {
+            await vscode.workspace.getConfiguration('antigravityAccount').update('lowCreditNotificationsEnabled', message.lowCreditNotificationsEnabled, vscode.ConfigurationTarget.Global);
           }
           if (message.refreshIntervalMinutes !== undefined) {
             await vscode.workspace.getConfiguration('antigravityAccount').update('refreshIntervalMinutes', message.refreshIntervalMinutes, vscode.ConfigurationTarget.Global);
@@ -246,7 +269,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
    */
   public async refresh() {
     if (this._view) {
-      this._view.webview.html = await this._getHtmlForWebview(this._view.webview);
+      const html = await this._getHtmlForWebview(this._view.webview);
+      Logger.getInstance().info('--- WEBVIEW HTML START ---');
+      Logger.getInstance().info(html);
+      Logger.getInstance().info('--- WEBVIEW HTML END ---');
+      this._view.webview.html = html;
     }
   }
 
@@ -805,6 +832,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const configLanguage = vscode.workspace.getConfiguration('antigravityAccount').get<string>('language', 'auto');
     const configAutoRefresh = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('autoRefreshEnabled', true);
     const configAutoRotate = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('autoRotateEnabled', false);
+    const configLowCreditNotifications = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('lowCreditNotificationsEnabled', true);
     const configRefreshInterval = vscode.workspace.getConfiguration('antigravityAccount').get<number>('refreshIntervalMinutes', 15);
     const configSortBy = vscode.workspace.getConfiguration('antigravityAccount').get<string>('sortBy', 'default');
     const configCacheDurationDays = vscode.workspace.getConfiguration('antigravityAccount').get<number>('cacheDurationDays', 7);
@@ -1156,13 +1184,20 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       }
 
       const avatarClass = isExpired ? 'avatar-expired' : isIneligible ? 'avatar-ineligible' : '';
+      const safeEmailId = acc.email.replace(/[@.]/g, '-');
 
       return `
-        <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''} ${isIneligible ? 'ineligible' : ''}" data-email="${acc.email}" data-name="${acc.displayName}">
+        <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''} ${isIneligible ? 'ineligible' : ''}" data-email="${acc.email}" data-name="${acc.displayName}" data-alias="${acc.alias || ''}">
           <div class="card-header">
             ${acc.avatarUrl ? `<img class="avatar ${avatarClass}" src="${acc.avatarUrl}" alt="${acc.displayName}" />` : `<div class="avatar ${avatarClass}">${acc.displayName.charAt(0).toUpperCase()}</div>`}
             <div class="user-info">
-              <h4>${acc.displayName}</h4>
+              <div class="name-container" style="display:flex; align-items:center; gap:6px;">
+                <h4 class="display-name-text" id="name-display-${safeEmailId}">${acc.displayName}</h4>
+                <input type="text" class="edit-alias-input" id="name-input-${safeEmailId}" value="${acc.alias || ''}" placeholder="${i18n.t('webview.editAliasPlaceholder')}" style="display:none; padding:2px 6px; font-size:0.9em; font-family:inherit; background:var(--vscode-input-background); color:var(--vscode-input-foreground); border:1px solid var(--vscode-input-border); border-radius:3px; max-width:130px;" onkeydown="handleAliasKey(event, '${acc.email}')" onblur="saveAlias('${acc.email}')" />
+                <button class="edit-alias-btn" id="edit-btn-${safeEmailId}" onclick="startEditAlias('${acc.email}')" title="${i18n.t('webview.editAliasTooltip')}" style="background:none; border:none; padding:2px; cursor:pointer; color:var(--text-secondary); opacity:0.6; display:flex; align-items:center;">
+                  <svg class="icon-svg" style="width:13px; height:13px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                </button>
+              </div>
               <p>${acc.email}</p>
             </div>
             ${activeBadge}
@@ -1810,25 +1845,59 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .progress-bar-container {
             width: 100%;
             height: 6px;
-            background: rgba(255,255,255,0.06);
-            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 4px;
             overflow: hidden;
             margin-bottom: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
           }
 
           .progress-bar {
             height: 100%;
-            border-radius: 3px;
-            transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            border-radius: 4px;
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
           }
 
-          .bg-high { background: var(--success-color); }
-          .bg-med { background: var(--warning-color); }
-          .bg-low { background: var(--danger-color); }
+          /* Subtle shimmer animation for premium feel */
+          .progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(
+              90deg,
+              rgba(255, 255, 255, 0) 0%,
+              rgba(255, 255, 255, 0.15) 50%,
+              rgba(255, 255, 255, 0) 100%
+            );
+            transform: translateX(-100%);
+            animation: shimmer-effect 2.5s infinite;
+          }
+
+          @keyframes shimmer-effect {
+            100% {
+              transform: translateX(100%);
+            }
+          }
+
+          .bg-high {
+            background: linear-gradient(90deg, #10b981, #059669);
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+          }
+          .bg-med {
+            background: linear-gradient(90deg, #f59e0b, #d97706);
+            box-shadow: 0 0 8px rgba(245, 158, 11, 0.3);
+          }
+          .bg-low {
+            background: linear-gradient(90deg, #ef4444, #dc2626);
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+          }
           
-          .bg-high-text { color: var(--success-color); }
-          .bg-med-text { color: var(--warning-color); }
-          .bg-low-text { color: var(--danger-color); }
+          .bg-high-text { color: #10b981; font-weight: 600; text-shadow: 0 0 8px rgba(16, 185, 129, 0.2); }
+          .bg-med-text { color: #f59e0b; font-weight: 600; text-shadow: 0 0 8px rgba(245, 158, 11, 0.2); }
+          .bg-low-text { color: #ef4444; font-weight: 600; text-shadow: 0 0 8px rgba(239, 68, 68, 0.2); }
 
           .model-percentage {
             font-size: 0.72rem;
@@ -2516,6 +2585,16 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               </div>
               <p style="font-size:0.82em; opacity:0.65; margin:0 0 12px 0;">${i18n.t('webview.autoRotateDescription')}</p>
 
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; margin-top:12px;">
+                <label for="lowCreditNotificationsToggle" style="font-weight:bold; cursor:pointer;">${i18n.t('webview.lowCreditNotificationsLabel')}</label>
+                <label style="position:relative; display:inline-block; width:40px; height:22px; cursor:pointer;">
+                  <input type="checkbox" id="lowCreditNotificationsToggle" ${configLowCreditNotifications ? 'checked' : ''} onchange="onLowCreditNotificationsToggle()" style="opacity:0; width:0; height:0;">
+                  <span id="lowCreditNotificationsTrack" style="position:absolute; inset:0; background:${configLowCreditNotifications ? '#4caf50' : 'var(--glass-border)'}; border-radius:11px; transition:background 0.3s, box-shadow 0.3s; ${configLowCreditNotifications ? 'box-shadow:0 0 6px rgba(76,175,80,0.4);' : ''}"></span>
+                  <span id="lowCreditNotificationsSlider" style="position:absolute; top:2px; ${isRtl ? 'right' : 'left'}:2px; width:18px; height:18px; background:var(--text-primary); border-radius:50%; transition:0.3s; ${configLowCreditNotifications ? (isRtl ? 'right:20px' : 'left:20px') : ''}"></span>
+                </label>
+              </div>
+              <p style="font-size:0.82em; opacity:0.65; margin:0 0 12px 0;">${i18n.t('webview.lowCreditNotificationsDescription')}</p>
+
               <div id="refreshIntervalGroup" style="${configAutoRefresh ? '' : 'opacity:0.4; pointer-events:none;'}">
                 <label for="refreshIntervalSelect" style="display:block; margin-bottom:6px; font-weight:bold; font-size:0.9em;">${i18n.t('webview.refreshIntervalLabel')}</label>
                 <select id="refreshIntervalSelect" style="width:100%; padding:8px; background:var(--vscode-dropdown-background); color:var(--vscode-dropdown-foreground); border:1px solid var(--vscode-dropdown-border); border-radius:4px;">
@@ -2550,9 +2629,36 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         </div>
 
         <script>
+          const vscode = acquireVsCodeApi();
+          
           window.onerror = function(message, source, lineno, colno, error) {
-            alert("JS Error: " + message + " at line " + lineno + ":" + colno + "\nStack:\n" + (error ? error.stack : 'No stack'));
+            vscode.postMessage({
+              command: 'logError',
+              message: message,
+              source: source,
+              lineno: lineno,
+              colno: colno,
+              stack: error ? error.stack : 'No stack'
+            });
             return false;
+          };
+
+          // Redirect console logs to extension host for debugging
+          const originalLog = console.log;
+          const originalError = console.error;
+          const originalWarn = console.warn;
+          
+          console.log = function(...args) {
+            originalLog.apply(console, args);
+            vscode.postMessage({ command: 'consoleLog', level: 'info', args: args.map(String) });
+          };
+          console.error = function(...args) {
+            originalError.apply(console, args);
+            vscode.postMessage({ command: 'consoleLog', level: 'error', args: args.map(String) });
+          };
+          console.warn = function(...args) {
+            originalWarn.apply(console, args);
+            vscode.postMessage({ command: 'consoleLog', level: 'warn', args: args.map(String) });
           };
         </script>
         <script>
@@ -2561,13 +2667,14 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           const hasAccounts = ${accounts.length > 0};
           const currentAutoRefresh = ${configAutoRefresh};
           const currentAutoRotate = ${configAutoRotate};
+          const currentLowCreditNotifications = ${configLowCreditNotifications};
           const currentRefreshInterval = ${configRefreshInterval};
           const currentSortBy = ${JSON.stringify(configSortBy)};
           const currentCacheDurationDays = ${configCacheDurationDays};
           const isRtlDir = ${isRtl};
           const savedSearchQuery = ${JSON.stringify(this._searchQuery)};
           
-          const vscode = acquireVsCodeApi();
+          // vscode is now defined in the first script tag globally to allow window.onerror logging before this script runs.
 
           function toggleModels(headerElement, wrapperId) {
             const wrapper = document.getElementById(wrapperId);
@@ -2861,7 +2968,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                    c.style.pointerEvents = 'auto';
                 });
              } else if (message.command === 'accountSwitchCancelled') {
-                const btn = document.querySelector('button[onclick*="\\'' + message.email + '\\'"]');
+                const btn = document.querySelector('button[onclick*="' + message.email + '"]');
                 if (btn) {
                    btn.disabled = false;
                    btn.innerText = btn.dataset.originalText || '${i18n.t('accounts.activate')}';
@@ -2892,7 +2999,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                 openSettings();
               }
             } catch (err) {
-              alert("Error in handleMenuAction: " + err.message + "\nStack:\n" + err.stack);
+              alert("Error in handleMenuAction: " + err.message + "\\nStack:\\n" + err.stack);
             }
           }
 
@@ -2923,6 +3030,21 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             const toggle = document.getElementById('autoRotateToggle');
             const slider = document.getElementById('autoRotateSlider');
             const track = document.getElementById('autoRotateTrack');
+            if (toggle.checked) {
+              slider.style[isRtlDir ? 'right' : 'left'] = '20px';
+              track.style.background = '#4caf50';
+              track.style.boxShadow = '0 0 6px rgba(76,175,80,0.4)';
+            } else {
+              slider.style[isRtlDir ? 'right' : 'left'] = '2px';
+              track.style.background = 'var(--glass-border)';
+              track.style.boxShadow = 'none';
+            }
+          }
+
+          function onLowCreditNotificationsToggle() {
+            const toggle = document.getElementById('lowCreditNotificationsToggle');
+            const slider = document.getElementById('lowCreditNotificationsSlider');
+            const track = document.getElementById('lowCreditNotificationsTrack');
             if (toggle.checked) {
               slider.style[isRtlDir ? 'right' : 'left'] = '20px';
               track.style.background = '#4caf50';
@@ -3012,6 +3134,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               onAutoRotateToggle();
             }
 
+            const lowCreditNotificationsToggle = document.getElementById('lowCreditNotificationsToggle');
+            if (lowCreditNotificationsToggle) {
+              lowCreditNotificationsToggle.checked = currentLowCreditNotifications;
+              onLowCreditNotificationsToggle();
+            }
+
             // Reset sort-by and cache-duration to current values
             const sortBySettingsSelect = document.getElementById('sortBySettingsSelect');
             if (sortBySettingsSelect) {
@@ -3025,7 +3153,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             modal.style.display = 'flex';
             attachIntervalListener();
             } catch (err) {
-              alert("Error in openSettings: " + err.message + "\nStack:\n" + err.stack);
+              alert("Error in openSettings: " + err.message + "\\nStack:\\n" + err.stack);
             }
           }
 
@@ -3044,6 +3172,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             const autoRefreshEnabled = autoRefreshToggle ? autoRefreshToggle.checked : true;
             const autoRotateToggle = document.getElementById('autoRotateToggle');
             const autoRotateEnabled = autoRotateToggle ? autoRotateToggle.checked : false;
+            const lowCreditNotificationsToggle = document.getElementById('lowCreditNotificationsToggle');
+            const lowCreditNotificationsEnabled = lowCreditNotificationsToggle ? lowCreditNotificationsToggle.checked : true;
             const intervalSelect = document.getElementById('refreshIntervalSelect');
             const refreshInterval = intervalSelect ? parseInt(intervalSelect.value) : 15;
             
@@ -3058,6 +3188,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               preferredModel: selectedModel,
               autoRefreshEnabled: autoRefreshEnabled,
               autoRotateEnabled: autoRotateEnabled,
+              lowCreditNotificationsEnabled: lowCreditNotificationsEnabled,
               refreshIntervalMinutes: refreshInterval,
               sortBy: selectedSortBy,
               cacheDurationDays: selectedCacheDuration
@@ -3070,6 +3201,69 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           // Modify sendMessage to handle additional payload if needed
           function sendMessage(command, email = null, modelKey = null) {
             vscode.postMessage({ command, email, modelKey });
+          }
+
+          function startEditAlias(email) {
+            const safeId = email.replace(/[@.]/g, '-');
+            const displayEl = document.getElementById('name-display-' + safeId);
+            const inputEl = document.getElementById('name-input-' + safeId);
+            const editBtn = document.getElementById('edit-btn-' + safeId);
+            
+            if (displayEl && inputEl && editBtn) {
+              displayEl.style.display = 'none';
+              editBtn.style.display = 'none';
+              inputEl.style.display = 'inline-block';
+              inputEl.focus();
+              inputEl.select();
+            }
+          }
+
+          function cancelEditAlias(email) {
+            const safeId = email.replace(/[@.]/g, '-');
+            const displayEl = document.getElementById('name-display-' + safeId);
+            const inputEl = document.getElementById('name-input-' + safeId);
+            const editBtn = document.getElementById('edit-btn-' + safeId);
+            
+            if (displayEl && inputEl && editBtn) {
+              inputEl.style.display = 'none';
+              displayEl.style.display = 'block';
+              editBtn.style.display = 'inline-block';
+              const card = document.querySelector('.account-card[data-email="' + email + '"]');
+              if (card) {
+                inputEl.value = card.getAttribute('data-alias') || '';
+              }
+            }
+          }
+
+          function saveAlias(email) {
+            const safeId = email.replace(/[@.]/g, '-');
+            const displayEl = document.getElementById('name-display-' + safeId);
+            const inputEl = document.getElementById('name-input-' + safeId);
+            const editBtn = document.getElementById('edit-btn-' + safeId);
+            
+            if (inputEl && inputEl.style.display !== 'none') {
+              const newValue = inputEl.value.trim();
+              
+              inputEl.style.display = 'none';
+              if (displayEl) displayEl.style.display = 'block';
+              if (editBtn) editBtn.style.display = 'inline-block';
+              
+              vscode.postMessage({
+                command: 'updateAlias',
+                email: email,
+                alias: newValue
+              });
+            }
+          }
+
+          function handleAliasKey(event, email) {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              saveAlias(email);
+            } else if (event.key === 'Escape') {
+              event.preventDefault();
+              cancelEditAlias(email);
+            }
           }
 
           // ── Progressive refresh messages ──

@@ -223,7 +223,13 @@
     "cacheDurationLabel": "Cache Validity Duration",
     "cacheDurationDescription": "Saves time by not scanning this account if it was refreshed within this period.",
     "day": "Day",
-    "days": "Days"
+    "days": "Days",
+    "lowCreditNotificationsLabel": "Low Credit Notifications",
+    "lowCreditNotificationsDescription": "Receive desktop/native warning notifications when any active model's credit balance gets below the threshold.",
+    "editAliasTooltip": "Edit account alias",
+    "editAliasPlaceholder": "Alias (e.g. Work, Personal)",
+    "saveAliasTooltip": "Save alias",
+    "cancelAliasTooltip": "Cancel"
   },
   "service": {
     "generatingDeviceProfile": "Generating device profile...",

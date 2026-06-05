@@ -223,7 +223,13 @@
     "cacheDurationLabel": "فترة صلاحية التخزين المؤقت",
     "cacheDurationDescription": "يوفر الوقت بعدم فحص هذا الحساب إذا تم تحديثه خلال هذه الفترة.",
     "day": "يوم",
-    "days": "أيام"
+    "days": "أيام",
+    "lowCreditNotificationsLabel": "إشعارات الرصيد المنخفض",
+    "lowCreditNotificationsDescription": "تلقي إشعارات تنبيهية على سطح المكتب عندما ينخفض رصيد أي نموذج نشط عن الحد المسموح به.",
+    "editAliasTooltip": "تعديل الاسم المستعار للحساب",
+    "editAliasPlaceholder": "الاسم المستعار (مثال: العمل، شخصي)",
+    "saveAliasTooltip": "حفظ الاسم المستعار",
+    "cancelAliasTooltip": "إلغاء"
   },
   "service": {
     "generatingDeviceProfile": "جاري إنشاء بصمة الجهاز...",

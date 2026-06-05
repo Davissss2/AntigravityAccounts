@@ -21,9 +21,10 @@
 
 ## ✨ Features
 
-- 👤 **Multi-Account Management:** Securely add and store multiple Google/Antigravity accounts.
-- ⚡ **One-Click Seamless Switching:** Switch active Antigravity accounts instantly from the sidebar. Re-authenticating is a thing of the past.
-- 📊 **Real-Time Credit Monitoring:** Live track your remaining credits for all models (Claude, Gemini, etc.) directly in the sidebar or status bar.
+- 👤 **Multi-Account Management:** Securely add multiple Google/Antigravity accounts and assign custom nicknames/aliases.
+- ⚡ **One-Click Seamless Switching:** Switch active Antigravity accounts instantly from the sidebar.
+- 📊 **Real-Time Credit Monitoring:** Live track your remaining credits for all models directly in the sidebar or status bar.
+- 🔔 **Customizable Credit Alerts:** Native notifications when your credits fall below the configured threshold.
 - 🔄 **Automatic Account Rotation:** Automatically cycles to the next healthy account with credits when your current one becomes depleted.
 - 🔐 **Secure Export & Import:** Encrypt backup files with a password to safely move accounts across machines.
 

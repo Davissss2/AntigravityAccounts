@@ -365,9 +365,10 @@ export class AccountService {
       
       let status = balanceInfo.hasError ? AccountStatus.ERROR : AccountStatus.ACTIVE;
       
+      let totalCredits = 0;
       if (!balanceInfo.hasError) {
         const values = Object.values(balanceInfo.balances);
-        const totalCredits = values.reduce((sum: number, val: any) => sum + (typeof val === 'number' ? val : (val?.value || 0)), 0);
+        totalCredits = values.reduce((sum: number, val: any) => sum + (typeof val === 'number' ? val : (val?.value || 0)), 0);
 
         if (values.length > 0 && totalCredits <= 0) {
           status = AccountStatus.DEPLETED;
@@ -386,6 +387,16 @@ export class AccountService {
 
       // Notify UI: this account is done with updated data
       options?.onAccountDone?.(account.email, balanceInfo.balances, status);
+
+      // Trigger low balance warning native notification if enabled
+      if (config.isLowCreditNotificationsEnabled() && !balanceInfo.hasError) {
+        const i18n = I18nService.getInstance();
+        if (status === AccountStatus.DEPLETED) {
+          vscode.window.showWarningMessage(i18n.t('notifications.depleted', { email: account.email }));
+        } else if (status === AccountStatus.LOW_BALANCE) {
+          vscode.window.showWarningMessage(i18n.t('notifications.lowBalance', { email: account.email, amount: totalCredits }));
+        }
+      }
 
       // Check if we need to auto-rotate
       const isAutoRotate = ExtensionConfig.getInstance().isAutoRotateEnabled();
@@ -467,10 +478,10 @@ export class AccountService {
     const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken);
 
     let status = balanceInfo.hasError ? AccountStatus.ERROR : AccountStatus.ACTIVE;
-
+    let totalCredits = 0;
     if (!balanceInfo.hasError) {
       const values = Object.values(balanceInfo.balances);
-      const totalCredits = values.reduce((sum: number, val: any) => sum + (typeof val === 'number' ? val : (val?.value || 0)), 0);
+      totalCredits = values.reduce((sum: number, val: any) => sum + (typeof val === 'number' ? val : (val?.value || 0)), 0);
 
       if (values.length > 0 && totalCredits <= 0) {
         status = AccountStatus.DEPLETED;
@@ -487,6 +498,16 @@ export class AccountService {
     });
 
     callbacks?.onDone?.(email, balanceInfo.balances, status);
+
+    // Trigger low balance warning native notification if enabled
+    if (config.isLowCreditNotificationsEnabled() && !balanceInfo.hasError) {
+      const i18n = I18nService.getInstance();
+      if (status === AccountStatus.DEPLETED) {
+        vscode.window.showWarningMessage(i18n.t('notifications.depleted', { email }));
+      } else if (status === AccountStatus.LOW_BALANCE) {
+        vscode.window.showWarningMessage(i18n.t('notifications.lowBalance', { email, amount: totalCredits }));
+      }
+    }
 
     const isAutoRotate = ExtensionConfig.getInstance().isAutoRotateEnabled();
     if (isAutoRotate && status === AccountStatus.DEPLETED) {
