@@ -1412,6 +1412,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             padding: 6px 10px;
             box-sizing: border-box;
             transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            user-select: none;
+            -webkit-user-select: none;
+            cursor: pointer;
           }
           .toolbar-sort:hover, .toolbar-scan:hover {
             border-color: var(--focus-border);
@@ -1427,6 +1430,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             outline: none;
             cursor: pointer;
             width: 100%;
+            user-select: none;
+            -webkit-user-select: none;
           }
           .toolbar-sort select option, .toolbar-scan select option {
             background: var(--surface-color);
@@ -1439,6 +1444,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            user-select: none;
+            -webkit-user-select: none;
+            pointer-events: none;
           }
 
           .card-header {
@@ -3265,6 +3273,25 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               cancelEditAlias(email);
             }
           }
+
+          // Delegate click on toolbar containers to trigger the underlying select picker
+          document.addEventListener('click', function(e) {
+            const container = e.target.closest('.toolbar-sort, .toolbar-scan');
+            if (container) {
+              const select = container.querySelector('select');
+              if (select && e.target !== select) {
+                if (typeof select.showPicker === 'function') {
+                  try {
+                    select.showPicker();
+                  } catch (err) {
+                    select.focus();
+                  }
+                } else {
+                  select.focus();
+                }
+              }
+            }
+          });
 
           // ── Progressive refresh messages ──
           function setActionsDisabled(disabled) {
