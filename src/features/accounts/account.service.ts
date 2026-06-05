@@ -218,6 +218,19 @@ export class AccountService {
   }
 
   /**
+   * Get the active account's tokens directly from Antigravity's state database.
+   */
+  async getActiveAntigravityTokens(): Promise<{ accessToken: string; refreshToken: string; expiresAt: number } | null> {
+    try {
+      return await this.stateDbService.readActiveTokensFromDb();
+    } catch (error) {
+      Logger.getInstance().error('Failed to read active tokens from Antigravity', error);
+      return null;
+    }
+  }
+
+
+  /**
    * Workflow: Refresh all balances
    * Loops through all stored accounts and updates their credits/status.
    * 
@@ -366,18 +379,23 @@ export class AccountService {
 
       const now = Math.floor(Date.now() / 1000);
       
-      // Auto-refresh token if needed before API call
+      // Auto-refresh token if needed before API call (unless it's the active IDE account)
       if (tokens.expiresAt < (now + 300)) {
-         try {
-           const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
-           tokens.accessToken = newTokens.accessToken;
-           tokens.expiresAt = now + newTokens.expiresIn;
-           await this.accountRepo.storeTokens(account.email, tokens);
-         } catch(e) {
-           Logger.getInstance().warn(`Skipping balance fetch for ${account.email} due to expired token.`);
-           await this.accountRepo.updateAccount(account.email, { status: AccountStatus.TOKEN_EXPIRED });
-           options?.onAccountDone?.(account.email, undefined, AccountStatus.TOKEN_EXPIRED);
-           continue; 
+         const isActive = activeEmail && isEmailMatch(account.email, activeEmail);
+         if (isActive) {
+           Logger.getInstance().info(`Skipping background token refresh for active account ${account.email} to prevent session invalidation.`);
+         } else {
+           try {
+             const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
+             tokens.accessToken = newTokens.accessToken;
+             tokens.expiresAt = now + newTokens.expiresIn;
+             await this.accountRepo.storeTokens(account.email, tokens);
+           } catch(e) {
+             Logger.getInstance().warn(`Skipping balance fetch for ${account.email} due to expired token.`);
+             await this.accountRepo.updateAccount(account.email, { status: AccountStatus.TOKEN_EXPIRED });
+             options?.onAccountDone?.(account.email, undefined, AccountStatus.TOKEN_EXPIRED);
+             continue; 
+           }
          }
       }
 
@@ -486,18 +504,24 @@ export class AccountService {
 
     const now = Math.floor(Date.now() / 1000);
 
-    // Auto-refresh token if needed before API call
+    // Auto-refresh token if needed before API call (unless it's the active IDE account)
     if (tokens.expiresAt < (now + 300)) {
-      try {
-        const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
-        tokens.accessToken = newTokens.accessToken;
-        tokens.expiresAt = now + newTokens.expiresIn;
-        await this.accountRepo.storeTokens(email, tokens);
-      } catch (e) {
-        Logger.getInstance().warn(`Skipping balance fetch for ${email}: expired token.`);
-        await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
-        callbacks?.onDone?.(email, undefined, AccountStatus.TOKEN_EXPIRED);
-        return;
+      const activeEmail = await this.getActiveAntigravityEmail();
+      const isActive = activeEmail && isEmailMatch(email, activeEmail);
+      if (isActive) {
+        Logger.getInstance().info(`Skipping background token refresh for active account ${email} to prevent session invalidation.`);
+      } else {
+        try {
+          const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
+          tokens.accessToken = newTokens.accessToken;
+          tokens.expiresAt = now + newTokens.expiresIn;
+          await this.accountRepo.storeTokens(email, tokens);
+        } catch (e) {
+          Logger.getInstance().warn(`Skipping balance fetch for ${email}: expired token.`);
+          await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
+          callbacks?.onDone?.(email, undefined, AccountStatus.TOKEN_EXPIRED);
+          return;
+        }
       }
     }
 

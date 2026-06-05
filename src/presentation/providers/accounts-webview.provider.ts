@@ -271,9 +271,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
   public async refresh() {
     if (this._view) {
       const html = await this._getHtmlForWebview(this._view.webview);
-      Logger.getInstance().info('--- WEBVIEW HTML START ---');
-      Logger.getInstance().info(html);
-      Logger.getInstance().info('--- WEBVIEW HTML END ---');
       this._view.webview.html = html;
     }
   }

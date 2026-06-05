@@ -643,6 +643,106 @@ inject().catch((err) => {
   }
 
   /**
+   * Reads the active OAuth tokens directly from Antigravity's state.vscdb database.
+   * Extracts access token, refresh token, and expiration timestamp.
+   */
+  async readActiveTokensFromDb(): Promise<{ accessToken: string; refreshToken: string; expiresAt: number } | null> {
+    const dbPath = PathUtils.getVscdbPath(this.context);
+    if (!fs.existsSync(dbPath)) {
+      Logger.getInstance().info('state.vscdb not found, cannot read active tokens.');
+      return null;
+    }
+
+    try {
+      const initSqlJs = require('sql.js');
+      const SQL = await initSqlJs();
+      const buf = fs.readFileSync(dbPath);
+      const db = new SQL.Database(buf);
+
+      try {
+        const stmt = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
+        stmt.bind({ $key: STATE_DB_KEYS.OAUTH_TOKEN });
+
+        if (!stmt.step()) {
+          stmt.free();
+          Logger.getInstance().info('No oauthToken entry found in state.vscdb.');
+          return null;
+        }
+
+        const row = stmt.get();
+        stmt.free();
+
+        const base64Value = row[0] as string;
+        if (!base64Value) return null;
+
+        // Decode Topic (base64 → bytes)
+        const topicBytes = Buffer.from(base64Value, 'base64');
+
+        // Extract DataEntry (field 1)
+        const dataEntryBytes = this.extractField(topicBytes, 1);
+        if (!dataEntryBytes) return null;
+
+        // Extract Row (field 2)
+        const rowBytes = this.extractField(dataEntryBytes, 2);
+        if (!rowBytes) return null;
+
+        // Extract inner base64 string (field 1)
+        const innerBase64 = this.extractStringField(rowBytes, 1);
+        if (!innerBase64) return null;
+
+        // Decode inner payload (base64 → OAuthInfo protobuf)
+        const oauthInfoBytes = Buffer.from(innerBase64, 'base64');
+
+        // Extract access token (field 1)
+        const accessToken = this.extractStringField(oauthInfoBytes, 1);
+        
+        // Extract refresh token (field 3)
+        const refreshToken = this.extractStringField(oauthInfoBytes, 3);
+
+        // Extract expiry seconds (field 4)
+        const timestampBytes = this.extractField(oauthInfoBytes, 4);
+        let expiresAt = 0;
+        if (timestampBytes) {
+          // Parse Timestamp submessage (Field 1 = seconds, wireType 0)
+          let offset = 0;
+          while (offset < timestampBytes.length) {
+            const { value: tag, bytesRead: tagLen } = this.readVarint(timestampBytes, offset);
+            offset += tagLen;
+            const wireType = tag & 0x07;
+            const num = tag >> 3;
+
+            if (num === 1 && wireType === 0) {
+              const { value: seconds, bytesRead } = this.readVarint(timestampBytes, offset);
+              expiresAt = seconds;
+              break;
+            } else if (wireType === 0) {
+              const { bytesRead } = this.readVarint(timestampBytes, offset);
+              offset += bytesRead;
+            } else if (wireType === 2) {
+              const { value: len, bytesRead: lenLen } = this.readVarint(timestampBytes, offset);
+              offset += lenLen + len;
+            } else {
+              break;
+            }
+          }
+        }
+
+        if (accessToken && refreshToken) {
+          Logger.getInstance().debug('Successfully extracted active OAuth tokens from state.vscdb');
+          return { accessToken, refreshToken, expiresAt };
+        }
+        return null;
+      } finally {
+        db.close();
+      }
+    } catch (error: any) {
+      Logger.getInstance().error('Failed to read active tokens from state.vscdb', error);
+      return null;
+    }
+  }
+
+
+  /**
    * Extracts the email from a base64-encoded userStatus protobuf.
    * The structure is: Topic → DataEntry → Row → UserStatus payload.
    * The email is stored in field 3 and field 7 of the UserStatus payload.
