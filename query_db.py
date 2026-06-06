@@ -1,8 +1,34 @@
 import sqlite3
-import json
+import os
 import sys
 
-db_path = r"C:\Users\HaKeeM\AppData\Roaming\Antigravity\User\globalStorage\state.vscdb"
+def get_vscdb_path():
+    home = os.path.expanduser("~")
+    if sys.platform == "win32":
+        appdata = os.environ.get("APPDATA", os.path.join(home, "AppData", "Roaming"))
+        for name in ["Antigravity IDE", "Antigravity"]:
+            db_path = os.path.join(appdata, name, "User", "globalStorage", "state.vscdb")
+            if os.path.exists(db_path):
+                return db_path
+    elif sys.platform == "darwin":
+        for name in ["Antigravity IDE", "Antigravity"]:
+            db_path = os.path.join(home, "Library", "Application Support", name, "User", "globalStorage", "state.vscdb")
+            if os.path.exists(db_path):
+                return db_path
+    else:  # linux
+        config = os.environ.get("XDG_CONFIG_HOME", os.path.join(home, ".config"))
+        for name in ["Antigravity IDE", "Antigravity"]:
+            db_path = os.path.join(config, name, "User", "globalStorage", "state.vscdb")
+            if os.path.exists(db_path):
+                return db_path
+    return None
+
+db_path = get_vscdb_path()
+if not db_path:
+    print("Error: Could not locate state.vscdb directory.")
+    sys.exit(1)
+
+print(f"Reading from database: {db_path}")
 try:
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -14,9 +40,11 @@ try:
         if key == 'antigravityUnifiedStateSync.oauthToken':
             print(f"Key: {key}")
             print(f"Value: {value}")
+            found = True
             
     if not found:
         print("No related keys found in state.vscdb")
         
 except Exception as e:
     print(f"Error: {e}")
+
