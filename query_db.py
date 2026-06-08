@@ -37,9 +37,13 @@ try:
     
     found = False
     for key, value in rows:
-        if key == 'antigravityUnifiedStateSync.oauthToken':
+        if key.startswith('antigravity') or key.startswith('google.antigravity'):
             print(f"Key: {key}")
-            print(f"Value: {value}")
+            if 'token' in key.lower():
+                masked_value = value[:15] + "..." + value[-15:] if len(value) > 30 else "[hidden]"
+                print(f"Value (Masked for security): {masked_value}")
+            else:
+                print(f"Value: {value}")
             found = True
             
     if not found:

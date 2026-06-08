@@ -119,8 +119,8 @@ function registerCommands(
 
   const activeCheckInterval = setInterval(async () => {
     try {
-      const activeEmail = await accountService.getActiveAntigravityEmail();
-      const currentActive = activeEmail || null;
+      const activeInfo = await accountService.getActiveAntigravityAccountInfo();
+      const currentActive = activeInfo?.email || null;
       if (currentActive !== lastActiveEmail) {
         logger.info(`Active account changed in IDE to: ${currentActive}`);
         lastActiveEmail = currentActive;
@@ -128,15 +128,13 @@ function registerCommands(
       }
 
       // Sync active tokens from state.vscdb to our local repository
-      if (currentActive) {
-        const tokens = await accountService.getActiveAntigravityTokens();
-        if (tokens) {
-          const storedTokens = await accountRepo.getTokens(currentActive);
-          // Only update if the access token or refresh token is different to avoid unnecessary writes
-          if (!storedTokens || storedTokens.accessToken !== tokens.accessToken || storedTokens.refreshToken !== tokens.refreshToken) {
-            await accountRepo.storeTokens(currentActive, tokens);
-            logger.info(`Synchronized active tokens for ${currentActive} from state.vscdb to repository.`);
-          }
+      if (currentActive && activeInfo?.tokens) {
+        const tokens = activeInfo.tokens;
+        const storedTokens = await accountRepo.getTokens(currentActive);
+        // Only update if the access token or refresh token is different to avoid unnecessary writes
+        if (!storedTokens || storedTokens.accessToken !== tokens.accessToken || storedTokens.refreshToken !== tokens.refreshToken) {
+          await accountRepo.storeTokens(currentActive, tokens);
+          logger.info(`Synchronized active tokens for ${currentActive} from state.vscdb to repository.`);
         }
       }
     } catch (e) {

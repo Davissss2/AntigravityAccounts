@@ -137,20 +137,20 @@ export class AccountService {
    * Workflow: Switch active account
    * Validates/refreshes token, injects into SQLite, and marks active.
    */
-  async switchAccountWorkflow(email: string): Promise<void> {
+  async switchAccountWorkflow(email: string): Promise<'success' | 'cancelled' | 'error'> {
     const account = await this.accountRepo.getAccount(email);
-    if (!account) return;
+    if (!account) return 'error';
 
     const i18n = I18nService.getInstance();
     if (account.status === AccountStatus.INELIGIBLE) {
       vscode.window.showErrorMessage(i18n.t('service.switchIneligibleAccount', { email }));
-      return;
+      return 'error';
     }
 
     let tokens = await this.accountRepo.getTokens(email);
     if (!tokens) {
       vscode.window.showErrorMessage(i18n.t('service.missingLoginData', { email }));
-      return;
+      return 'error';
     }
 
     // Decision 2: Pre-emptive Token Refresh (Add 5-minute buffer)
@@ -171,7 +171,7 @@ export class AccountService {
         const i18n = I18nService.getInstance();
         vscode.window.showErrorMessage(i18n.t('service.sessionExpiredFailed', { email }));
         await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
-        return;
+        return 'error';
       }
     }
 
@@ -198,9 +198,13 @@ export class AccountService {
       // It will be dynamically detected from Antigravity's state.vscdb on next render.
       this._onAccountsChanged.fire();
       // NOTE: Window reload is handled by StateDbService if user consents
-    } else if (result === 'error') {
+      return 'success';
+    } else if (result === 'cancelled') {
+      return 'cancelled';
+    } else {
       const i18n = I18nService.getInstance();
       vscode.window.showErrorMessage(i18n.t('service.switchFailed', { email }));
+      return 'error';
     }
   }
 
@@ -210,7 +214,13 @@ export class AccountService {
    */
   async getActiveAntigravityEmail(): Promise<string | null | undefined> {
     try {
-      return await this.stateDbService.readCurrentEmailFromDb();
+      return await Promise.race([
+        this.stateDbService.readCurrentEmailFromDb(),
+        new Promise<undefined>(resolve => setTimeout(() => {
+          Logger.getInstance().error('Timeout reading active account from state.vscdb');
+          resolve(undefined);
+        }, 2000))
+      ]);
     } catch (error) {
       Logger.getInstance().error('Failed to read active account from Antigravity', error);
       return undefined;
@@ -225,6 +235,18 @@ export class AccountService {
       return await this.stateDbService.readActiveTokensFromDb();
     } catch (error) {
       Logger.getInstance().error('Failed to read active tokens from Antigravity', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get the active account's email and tokens directly from Antigravity's state database in a single query.
+   */
+  async getActiveAntigravityAccountInfo(): Promise<{ email: string | null; tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null } | null> {
+    try {
+      return await this.stateDbService.readActiveAccountInfoFromDb();
+    } catch (error) {
+      Logger.getInstance().error('Failed to read active account info from Antigravity', error);
       return null;
     }
   }
@@ -379,10 +401,11 @@ export class AccountService {
 
       const now = Math.floor(Date.now() / 1000);
       
-      // Auto-refresh token if needed before API call (unless it's the active IDE account)
+      // Auto-refresh token if needed before API call (unless it's the active IDE account and not fully expired yet)
       if (tokens.expiresAt < (now + 300)) {
          const isActive = activeEmail && isEmailMatch(account.email, activeEmail);
-         if (isActive) {
+         const isExpired = tokens.expiresAt < now;
+         if (isActive && !isExpired) {
            Logger.getInstance().info(`Skipping background token refresh for active account ${account.email} to prevent session invalidation.`);
          } else {
            try {

@@ -216,6 +216,7 @@
     "sortNameDesc": "الاسم (ي-أ)",
     "sortDateAdded": "تاريخ الإضافة",
     "sortQuota": "الرصيد المتبقي",
+    "sortQuotaRegen": "وقت تجديد الحصة",
     "scanSegment": "فحص جزء من الحسابات",
     "scanAll": "فحص الكل",
     "scanWithQuota": "فحص الحسابات برصيد",

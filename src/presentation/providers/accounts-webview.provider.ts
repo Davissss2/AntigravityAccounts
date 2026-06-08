@@ -120,7 +120,14 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               i18n.t('common.yes'), i18n.t('common.cancel')
             );
             if (confirm === i18n.t('common.yes')) {
-              await this.accountService.switchAccountWorkflow(message.email);
+              try {
+                const result = await this.accountService.switchAccountWorkflow(message.email);
+                if (result !== 'success') {
+                  this._view?.webview.postMessage({ command: 'accountSwitchCancelled', email: message.email });
+                }
+              } catch (err) {
+                this._view?.webview.postMessage({ command: 'accountSwitchCancelled', email: message.email });
+              }
             } else {
               this._view?.webview.postMessage({ command: 'accountSwitchCancelled', email: message.email });
             }
@@ -839,6 +846,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         case 'name-desc': return i18n.t('webview.sortNameDesc');
         case 'date-added': return i18n.t('webview.sortDateAdded');
         case 'quota': return i18n.t('webview.sortQuota');
+        case 'quota-regen': return i18n.t('webview.sortQuotaRegen');
         case 'default':
         default: return i18n.t('webview.sortDefault');
       }
@@ -2208,6 +2216,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               <option value="name-desc" ${configSortBy === 'name-desc' ? 'selected' : ''}>${i18n.t('webview.sortNameDesc')}</option>
               <option value="date-added" ${configSortBy === 'date-added' ? 'selected' : ''}>${i18n.t('webview.sortDateAdded')}</option>
               <option value="quota" ${configSortBy === 'quota' ? 'selected' : ''}>${i18n.t('webview.sortQuota')}</option>
+              <option value="quota-regen" ${configSortBy === 'quota-regen' ? 'selected' : ''}>${i18n.t('webview.sortQuotaRegen')}</option>
             </select>
           </label>
           <label class="toolbar-scan" for="scanSelect" style="position: relative;">
@@ -2293,6 +2302,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                 <option value="name-desc" ${configSortBy === 'name-desc' ? 'selected' : ''}>${i18n.t('webview.sortNameDesc')}</option>
                 <option value="date-added" ${configSortBy === 'date-added' ? 'selected' : ''}>${i18n.t('webview.sortDateAdded')}</option>
                 <option value="quota" ${configSortBy === 'quota' ? 'selected' : ''}>${i18n.t('webview.sortQuota')}</option>
+                <option value="quota-regen" ${configSortBy === 'quota-regen' ? 'selected' : ''}>${i18n.t('webview.sortQuotaRegen')}</option>
               </select>
             </div>
 
@@ -2428,6 +2438,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             }
           }
 
+          let switchAccountTimeout = null;
           function handleSwitchAccount(btn, email) {
             if (btn.disabled) return;
             btn.disabled = true;
@@ -2438,6 +2449,14 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             btn.dataset.originalText = originalText;
             
             sendMessage('switchAccount', email);
+
+            if (switchAccountTimeout) clearTimeout(switchAccountTimeout);
+            switchAccountTimeout = setTimeout(() => {
+              btn.disabled = false;
+              btn.innerText = originalText;
+              btn.style.opacity = '';
+              btn.style.cursor = '';
+            }, 10000);
           }
 
           // ── Refresh button ──
@@ -2717,10 +2736,16 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                    c.style.pointerEvents = 'auto';
                 });
              } else if (message.command === 'accountSwitchCancelled') {
+                if (switchAccountTimeout) {
+                   clearTimeout(switchAccountTimeout);
+                   switchAccountTimeout = null;
+                }
                 const btn = document.querySelector('button[onclick*="' + message.email + '"]');
                 if (btn) {
                    btn.disabled = false;
                    btn.innerText = btn.dataset.originalText || '${i18n.t('accounts.activate')}';
+                   btn.style.opacity = '';
+                   btn.style.cursor = '';
                  }
               }
            });
@@ -3167,6 +3192,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               // Dismiss cancel dialog if still open (refresh finished naturally)
               dismissCancelConfirm();
               hideProgressBanner(!!msg.wasCancelled);
+              // Remove refreshing class from all cards
+              document.querySelectorAll('.account-card').forEach(c => {
+                c.classList.remove('refreshing');
+              });
 
             } else if (msg.command === 'showLoading') {
               const overlay = document.getElementById('loadingOverlay');
@@ -3338,6 +3367,31 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
           break;
         }
+        case 'quota-regen': {
+          const getNextRegenTime = (balances: Record<string, any> | undefined) => {
+            if (!balances) return Infinity;
+            let minTime = Infinity;
+            for (const [k, rawV] of Object.entries(balances)) {
+              if (typeof rawV === 'object' && rawV !== null && 'resetTime' in rawV) {
+                const resetTimeStr = rawV.resetTime;
+                if (resetTimeStr) {
+                  const date = new Date(resetTimeStr);
+                  const diffMs = date.getTime() - Date.now();
+                  if (diffMs > 0 && diffMs < minTime) {
+                    minTime = diffMs;
+                  }
+                }
+              }
+            }
+            return minTime;
+          };
+          const aTime = getNextRegenTime(a.balances);
+          const bTime = getNextRegenTime(b.balances);
+          if (aTime !== bTime) {
+            return aTime - bTime; // Ascending (soonest first)
+          }
+          break;
+        }
         case 'default':
         default: {
           // 2. Sorting by preferred model balance if selected
@@ -3404,6 +3458,33 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
        
        return i18n.t('webview.renewsInHoursMins', { hours: totalHours, mins });
     };
+
+    // Find the next reset time among all models
+    let nextResetTime: string | undefined = undefined;
+    let minDiffMs = Infinity;
+
+    if (acc.balances) {
+      for (const [k, rawV] of Object.entries(acc.balances)) {
+        if (typeof rawV === 'object' && rawV !== null && 'resetTime' in rawV) {
+          const resetTimeStr = (rawV as any).resetTime as string;
+          if (resetTimeStr) {
+            const date = new Date(resetTimeStr);
+            const diffMs = date.getTime() - Date.now();
+            if (diffMs > 0 && diffMs < minDiffMs) {
+              minDiffMs = diffMs;
+              nextResetTime = resetTimeStr;
+            }
+          }
+        }
+      }
+    }
+
+    const nextResetHtml = nextResetTime 
+      ? `<div class="quota-countdown" style="font-size:0.75rem; color:var(--text-secondary); opacity:0.85; margin-top:3px; display:flex; align-items:center; gap:4px;">
+           <svg class="icon-svg" style="width:11px; height:11px; stroke-width:2.5;" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+           <span>${formatTime(nextResetTime)}</span>
+         </div>`
+      : '';
 
     // Process balances according to display rules
     let processedModels: Array<{ key: string, value: number, resetTime?: string }> = [];
@@ -3666,6 +3747,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               </button>
             </div>
             <p>${acc.email}</p>
+            ${nextResetHtml}
           </div>
           ${activeBadge}
         </div>

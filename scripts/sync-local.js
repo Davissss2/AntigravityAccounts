@@ -6,10 +6,26 @@ const os = require('os');
 const pkgPath = path.join(__dirname, '..', 'package.json');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 const version = pkg.version;
-const extensionDirName = `davissss2.antigravity-account-${version}`;
-
 const homeDir = os.homedir();
-const targetBaseDir = path.join(homeDir, '.antigravity-ide', 'extensions', extensionDirName);
+const extensionsDir = path.join(homeDir, '.antigravity-ide', 'extensions');
+
+// Determine the suffix (e.g. -universal) from the existing folder
+let suffix = '';
+if (fs.existsSync(extensionsDir)) {
+  const dirs = fs.readdirSync(extensionsDir);
+  const matchingDirs = dirs.filter(d => d.startsWith('davissss2.antigravity-account-'));
+  if (matchingDirs.length > 0) {
+    matchingDirs.sort();
+    const latestDir = matchingDirs[matchingDirs.length - 1];
+    const match = latestDir.match(/davissss2\.antigravity-account-\d+\.\d+\.\d+(.*)/);
+    if (match) {
+      suffix = match[1];
+    }
+  }
+}
+
+const extensionDirName = `davissss2.antigravity-account-${version}${suffix}`;
+const targetBaseDir = path.join(extensionsDir, extensionDirName);
 const targetDistDir = path.join(targetBaseDir, 'dist');
 const targetThemeDir = path.join(targetDistDir, 'presentation', 'theme');
 
@@ -34,10 +50,10 @@ function copySync(src, dest) {
 }
 
 try {
+  // Ensure target folder exists
   if (!fs.existsSync(targetBaseDir)) {
-    console.error(`Error: Active extension directory does not exist at ${targetBaseDir}`);
-    console.error(`Please install version ${version} of the extension first.`);
-    process.exit(1);
+    console.log(`Creating target extension directory at: ${targetBaseDir}`);
+    fs.mkdirSync(targetBaseDir, { recursive: true });
   }
 
   // Copy dist/extension.js
@@ -63,6 +79,22 @@ try {
   const destPkg = path.join(targetBaseDir, 'package.json');
   fs.copyFileSync(pkgPath, destPkg);
   console.log(`Copied package.json -> ${destPkg}`);
+
+  // Copy node_modules recursively if not present
+  const srcNodeModules = path.join(__dirname, '..', 'node_modules');
+  const destNodeModules = path.join(targetBaseDir, 'node_modules');
+  if (fs.existsSync(srcNodeModules) && !fs.existsSync(destNodeModules)) {
+    console.log('Copying node_modules dependencies...');
+    copySync(srcNodeModules, destNodeModules);
+  }
+
+  // Copy resources recursively if not present
+  const srcResources = path.join(__dirname, '..', 'resources');
+  const destResources = path.join(targetBaseDir, 'resources');
+  if (fs.existsSync(srcResources) && !fs.existsSync(destResources)) {
+    console.log('Copying resources assets...');
+    copySync(srcResources, destResources);
+  }
 
   console.log('Sync complete! Reload the Antigravity IDE window to see changes.');
 } catch (error) {

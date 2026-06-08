@@ -5,6 +5,19 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-06-08
+
+### Added
+- **Custom OAuth Credentials**: Added new configuration options (`antigravityAccount.oauthClientId` and `antigravityAccount.oauthClientSecret`) to use personal developer credentials, avoiding the default 7-day Google OAuth testing token expiration.
+
+### Improved
+- **Robust Background Token Refresh**: Enhanced active account status monitoring. Expired active account tokens are now automatically refreshed during background scans.
+
+### Fixed
+- **State DB Initialization Parse**: Corrected typescript syntax/compilation issues in `state-db.service.ts` by restoring the class structure.
+- **Terminal output masking**: Fixed indentation in `query_db.py` and restricted database reads to only Antigravity-related keys to prevent telemetry/token leaks, while properly masking active tokens.
+- **Diagnostic tool**: Imported the missing `sys` library in `analyze.py`.
+
 ## [0.1.9] - 2026-06-05
 
 ### Added

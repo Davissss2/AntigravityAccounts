@@ -216,6 +216,7 @@
     "sortNameDesc": "Nombre (Z-A)",
     "sortDateAdded": "Fecha de adición",
     "sortQuota": "Cuota restante",
+    "sortQuotaRegen": "Tiempo de regeneración",
     "scanSegment": "Escanear segmento",
     "scanAll": "Escanear todas",
     "scanWithQuota": "Escanear con cuota",

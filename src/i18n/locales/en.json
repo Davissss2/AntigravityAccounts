@@ -216,6 +216,7 @@
     "sortNameDesc": "Name (Z-A)",
     "sortDateAdded": "Date Added",
     "sortQuota": "Remaining Quota",
+    "sortQuotaRegen": "Quota Regen Time",
     "scanSegment": "Scan Segment",
     "scanAll": "Scan All",
     "scanWithQuota": "Scan With Quota",

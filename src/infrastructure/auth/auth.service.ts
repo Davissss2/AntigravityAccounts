@@ -28,6 +28,13 @@ export interface UserProfile {
 }
 
 export class AuthService {
+  private getOauthConfig(): { clientId: string; clientSecret: string } {
+    const config = vscode.workspace.getConfiguration('antigravityAccount');
+    const clientId = config.get<string>('oauthClientId')?.trim() || OAUTH.CLIENT_ID;
+    const clientSecret = config.get<string>('oauthClientSecret')?.trim() || OAUTH.CLIENT_SECRET;
+    return { clientId, clientSecret };
+  }
+
   /**
    * Initiates the Google OAuth login process.
    * @returns Tokens and User Profile, or throws an error if authentication fails.
@@ -42,7 +49,8 @@ export class AuthService {
 
       // 2. Build the precise OAuth URL
       const authUrl = new URL(OAUTH.AUTH_URL);
-      authUrl.searchParams.append('client_id', OAUTH.CLIENT_ID);
+      const { clientId } = this.getOauthConfig();
+      authUrl.searchParams.append('client_id', clientId);
       authUrl.searchParams.append('redirect_uri', redirectUri);
       authUrl.searchParams.append('response_type', 'code');
       authUrl.searchParams.append('scope', OAUTH.SCOPES.join(' '));
@@ -80,9 +88,10 @@ export class AuthService {
    * Swaps the short-lived authorization code for actual tokens.
    */
   private async exchangeCodeForTokens(code: string, redirectUri: string): Promise<OAuthTokens> {
+    const { clientId, clientSecret } = this.getOauthConfig();
     const body = new URLSearchParams({
-      client_id: OAUTH.CLIENT_ID,
-      client_secret: OAUTH.CLIENT_SECRET,
+      client_id: clientId,
+      client_secret: clientSecret,
       code,
       redirect_uri: redirectUri,
       grant_type: 'authorization_code'
@@ -123,9 +132,10 @@ export class AuthService {
    * Refreshes an expired access token using the stored refresh token.
    */
   async refreshAccessToken(refreshToken: string): Promise<OAuthTokens> {
+    const { clientId, clientSecret } = this.getOauthConfig();
     const body = new URLSearchParams({
-      client_id: OAUTH.CLIENT_ID,
-      client_secret: OAUTH.CLIENT_SECRET,
+      client_id: clientId,
+      client_secret: clientSecret,
       refresh_token: refreshToken,
       grant_type: 'refresh_token'
     });

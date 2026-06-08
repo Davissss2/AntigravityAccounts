@@ -28,6 +28,15 @@ import { STATE_DB_KEYS, STORAGE_JSON_KEYS, PERSONAL_EMAIL_DOMAINS } from '../../
 import { getAntigravityVersion, isVersionSupported, MIN_SUPPORTED_VERSION } from '../../core/utils/version.utils';
 
 export class StateDbService {
+  private static sqlJsInstance: any = null;
+
+  private async getSqlJs(): Promise<any> {
+    if (!StateDbService.sqlJsInstance) {
+      const initSqlJs = require('sql.js');
+      StateDbService.sqlJsInstance = await initSqlJs();
+    }
+    return StateDbService.sqlJsInstance;
+  }
 
   constructor(private readonly context?: vscode.ExtensionContext) { }
 
@@ -604,8 +613,7 @@ inject().catch((err) => {
     }
 
     try {
-      const initSqlJs = require('sql.js');
-      const SQL = await initSqlJs();
+      const SQL = await this.getSqlJs();
       const buf = fs.readFileSync(dbPath);
       const db = new SQL.Database(buf);
 
@@ -654,8 +662,7 @@ inject().catch((err) => {
     }
 
     try {
-      const initSqlJs = require('sql.js');
-      const SQL = await initSqlJs();
+      const SQL = await this.getSqlJs();
       const buf = fs.readFileSync(dbPath);
       const db = new SQL.Database(buf);
 
@@ -675,68 +682,144 @@ inject().catch((err) => {
         const base64Value = row[0] as string;
         if (!base64Value) return null;
 
-        // Decode Topic (base64 → bytes)
-        const topicBytes = Buffer.from(base64Value, 'base64');
-
-        // Extract DataEntry (field 1)
-        const dataEntryBytes = this.extractField(topicBytes, 1);
-        if (!dataEntryBytes) return null;
-
-        // Extract Row (field 2)
-        const rowBytes = this.extractField(dataEntryBytes, 2);
-        if (!rowBytes) return null;
-
-        // Extract inner base64 string (field 1)
-        const innerBase64 = this.extractStringField(rowBytes, 1);
-        if (!innerBase64) return null;
-
-        // Decode inner payload (base64 → OAuthInfo protobuf)
-        const oauthInfoBytes = Buffer.from(innerBase64, 'base64');
-
-        // Extract access token (field 1)
-        const accessToken = this.extractStringField(oauthInfoBytes, 1);
-        
-        // Extract refresh token (field 3)
-        const refreshToken = this.extractStringField(oauthInfoBytes, 3);
-
-        // Extract expiry seconds (field 4)
-        const timestampBytes = this.extractField(oauthInfoBytes, 4);
-        let expiresAt = 0;
-        if (timestampBytes) {
-          // Parse Timestamp submessage (Field 1 = seconds, wireType 0)
-          let offset = 0;
-          while (offset < timestampBytes.length) {
-            const { value: tag, bytesRead: tagLen } = this.readVarint(timestampBytes, offset);
-            offset += tagLen;
-            const wireType = tag & 0x07;
-            const num = tag >> 3;
-
-            if (num === 1 && wireType === 0) {
-              const { value: seconds, bytesRead } = this.readVarint(timestampBytes, offset);
-              expiresAt = seconds;
-              break;
-            } else if (wireType === 0) {
-              const { bytesRead } = this.readVarint(timestampBytes, offset);
-              offset += bytesRead;
-            } else if (wireType === 2) {
-              const { value: len, bytesRead: lenLen } = this.readVarint(timestampBytes, offset);
-              offset += lenLen + len;
-            } else {
-              break;
-            }
-          }
-        }
-
-        if (accessToken && refreshToken) {
-          Logger.getInstance().debug('Successfully extracted active OAuth tokens from state.vscdb');
-          return { accessToken, refreshToken, expiresAt };
-        }
-        return null;
+        return this.parseTokensFromBase64(base64Value);
       } finally {
         db.close();
       }
     } catch (error: any) {
       Logger.getInstance().error('Failed to read active tokens from state.vscdb', error);
+      return null;
+    }
+  }
+
+  /**
+   * Reads both the active email and tokens from state.vscdb in a single database read.
+   * This is a significant optimization over reading them separately.
+   */
+  async readActiveAccountInfoFromDb(): Promise<{ email: string | null; tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null } | null> {
+    const dbPath = PathUtils.getVscdbPath(this.context);
+    if (!fs.existsSync(dbPath)) {
+      Logger.getInstance().info('state.vscdb not found, cannot detect active account/tokens.');
+      return null;
+    }
+
+    try {
+      const SQL = await this.getSqlJs();
+      const buf = fs.readFileSync(dbPath);
+      const db = new SQL.Database(buf);
+
+      try {
+        let email: string | null = null;
+        let tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null = null;
+
+        // 1. Read userStatus
+        const stmtUser = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
+        stmtUser.bind({ $key: STATE_DB_KEYS.USER_STATUS });
+        if (stmtUser.step()) {
+          const row = stmtUser.get();
+          const base64Value = row[0] as string;
+          if (base64Value) {
+            email = this.extractEmailFromUserStatus(base64Value);
+          }
+        }
+        stmtUser.free();
+
+        // 2. Read oauthToken
+        const stmtToken = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
+        stmtToken.bind({ $key: STATE_DB_KEYS.OAUTH_TOKEN });
+        if (stmtToken.step()) {
+          const row = stmtToken.get();
+          const base64Value = row[0] as string;
+          if (base64Value) {
+            tokens = this.parseTokensFromBase64(base64Value);
+          }
+        }
+        stmtToken.free();
+
+        return { email, tokens };
+      } finally {
+        db.close();
+      }
+    } catch (error: any) {
+      Logger.getInstance().error('Failed to read active account info from state.vscdb', error);
+      return null;
+    }
+  }
+
+  /**
+   * Parses OAuth tokens from a base64-encoded oauthToken Topic protobuf value.
+   */
+  private parseTokensFromBase64(base64Value: string): { accessToken: string; refreshToken: string; expiresAt: number } | null {
+    try {
+      // Decode Topic (base64 → bytes)
+      const topicBytes = Buffer.from(base64Value, 'base64');
+
+      // Extract DataEntry (field 1)
+      const dataEntryBytes = this.extractField(topicBytes, 1);
+      if (!dataEntryBytes) return null;
+
+      // Extract Row (field 2)
+      const rowBytes = this.extractField(dataEntryBytes, 2);
+      if (!rowBytes) return null;
+
+      // Extract inner base64 string (field 1)
+      const innerBase64 = this.extractStringField(rowBytes, 1);
+      if (!innerBase64) return null;
+
+      // Decode inner payload (base64 → OAuthInfo protobuf)
+      const oauthInfoBytes = Buffer.from(innerBase64, 'base64');
+
+      // Extract access token (field 1)
+      const accessToken = this.extractStringField(oauthInfoBytes, 1);
+      
+      // Extract refresh token (field 3)
+      const refreshToken = this.extractStringField(oauthInfoBytes, 3);
+
+      // Extract expiry seconds (field 4)
+      const timestampBytes = this.extractField(oauthInfoBytes, 4);
+      let expiresAt = 0;
+      if (timestampBytes) {
+        // Parse Timestamp submessage (Field 1 = seconds, wireType 0)
+        let offset = 0;
+        let iterations = 0;
+        while (offset < timestampBytes.length && iterations < 1000) {
+          iterations++;
+          const { value: tag, bytesRead: tagLen } = this.readVarint(timestampBytes, offset);
+          if (tagLen === 0) break; // Prevent infinite loops
+          offset += tagLen;
+          const wireType = tag & 0x07;
+          const num = tag >> 3;
+
+          if (num === 1 && wireType === 0) {
+            const { value: seconds, bytesRead } = this.readVarint(timestampBytes, offset);
+            if (bytesRead === 0) break;
+            expiresAt = seconds;
+            break;
+          } else if (wireType === 0) {
+            const { bytesRead } = this.readVarint(timestampBytes, offset);
+            if (bytesRead === 0) break;
+            offset += bytesRead;
+          } else if (wireType === 2) {
+            const { value: len, bytesRead: lenLen } = this.readVarint(timestampBytes, offset);
+            if (lenLen === 0) break;
+            offset += lenLen + len;
+          } else if (wireType === 1) {
+            offset += 8; // 64-bit field
+          } else if (wireType === 5) {
+            offset += 4; // 32-bit field
+          } else {
+            break;
+          }
+        }
+      }
+
+      if (accessToken && refreshToken) {
+        Logger.getInstance().debug('Successfully extracted active OAuth tokens from state.vscdb');
+        return { accessToken, refreshToken, expiresAt };
+      }
+      return null;
+    } catch (e) {
+      Logger.getInstance().error('Failed to parse oauthToken protobuf', e);
       return null;
     }
   }
@@ -783,8 +866,11 @@ inject().catch((err) => {
    */
   private extractField(data: Buffer, fieldNum: number): Buffer | null {
     let offset = 0;
-    while (offset < data.length) {
+    let iterations = 0;
+    while (offset < data.length && iterations < 1000) {
+      iterations++;
       const { value: tag, bytesRead: tagLen } = this.readVarint(data, offset);
+      if (tagLen === 0) break; // Prevent infinite loops
       offset += tagLen;
       
       const wireType = tag & 0x07;
@@ -792,6 +878,7 @@ inject().catch((err) => {
 
       if (wireType === 2) {
         const { value: len, bytesRead: lenLen } = this.readVarint(data, offset);
+        if (lenLen === 0) break;
         offset += lenLen;
         if (num === fieldNum) {
           return data.slice(offset, offset + len);
@@ -799,7 +886,12 @@ inject().catch((err) => {
         offset += len;
       } else if (wireType === 0) {
         const { bytesRead } = this.readVarint(data, offset);
+        if (bytesRead === 0) break;
         offset += bytesRead;
+      } else if (wireType === 1) {
+        offset += 8; // 64-bit field
+      } else if (wireType === 5) {
+        offset += 4; // 32-bit field
       } else {
         break; // Unknown wire type
       }
@@ -823,7 +915,7 @@ inject().catch((err) => {
     let value = 0;
     let shift = 0;
     let bytesRead = 0;
-    while (offset < buf.length) {
+    while (offset < buf.length && bytesRead < 10) {
       const byte = buf[offset];
       value |= (byte & 0x7F) << shift;
       offset++;
