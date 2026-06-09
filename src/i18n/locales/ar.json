@@ -221,6 +221,7 @@
     "scanAll": "فحص الكل",
     "scanWithQuota": "فحص الحسابات برصيد",
     "scanWithoutQuota": "فحص الحسابات بدون رصيد",
+    "noAccountsInSegment": "لم يتم العثور على حسابات تطابق الجزء المحدد.",
     "cacheDurationLabel": "فترة صلاحية التخزين المؤقت",
     "cacheDurationDescription": "يوفر الوقت بعدم فحص هذا الحساب إذا تم تحديثه خلال هذه الفترة.",
     "day": "يوم",

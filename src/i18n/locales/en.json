@@ -221,6 +221,7 @@
     "scanAll": "Scan All",
     "scanWithQuota": "Scan With Quota",
     "scanWithoutQuota": "Scan Without Quota",
+    "noAccountsInSegment": "No accounts found matching the selected segment.",
     "cacheDurationLabel": "Cache Validity Duration",
     "cacheDurationDescription": "Saves time by not scanning this account if it was refreshed within this period.",
     "day": "Day",

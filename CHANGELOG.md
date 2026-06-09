@@ -5,6 +5,16 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-06-09
+
+### Added
+- **Background Active Account Balance Polling**: Periodically polls the active account's balance in the background (every 30 seconds) if auto-rotation is enabled, ensuring credit depletion is automatically detected.
+- **Scanner Segment Warnings**: Provides immediate feedback/warning to the user if they attempt to scan a segment (with quota or without quota) that contains no accounts.
+
+### Fixed
+- **Stuck Activation Button**: Fixed a selector issue in `accountSwitchCancelled` that targeted the refresh button instead of the activate button, which left the button stuck in "Activando..." state when switching was cancelled.
+- **Independent Activation Fallbacks**: Stored fallback timeouts directly on the button element's dataset to support multiple independent activations without global variable conflict.
+
 ## [0.2.0] - 2026-06-08
 
 ### Added

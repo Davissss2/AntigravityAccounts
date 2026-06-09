@@ -14,6 +14,8 @@ import { I18nService } from './i18n/i18n.service';
 import { ExtensionConfig } from './core/config/extension.config';
 import { PathUtils } from './core/utils/path.utils';
 
+import { AccountStatus } from './core/domain/models/account.model';
+
 import { AuthService } from './infrastructure/auth/auth.service';
 import { BalanceService } from './infrastructure/api/balance.service';
 import { AccountRepositoryImpl } from './infrastructure/storage/account.repository.impl';
@@ -112,7 +114,10 @@ function registerCommands(
 
   // ── Periodic Check for Active Account changes in state.vscdb ──
   const logger = Logger.getInstance();
+  const config = ExtensionConfig.getInstance();
   let lastActiveEmail: string | null = null;
+  let lastActiveBalanceCheckTime = 0;
+
   accountService.getActiveAntigravityEmail().then((email: string | null | undefined) => {
     lastActiveEmail = email || null;
   }).catch(() => {});
@@ -135,6 +140,33 @@ function registerCommands(
         if (!storedTokens || storedTokens.accessToken !== tokens.accessToken || storedTokens.refreshToken !== tokens.refreshToken) {
           await accountRepo.storeTokens(currentActive, tokens);
           logger.info(`Synchronized active tokens for ${currentActive} from state.vscdb to repository.`);
+        }
+      }
+
+      // Background check for active account balance depletion to trigger auto-rotation
+      if (config.isAutoRotateEnabled() && currentActive) {
+        try {
+          const account = await accountRepo.getAccount(currentActive);
+          if (account) {
+            const isDepleted = account.status === AccountStatus.DEPLETED;
+            const isExpired = account.status === AccountStatus.TOKEN_EXPIRED;
+            const isIneligible = account.status === AccountStatus.INELIGIBLE;
+            
+            // Skip checks for accounts already known to be unusable
+            if (!isDepleted && !isExpired && !isIneligible) {
+              const now = Date.now();
+              if (now - lastActiveBalanceCheckTime >= 30000) {
+                lastActiveBalanceCheckTime = now;
+                logger.info(`Background active account balance check running for ${currentActive}...`);
+                // Run in the background without blocking the main interval loop
+                accountService.refreshSingleAccountBalance(currentActive).catch((err: any) => {
+                  logger.error(`Failed to refresh active account balance in background for ${currentActive}`, err);
+                });
+              }
+            }
+          }
+        } catch (dbErr) {
+          logger.error('Failed to load active account metadata in background check', dbErr);
         }
       }
     } catch (e) {

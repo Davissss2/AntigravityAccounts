@@ -99,6 +99,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         case 'logError':
           Logger.getInstance().error(`[Webview JS Error] ${message.message} at ${message.source}:${message.lineno}:${message.colno}. Stack: ${message.stack}`);
           break;
+        case 'showWarning':
+          if (message.text) {
+            vscode.window.showWarningMessage(message.text);
+          }
+          break;
         case 'consoleLog':
           const logMsg = `[Webview Console] [${message.level}] ${message.args.join(' ')}`;
           if (message.level === 'error') {
@@ -2438,7 +2443,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             }
           }
 
-          let switchAccountTimeout = null;
           function handleSwitchAccount(btn, email) {
             if (btn.disabled) return;
             btn.disabled = true;
@@ -2450,13 +2454,17 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             
             sendMessage('switchAccount', email);
 
-            if (switchAccountTimeout) clearTimeout(switchAccountTimeout);
-            switchAccountTimeout = setTimeout(() => {
+            if (btn.dataset.timeoutId) {
+              clearTimeout(parseInt(btn.dataset.timeoutId, 10));
+            }
+            const tId = setTimeout(() => {
               btn.disabled = false;
               btn.innerText = originalText;
               btn.style.opacity = '';
               btn.style.cursor = '';
+              delete btn.dataset.timeoutId;
             }, 10000);
+            btn.dataset.timeoutId = tId;
           }
 
           // ── Refresh button ──
@@ -2521,7 +2529,13 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                 .map(c => c.dataset.email);
             }
 
-            if (targetEmails.length === 0) return;
+            if (targetEmails.length === 0) {
+              vscode.postMessage({
+                command: 'showWarning',
+                text: '${i18n.t('webview.noAccountsInSegment')}'
+              });
+              return;
+            }
 
             vscode.postMessage({
               command: 'refreshAccounts',
@@ -2736,12 +2750,13 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                    c.style.pointerEvents = 'auto';
                 });
              } else if (message.command === 'accountSwitchCancelled') {
-                if (switchAccountTimeout) {
-                   clearTimeout(switchAccountTimeout);
-                   switchAccountTimeout = null;
-                }
-                const btn = document.querySelector('button[onclick*="' + message.email + '"]');
+                const card = document.querySelector('.account-card[data-email="' + message.email + '"]');
+                const btn = card ? card.querySelector('.btn-primary') : null;
                 if (btn) {
+                   if (btn.dataset.timeoutId) {
+                      clearTimeout(parseInt(btn.dataset.timeoutId, 10));
+                      delete btn.dataset.timeoutId;
+                   }
                    btn.disabled = false;
                    btn.innerText = btn.dataset.originalText || '${i18n.t('accounts.activate')}';
                    btn.style.opacity = '';
