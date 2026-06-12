@@ -2,7 +2,7 @@
   "name": "antigravity-account",
   "displayName": "Antigravity Account",
   "description": "Manage multiple Antigravity accounts seamlessly - switch, monitor credits, and auto-rotate with one click.",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "publisher": "Davissss2",
   "repository": {
     "type": "git",
@@ -173,6 +173,8 @@
             "default",
             "name-asc",
             "name-desc",
+            "email-asc",
+            "email-desc",
             "date-added",
             "quota",
             "quota-regen"
@@ -181,6 +183,8 @@
             "Default (Preferred model / Status)",
             "Name (A-Z)",
             "Name (Z-A)",
+            "Email (A-Z)",
+            "Email (Z-A)",
             "Date Added (Newest first)",
             "Remaining Quota (Highest first)",
             "Quota Regen Time (Soonest first)"

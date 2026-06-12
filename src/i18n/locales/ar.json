@@ -214,6 +214,8 @@
     "sortDefault": "الترتيب الافتراضي",
     "sortNameAsc": "الاسم (أ-ي)",
     "sortNameDesc": "الاسم (ي-أ)",
+    "sortEmailAsc": "البريد الإلكتروني (أ-ي)",
+    "sortEmailDesc": "البريد الإلكتروني (ي-أ)",
     "sortDateAdded": "تاريخ الإضافة",
     "sortQuota": "الرصيد المتبقي",
     "sortQuotaRegen": "وقت تجديد الحصة",

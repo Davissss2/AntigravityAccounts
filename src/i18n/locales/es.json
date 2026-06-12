@@ -214,6 +214,8 @@
     "sortDefault": "Orden por defecto",
     "sortNameAsc": "Nombre (A-Z)",
     "sortNameDesc": "Nombre (Z-A)",
+    "sortEmailAsc": "Correo (A-Z)",
+    "sortEmailDesc": "Correo (Z-A)",
     "sortDateAdded": "Fecha de adición",
     "sortQuota": "Cuota restante",
     "sortQuotaRegen": "Tiempo de regeneración",

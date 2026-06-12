@@ -852,6 +852,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       switch(val) {
         case 'name-asc': return i18n.t('webview.sortNameAsc');
         case 'name-desc': return i18n.t('webview.sortNameDesc');
+        case 'email-asc': return i18n.t('webview.sortEmailAsc');
+        case 'email-desc': return i18n.t('webview.sortEmailDesc');
         case 'date-added': return i18n.t('webview.sortDateAdded');
         case 'quota': return i18n.t('webview.sortQuota');
         case 'quota-regen': return i18n.t('webview.sortQuotaRegen');
@@ -2222,6 +2224,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               <option value="default" ${configSortBy === 'default' ? 'selected' : ''}>${i18n.t('webview.sortDefault')}</option>
               <option value="name-asc" ${configSortBy === 'name-asc' ? 'selected' : ''}>${i18n.t('webview.sortNameAsc')}</option>
               <option value="name-desc" ${configSortBy === 'name-desc' ? 'selected' : ''}>${i18n.t('webview.sortNameDesc')}</option>
+              <option value="email-asc" ${configSortBy === 'email-asc' ? 'selected' : ''}>${i18n.t('webview.sortEmailAsc')}</option>
+              <option value="email-desc" ${configSortBy === 'email-desc' ? 'selected' : ''}>${i18n.t('webview.sortEmailDesc')}</option>
               <option value="date-added" ${configSortBy === 'date-added' ? 'selected' : ''}>${i18n.t('webview.sortDateAdded')}</option>
               <option value="quota" ${configSortBy === 'quota' ? 'selected' : ''}>${i18n.t('webview.sortQuota')}</option>
               <option value="quota-regen" ${configSortBy === 'quota-regen' ? 'selected' : ''}>${i18n.t('webview.sortQuotaRegen')}</option>
@@ -2308,6 +2312,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                 <option value="default" ${configSortBy === 'default' ? 'selected' : ''}>${i18n.t('webview.sortDefault')}</option>
                 <option value="name-asc" ${configSortBy === 'name-asc' ? 'selected' : ''}>${i18n.t('webview.sortNameAsc')}</option>
                 <option value="name-desc" ${configSortBy === 'name-desc' ? 'selected' : ''}>${i18n.t('webview.sortNameDesc')}</option>
+                <option value="email-asc" ${configSortBy === 'email-asc' ? 'selected' : ''}>${i18n.t('webview.sortEmailAsc')}</option>
+                <option value="email-desc" ${configSortBy === 'email-desc' ? 'selected' : ''}>${i18n.t('webview.sortEmailDesc')}</option>
                 <option value="date-added" ${configSortBy === 'date-added' ? 'selected' : ''}>${i18n.t('webview.sortDateAdded')}</option>
                 <option value="quota" ${configSortBy === 'quota' ? 'selected' : ''}>${i18n.t('webview.sortQuota')}</option>
                 <option value="quota-regen" ${configSortBy === 'quota-regen' ? 'selected' : ''}>${i18n.t('webview.sortQuotaRegen')}</option>
@@ -2520,16 +2526,40 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             let targetEmails = [];
             const cards = document.querySelectorAll('.account-card');
 
+            const prefModelLower = (typeof currentPreferredModel === 'string' ? currentPreferredModel : '').toLowerCase();
+            const hasPrefModelQuota = (card) => {
+              if (!prefModelLower) return false;
+              try {
+                const balances = JSON.parse(card.dataset.modelBalances || '{}');
+                const val = balances[prefModelLower];
+                return val !== undefined && val > 0;
+              } catch (e) {
+                return false;
+              }
+            };
+
             if (segment === 'all') {
               targetEmails = Array.from(cards).map(c => c.dataset.email);
             } else if (segment === 'with-quota') {
-              targetEmails = Array.from(cards)
-                .filter(c => c.dataset.status === 'active' || c.dataset.status === 'low_balance')
-                .map(c => c.dataset.email);
+              if (prefModelLower) {
+                targetEmails = Array.from(cards)
+                  .filter(c => (c.dataset.status === 'active' || c.dataset.status === 'low_balance') && hasPrefModelQuota(c))
+                  .map(c => c.dataset.email);
+              } else {
+                targetEmails = Array.from(cards)
+                  .filter(c => c.dataset.status === 'active' || c.dataset.status === 'low_balance')
+                  .map(c => c.dataset.email);
+              }
             } else if (segment === 'without-quota') {
-              targetEmails = Array.from(cards)
-                .filter(c => c.dataset.status === 'depleted' || c.dataset.status === 'token_expired' || c.dataset.status === 'ineligible' || c.dataset.status === 'error')
-                .map(c => c.dataset.email);
+              if (prefModelLower) {
+                targetEmails = Array.from(cards)
+                  .filter(c => c.dataset.status === 'depleted' || c.dataset.status === 'token_expired' || c.dataset.status === 'ineligible' || c.dataset.status === 'error' || !hasPrefModelQuota(c))
+                  .map(c => c.dataset.email);
+              } else {
+                targetEmails = Array.from(cards)
+                  .filter(c => c.dataset.status === 'depleted' || c.dataset.status === 'token_expired' || c.dataset.status === 'ineligible' || c.dataset.status === 'error')
+                  .map(c => c.dataset.email);
+              }
             }
 
             if (targetEmails.length === 0) {
@@ -3360,6 +3390,16 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           const nameB = b.displayName || b.alias || b.name || b.email || '';
           return nameB.localeCompare(nameA, undefined, { numeric: true, sensitivity: 'base' });
         }
+        case 'email-asc': {
+          const emailA = a.email || '';
+          const emailB = b.email || '';
+          return emailA.localeCompare(emailB, undefined, { numeric: true, sensitivity: 'base' });
+        }
+        case 'email-desc': {
+          const emailA = a.email || '';
+          const emailB = b.email || '';
+          return emailB.localeCompare(emailA, undefined, { numeric: true, sensitivity: 'base' });
+        }
         case 'date-added': {
           const dateA = a.addedAt ? new Date(a.addedAt).getTime() : 0;
           const dateB = b.addedAt ? new Date(b.addedAt).getTime() : 0;
@@ -3751,8 +3791,19 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const avatarClass = isExpired ? 'avatar-expired' : isIneligible ? 'avatar-ineligible' : '';
     const safeEmailId = acc.email.replace(/[@.]/g, '-');
 
+    const modelBalancesMap: Record<string, number> = {};
+    if (processedModels) {
+      processedModels.forEach(m => {
+        modelBalancesMap[m.key.toLowerCase()] = m.value;
+      });
+    }
+    if (preferredModelData) {
+      modelBalancesMap[preferredModelData.key.toLowerCase()] = preferredModelData.value;
+    }
+    const modelBalancesStr = JSON.stringify(modelBalancesMap).replace(/'/g, '&apos;');
+
     return `
-      <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''} ${isIneligible ? 'ineligible' : ''} ${acc.status === AccountStatus.DEPLETED ? 'depleted' : ''}" data-email="${acc.email}" data-name="${displayName}" data-alias="${acc.alias || ''}" data-status="${acc.status}">
+      <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''} ${isIneligible ? 'ineligible' : ''} ${acc.status === AccountStatus.DEPLETED ? 'depleted' : ''}" data-email="${acc.email}" data-name="${displayName}" data-alias="${acc.alias || ''}" data-status="${acc.status}" data-model-balances='${modelBalancesStr}'>
         <div class="card-header">
           ${acc.avatarUrl ? `<img class="avatar ${avatarClass}" src="${acc.avatarUrl}" alt="${displayName}" />` : `<div class="avatar ${avatarClass}">${displayName.charAt(0).toUpperCase()}</div>`}
           <div class="user-info">

@@ -214,6 +214,8 @@
     "sortDefault": "Default Sort",
     "sortNameAsc": "Name (A-Z)",
     "sortNameDesc": "Name (Z-A)",
+    "sortEmailAsc": "Email (A-Z)",
+    "sortEmailDesc": "Email (Z-A)",
     "sortDateAdded": "Date Added",
     "sortQuota": "Remaining Quota",
     "sortQuotaRegen": "Quota Regen Time",
