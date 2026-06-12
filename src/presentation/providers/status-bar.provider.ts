@@ -134,10 +134,11 @@ export class StatusBarProvider implements vscode.Disposable {
       if (typeof rawV === 'object' && rawV !== null && 'value' in rawV) {
         // Model entry (from fetchAvailableModels)
         allModelEntries.push({ key: k, lowerKey, value: rawV.value, resetTime: rawV.resetTime });
-      } else {
         // Credit entry (plain number)
         const value = typeof rawV === 'number' ? rawV : Number(rawV);
-        credits.push({ key: k, value });
+        if (value > 0) {
+          credits.push({ key: k, value });
+        }
       }
     }
 

@@ -16,6 +16,7 @@ import { AccountStatus } from '../../core/domain/models/account.model';
 import { ExtensionConfig } from '../../core/config/extension.config';
 import { generateDeviceProfile } from '../../core/domain/models/device-profile.model';
 import { isEmailMatch } from '../../core/utils/account.utils';
+import { getModelBalanceValue } from '../../core/utils/model.utils';
 
 export class AccountService {
   private _onAccountsChanged = new vscode.EventEmitter<void>();
@@ -50,6 +51,59 @@ export class AccountService {
     private accountRepo: IAccountRepository,
     private stateDbService: StateDbService
   ) {}
+
+  private async determineAccountStatus(
+    balanceInfo: { balances: Record<string, any>; hasError: boolean; status?: AccountStatus },
+    preferredModel: string | null
+  ): Promise<AccountStatus> {
+    if (balanceInfo.status === AccountStatus.INELIGIBLE) {
+      return AccountStatus.INELIGIBLE;
+    }
+    if (balanceInfo.hasError) {
+      return AccountStatus.ERROR;
+    }
+
+    const config = ExtensionConfig.getInstance();
+    let isDepleted = false;
+    let isLow = false;
+    let totalCredits = 0;
+
+    const modelValues: number[] = [];
+    for (const [k, rawV] of Object.entries(balanceInfo.balances)) {
+      if (typeof rawV === 'object' && rawV !== null && 'value' in rawV) {
+        modelValues.push(rawV.value);
+      } else {
+        totalCredits += typeof rawV === 'number' ? rawV : Number(rawV);
+      }
+    }
+
+    if (preferredModel) {
+      const prefValue = getModelBalanceValue(balanceInfo.balances, preferredModel);
+      if (prefValue === 0) {
+        isDepleted = true;
+      } else if (prefValue > 0 && prefValue < 20) {
+        isLow = true;
+      } else if (prefValue === -1) {
+        const hasModelsWithQuota = modelValues.some(val => val > 0);
+        if (modelValues.length > 0 && !hasModelsWithQuota && totalCredits <= 0) {
+          isDepleted = true;
+        } else if (totalCredits <= config.getLowCreditThreshold()) {
+          isLow = true;
+        }
+      }
+    } else {
+      const hasModelsWithQuota = modelValues.some(val => val > 0);
+      if (modelValues.length > 0 && !hasModelsWithQuota && totalCredits <= 0) {
+        isDepleted = true;
+      } else if (totalCredits <= config.getLowCreditThreshold()) {
+        isLow = true;
+      }
+    }
+
+    if (isDepleted) return AccountStatus.DEPLETED;
+    if (isLow) return AccountStatus.LOW_BALANCE;
+    return AccountStatus.ACTIVE;
+  }
 
   /**
    * Workflow: Add a new Google account
@@ -86,17 +140,8 @@ export class AccountService {
         });
 
         // Determine status based on config thresholds
-        const config = ExtensionConfig.getInstance();
-        let finalStatus = balanceInfo.status || (balanceInfo.hasError ? AccountStatus.ERROR : AccountStatus.ACTIVE);
-        
-        let totalCredits = 0;
-        if (!balanceInfo.hasError && finalStatus !== AccountStatus.INELIGIBLE) {
-          const values = Object.values(balanceInfo.balances);
-          totalCredits = values.reduce((sum, val) => sum + (typeof val === 'number' ? val : (val?.value || 0)), 0);
-
-          if (values.length > 0 && totalCredits <= 0) finalStatus = AccountStatus.DEPLETED;
-          else if (totalCredits <= config.getLowCreditThreshold()) finalStatus = AccountStatus.LOW_BALANCE;
-        }
+        const preferredModel = await this.accountRepo.getPreferredModel();
+        const finalStatus = await this.determineAccountStatus(balanceInfo, preferredModel);
 
         // 4. Update dynamic properties (balances, plan)
         await this.accountRepo.updateAccount(profile.email, {
@@ -277,7 +322,7 @@ export class AccountService {
       onlyEmails?: string[];
       force?: boolean;
     }
-  ): Promise<void> {
+  ): Promise<boolean> {
     // ── Guard: Prevent concurrent or rapid-fire refreshes ──
     if (this._isRefreshing) {
       Logger.getInstance().info('Refresh already in progress, ignoring duplicate request.');
@@ -285,12 +330,12 @@ export class AccountService {
         const i18n = I18nService.getInstance();
         vscode.window.showInformationMessage(i18n.t('service.refreshInProgress'));
       }
-      return;
+      return false;
     }
 
     const now = Date.now();
     const elapsed = now - this._lastRefreshTime;
-    if (elapsed < AccountService.REFRESH_COOLDOWN_MS) {
+    if (!options?.force && elapsed < AccountService.REFRESH_COOLDOWN_MS) {
       const remainingMs = AccountService.REFRESH_COOLDOWN_MS - elapsed;
       const remainingSec = Math.ceil(remainingMs / 1000);
       Logger.getInstance().info(`Refresh cooldown active. Queueing next refresh in ${remainingSec}s.`);
@@ -313,7 +358,7 @@ export class AccountService {
         }
       }, remainingMs);
 
-      return;
+      return false;
     }
 
     this._isRefreshing = true;
@@ -321,13 +366,13 @@ export class AccountService {
 
     try {
     let accounts = await this.accountRepo.getAllAccounts();
-    if (accounts.length === 0) { this._isRefreshing = false; return; }
+    if (accounts.length === 0) { this._isRefreshing = false; return false; }
 
     // Filter to specific accounts if requested (e.g., search-filtered refresh)
     if (options?.onlyEmails && options.onlyEmails.length > 0) {
       const filterSet = new Set(options.onlyEmails.map(e => e.toLowerCase()));
       accounts = accounts.filter(a => filterSet.has(a.email.toLowerCase()));
-      if (accounts.length === 0) { this._isRefreshing = false; return; }
+      if (accounts.length === 0) { this._isRefreshing = false; return false; }
     }
 
     // Reorder accounts to match UI display order if provided
@@ -431,18 +476,10 @@ export class AccountService {
       // Fetch Balance
       const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken);
       
-      let status = balanceInfo.hasError ? AccountStatus.ERROR : AccountStatus.ACTIVE;
+      const preferredModel = await this.accountRepo.getPreferredModel();
+      const status = await this.determineAccountStatus(balanceInfo, preferredModel);
       
-      let totalCredits = 0;
       if (!balanceInfo.hasError) {
-        const values = Object.values(balanceInfo.balances);
-        totalCredits = values.reduce((sum: number, val: any) => sum + (typeof val === 'number' ? val : (val?.value || 0)), 0);
-
-        if (values.length > 0 && totalCredits <= 0) {
-          status = AccountStatus.DEPLETED;
-        } else if (totalCredits <= config.getLowCreditThreshold()) {
-          status = AccountStatus.LOW_BALANCE;
-        }
         successCount++;
       }
 
@@ -462,6 +499,13 @@ export class AccountService {
         if (status === AccountStatus.DEPLETED) {
           vscode.window.showWarningMessage(i18n.t('notifications.depleted', { email: account.email }));
         } else if (status === AccountStatus.LOW_BALANCE) {
+          let totalCredits = 0;
+          if (preferredModel) {
+            totalCredits = getModelBalanceValue(balanceInfo.balances, preferredModel);
+          } else {
+            const values = Object.values(balanceInfo.balances);
+            totalCredits = values.reduce((sum: number, val: any) => sum + (typeof val === 'number' ? val : (val?.value || 0)), 0);
+          }
           vscode.window.showWarningMessage(i18n.t('notifications.lowBalance', { email: account.email, amount: totalCredits }));
         }
       }
@@ -497,6 +541,7 @@ export class AccountService {
     options?.onComplete?.();
     
     this._onAccountsChanged.fire();
+    return !wasCancelled;
     } finally {
       this._isRefreshing = false;
     }
@@ -551,18 +596,8 @@ export class AccountService {
     const config = ExtensionConfig.getInstance();
     const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken);
 
-    let status = balanceInfo.hasError ? AccountStatus.ERROR : AccountStatus.ACTIVE;
-    let totalCredits = 0;
-    if (!balanceInfo.hasError) {
-      const values = Object.values(balanceInfo.balances);
-      totalCredits = values.reduce((sum: number, val: any) => sum + (typeof val === 'number' ? val : (val?.value || 0)), 0);
-
-      if (values.length > 0 && totalCredits <= 0) {
-        status = AccountStatus.DEPLETED;
-      } else if (totalCredits <= config.getLowCreditThreshold()) {
-        status = AccountStatus.LOW_BALANCE;
-      }
-    }
+    const preferredModel = await this.accountRepo.getPreferredModel();
+    const status = await this.determineAccountStatus(balanceInfo, preferredModel);
 
     await this.accountRepo.updateAccount(email, {
       balances: balanceInfo.balances,
@@ -579,6 +614,13 @@ export class AccountService {
       if (status === AccountStatus.DEPLETED) {
         vscode.window.showWarningMessage(i18n.t('notifications.depleted', { email }));
       } else if (status === AccountStatus.LOW_BALANCE) {
+        let totalCredits = 0;
+        if (preferredModel) {
+          totalCredits = getModelBalanceValue(balanceInfo.balances, preferredModel);
+        } else {
+          const values = Object.values(balanceInfo.balances);
+          totalCredits = values.reduce((sum: number, val: any) => sum + (typeof val === 'number' ? val : (val?.value || 0)), 0);
+        }
         vscode.window.showWarningMessage(i18n.t('notifications.lowBalance', { email, amount: totalCredits }));
       }
     }

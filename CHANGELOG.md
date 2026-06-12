@@ -5,6 +5,19 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-06-12
+
+### Added
+- **Periodic Background Refresh**: Implemented an automated background balance refresh that runs every 30 minutes (or based on `refreshIntervalMinutes`), fetching credits for all accounts silently to keep cache data up-to-date and prevent massive sudden refreshes.
+
+### Fixed
+- **Google One AI display**: Hidden zero-value credit badges (like `GOOGLE ONE AI 0`) in the sidebar panel and status bar tooltip for accounts without active paid subscriptions.
+- **Segment Refresh Scan**: Bypassed the 30-second cooldown for manually triggered refreshes (such as clicking scan segment filters or refresh button) to execute them immediately.
+- **Misleading success toasts**: Fixed a bug where skipped refreshes (cooldown active or empty results) still displayed "refreshed successfully" by checking actual execution run status.
+- **Active Account Auto-Update**: Unconditionally refresh the active account balance in the background (every 30 seconds) and immediately trigger a balance update when the active account is changed in the IDE.
+- **Auto-Rotation Triggering**: Centralized account status calculation so that if the preferred model's remaining percentage drops to 0%, the status correctly becomes `DEPLETED`, triggering auto-rotation to the next healthy account.
+- **Instant Preferred Model Update**: Clicking on a model card in any card now immediately sets it as the preferred model, updating the status bar, re-sorting the list, and pinning it to the top.
+
 ## [0.2.1] - 2026-06-09
 
 ### Added

@@ -53,3 +53,36 @@ export function getFriendlyModelName(key: string): string | null {
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 }
+
+export function getModelBalanceValue(balances: Record<string, any> | undefined, targetKey: string): number {
+  if (!balances) return -1;
+  const lowerTarget = targetKey.toLowerCase();
+  
+  for (const [k, v] of Object.entries(balances)) {
+    if (!k) continue;
+    const friendlyName = getFriendlyModelName(k);
+    if (friendlyName && friendlyName.toLowerCase() === lowerTarget) {
+      if (typeof v === 'object' && v !== null && 'value' in v) {
+        return v.value;
+      }
+      return typeof v === 'number' ? v : Number(v);
+    }
+  }
+
+  // Handle Claude version match (e.g. Claude 4.6 (Thinking))
+  if (lowerTarget.startsWith('claude ') && lowerTarget.endsWith(' (thinking)')) {
+    const targetVersion = lowerTarget.replace('claude ', '').replace(' (thinking)', '');
+    for (const [k, v] of Object.entries(balances)) {
+      if (!k || !k.toLowerCase().includes('claude')) continue;
+      const friendlyName = getFriendlyModelName(k);
+      if (friendlyName && friendlyName.toLowerCase().includes(` ${targetVersion} `)) {
+        if (typeof v === 'object' && v !== null && 'value' in v) {
+          return v.value;
+        }
+        return typeof v === 'number' ? v : Number(v);
+      }
+    }
+  }
+
+  return -1;
+}

@@ -130,6 +130,12 @@ function registerCommands(
         logger.info(`Active account changed in IDE to: ${currentActive}`);
         lastActiveEmail = currentActive;
         accountService.emitAccountsChanged();
+        if (currentActive) {
+          logger.info(`Immediately refreshing new active account balance: ${currentActive}`);
+          accountService.refreshSingleAccountBalance(currentActive).catch((err: any) => {
+            logger.error(`Failed to refresh active account balance on change for ${currentActive}`, err);
+          });
+        }
       }
 
       // Sync active tokens from state.vscdb to our local repository
@@ -143,8 +149,8 @@ function registerCommands(
         }
       }
 
-      // Background check for active account balance depletion to trigger auto-rotation
-      if (config.isAutoRotateEnabled() && currentActive) {
+      // Background check for active account balance depletion to trigger auto-rotation / updates
+      if (currentActive) {
         try {
           const account = await accountRepo.getAccount(currentActive);
           if (account) {
@@ -174,8 +180,34 @@ function registerCommands(
     }
   }, 5000); // Check every 5 seconds for responsive updates
 
+  // ── Periodic Background Balance Refresh (runs every minute to check if interval elapsed) ──
+  const periodicRefreshInterval = setInterval(async () => {
+    try {
+      const refreshIntervalMinutes = config.getRefreshIntervalMinutes();
+      if (refreshIntervalMinutes <= 0) return; // Disabled
+
+      const lastRefreshed = await accountRepo.getBalancesLastRefreshed();
+      const now = Date.now();
+      const elapsedMs = now - lastRefreshed;
+      const intervalMs = refreshIntervalMinutes * 60 * 1000;
+
+      if (elapsedMs >= intervalMs) {
+        logger.info(`Periodic background balance refresh starting (elapsed: ${Math.round(elapsedMs / 1000 / 60)}m, interval: ${refreshIntervalMinutes}m)...`);
+        // Run full silent progressive refresh bypassing the cache (force = true)
+        accountService.refreshBalancesWorkflow(false, { force: true }).catch((err: any) => {
+          logger.error('Failed to execute periodic background balance refresh', err);
+        });
+      }
+    } catch (periodicErr: any) {
+      logger.error('Error in periodic background refresh check', periodicErr);
+    }
+  }, 60 * 1000); // Check every minute
+
   disposables.push({
-    dispose: () => clearInterval(activeCheckInterval)
+    dispose: () => {
+      clearInterval(activeCheckInterval);
+      clearInterval(periodicRefreshInterval);
+    }
   });
 
   // Initialize UI Providers

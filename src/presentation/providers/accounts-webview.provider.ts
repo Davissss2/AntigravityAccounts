@@ -179,6 +179,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           break;
         case 'switchModel':
           if (message.email && message.modelKey) {
+            await this.accountRepo.setPreferredModel(message.modelKey);
+            this.accountService.emitAccountsChanged();
             this._view?.webview.postMessage({ command: 'modelSwitched', email: message.email, modelKey: message.modelKey });
           }
           break;
@@ -377,8 +379,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     // Tell webview to disable all buttons and show progress banner
     this._view?.webview.postMessage({ command: 'refreshStarted', totalAccounts });
 
+    let didRun = false;
     try {
-      await this.accountService.refreshBalancesWorkflow(notify, {
+      didRun = await this.accountService.refreshBalancesWorkflow(notify, {
         signal,
         orderedEmails,
         onlyEmails,
@@ -405,7 +408,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       });
     } finally {
       this._refreshAbortController = null;
-      const wasCancelled = !!signal.aborted;
+      const wasCancelled = !!signal.aborted || !didRun;
       this._view?.webview.postMessage({ command: 'refreshFinished', wasCancelled });
     }
   }
@@ -3522,7 +3525,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
            resetTime = obj.resetTime;
         } else {
            value = typeof rawV === 'number' ? rawV : Number(rawV);
-           creditBalances.push({ key: k, value });
+           if (value > 0) {
+             creditBalances.push({ key: k, value });
+           }
            continue;
         }
 
