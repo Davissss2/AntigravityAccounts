@@ -122,7 +122,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             const confirm = await vscode.window.showWarningMessage(
               i18n.t('accounts.confirmSwitch', { email: message.email }),
               { modal: true },
-              i18n.t('common.yes'), i18n.t('common.cancel')
+              i18n.t('common.yes')
             );
             if (confirm === i18n.t('common.yes')) {
               try {
