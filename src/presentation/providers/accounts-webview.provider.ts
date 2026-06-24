@@ -2526,13 +2526,29 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             let targetEmails = [];
             const cards = document.querySelectorAll('.account-card');
 
-            const prefModelLower = (typeof currentPreferredModel === 'string' ? currentPreferredModel : '').toLowerCase();
-            const hasPrefModelQuota = (card) => {
-              if (!prefModelLower) return false;
+            const getCheckModel = (card) => {
+              // 1. Check account-specific active model first
+              const email = card.dataset.email;
+              const activeModel = state.activeModels && state.activeModels[email];
+              if (activeModel) return activeModel.toLowerCase();
+              
+              // 2. Fallback to global preferred model
+              const globalPref = (typeof currentPreferredModel === 'string' ? currentPreferredModel : '').toLowerCase();
+              if (globalPref) return globalPref;
+              
+              return null;
+            };
+
+            const hasQuota = (card) => {
               try {
                 const balances = JSON.parse(card.dataset.modelBalances || '{}');
-                const val = balances[prefModelLower];
-                return val !== undefined && val > 0;
+                const checkModel = getCheckModel(card);
+                if (checkModel) {
+                  const val = balances[checkModel];
+                  return val !== undefined && val > 0;
+                }
+                // If no specific model is targeted, check if any model has quota > 0
+                return Object.values(balances).some(val => typeof val === 'number' && val > 0);
               } catch (e) {
                 return false;
               }
@@ -2541,25 +2557,21 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             if (segment === 'all') {
               targetEmails = Array.from(cards).map(c => c.dataset.email);
             } else if (segment === 'with-quota') {
-              if (prefModelLower) {
-                targetEmails = Array.from(cards)
-                  .filter(c => (c.dataset.status === 'active' || c.dataset.status === 'low_balance') && hasPrefModelQuota(c))
-                  .map(c => c.dataset.email);
-              } else {
-                targetEmails = Array.from(cards)
-                  .filter(c => c.dataset.status === 'active' || c.dataset.status === 'low_balance')
-                  .map(c => c.dataset.email);
-              }
+              targetEmails = Array.from(cards)
+                .filter(c => {
+                  const status = c.dataset.status;
+                  const isBasicActive = (status === 'active' || status === 'low_balance');
+                  return isBasicActive && hasQuota(c);
+                })
+                .map(c => c.dataset.email);
             } else if (segment === 'without-quota') {
-              if (prefModelLower) {
-                targetEmails = Array.from(cards)
-                  .filter(c => c.dataset.status === 'depleted' || c.dataset.status === 'token_expired' || c.dataset.status === 'ineligible' || c.dataset.status === 'error' || !hasPrefModelQuota(c))
-                  .map(c => c.dataset.email);
-              } else {
-                targetEmails = Array.from(cards)
-                  .filter(c => c.dataset.status === 'depleted' || c.dataset.status === 'token_expired' || c.dataset.status === 'ineligible' || c.dataset.status === 'error')
-                  .map(c => c.dataset.email);
-              }
+              targetEmails = Array.from(cards)
+                .filter(c => {
+                  const status = c.dataset.status;
+                  const isBasicInactive = (status === 'depleted' || status === 'token_expired' || status === 'ineligible' || status === 'error');
+                  return isBasicInactive || !hasQuota(c);
+                })
+                .map(c => c.dataset.email);
             }
 
             if (targetEmails.length === 0) {

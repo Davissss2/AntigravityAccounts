@@ -5,6 +5,12 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-06-24
+
+### Fixed
+- **Segment Scanning for Unset Global Models**: Fixed a bug where "Scan With Quota" and "Scan Without Quota" segment buttons did not correctly filter accounts when no global preferred model was selected in settings. The scan logic now correctly evaluates each account's specific active/selected model before falling back to the global preference or checking overall model balances.
+- **VSIX Untracking**: Corrected Git tracking status for compiled `.vsix` files to prevent uploading compiled extension packages.
+
 ## [0.2.3] - 2026-06-12
 
 ### Added
