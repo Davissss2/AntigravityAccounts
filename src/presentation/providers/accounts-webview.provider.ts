@@ -976,7 +976,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       }
     }
 
-    // ── Sort accounts ──
+    // ── Set active state and sort accounts ──
+    accounts.forEach(acc => {
+      acc.isActive = (this._pinnedActiveEmail !== null && acc.email.toLowerCase() === this._pinnedActiveEmail);
+    });
     this.sortAccounts(accounts, effectivePreferred, this._pinnedActiveEmail);
 
     const formatTime = (resetTimeStr?: string) => {
@@ -3487,47 +3490,93 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
   private sortAccounts(accounts: any[], effectivePreferred: string, pinnedEmailLower: string | null): void {
     const sortBy = ExtensionConfig.getInstance().getSortBy();
 
-    // Helper: compute remaining quota percentage (0-100)
+    // Helper: compute remaining usable quota percentage (0-100)
     const getAccountQuotaValue = (acc: any): number => {
-      if (!acc.balances) return -1;
-
-      // 1. If preferred model is set and has balance > 0, return it
-      if (effectivePreferred) {
-        const val = this.getModelBalanceValue(acc.balances, effectivePreferred);
-        if (val > 0) return val;
+      if (!acc.balances) return 0;
+      if (acc.status === AccountStatus.DEPLETED || acc.status === AccountStatus.TOKEN_EXPIRED || acc.status === AccountStatus.ERROR || acc.status === AccountStatus.INELIGIBLE) {
+        return 0;
       }
 
-      // 2. Otherwise find the maximum quota value across all models
-      let maxQuota = -1;
-      for (const [k, rawV] of Object.entries(acc.balances)) {
-        if (typeof rawV === 'object' && rawV !== null && 'value' in rawV) {
-          const val = typeof (rawV as any).value === 'number' ? (rawV as any).value : Number((rawV as any).value);
-          if (val > maxQuota) {
-            maxQuota = val;
+      // 1. If preferred model is set and matches an active model, return its value
+      if (effectivePreferred) {
+        for (const [k, rawV] of Object.entries(acc.balances)) {
+          const lower = k.toLowerCase();
+          if (lower.startsWith('chat') || lower.startsWith('tab') || lower.startsWith('tap')) continue;
+          if (lower.includes(effectivePreferred.toLowerCase()) || effectivePreferred.toLowerCase().includes(lower)) {
+            const val = typeof rawV === 'object' && rawV !== null ? Number((rawV as any).value) : Number(rawV);
+            if (!isNaN(val)) return val;
           }
-        } else if (typeof rawV === 'number' && rawV > maxQuota) {
-          maxQuota = rawV;
         }
       }
-      return maxQuota;
+
+      // 2. Primary Gemini model keys
+      const primaryKeys = [
+        'gemini-3.7-flash-tiered',
+        'gemini-3.7-flash',
+        'gemini-3.5-flash-high',
+        'gemini-3.6-flash-high',
+        'gemini-3.5-flash-medium',
+        'gemini-3.5-flash-low',
+        'gemini-3.1-pro-high',
+        'gemini-3.1-pro-low'
+      ];
+
+      for (const pk of primaryKeys) {
+        if (acc.balances[pk] !== undefined) {
+          const rawV = acc.balances[pk];
+          const val = typeof rawV === 'object' && rawV !== null ? Number((rawV as any).value) : Number(rawV);
+          if (!isNaN(val)) return val;
+        }
+      }
+
+      return 0;
     };
 
     // Helper: compute soonest remaining time until renewal in ms (0 = ready now or already passed)
     const getAccountNextRegenTime = (acc: any): number => {
       if (!acc.balances) return Infinity;
+      const primaryKeys = [
+        'gemini-3.7-flash-tiered',
+        'gemini-3.7-flash',
+        'gemini-3.5-flash-high',
+        'gemini-3.6-flash-high',
+        'gemini-3.5-flash-medium',
+        'gemini-3.5-flash-low',
+        'gemini-3.1-pro-high',
+        'gemini-3.1-pro-low'
+      ];
+
       let minTime = Infinity;
-      for (const [k, rawV] of Object.entries(acc.balances)) {
-        if (typeof rawV === 'object' && rawV !== null && 'resetTime' in rawV) {
+      for (const pk of primaryKeys) {
+        const rawV = acc.balances[pk];
+        if (typeof rawV === 'object' && rawV !== null && (rawV as any).resetTime) {
           const resetTimeStr = (rawV as any).resetTime;
-          if (resetTimeStr) {
-            const date = new Date(resetTimeStr);
-            const time = date.getTime();
-            if (!isNaN(time)) {
-              const diffMs = time - Date.now();
-              const effectiveDiff = diffMs <= 0 ? 0 : diffMs;
-              if (effectiveDiff < minTime) {
-                minTime = effectiveDiff;
-              }
+          const date = new Date(resetTimeStr);
+          const time = date.getTime();
+          if (!isNaN(time)) {
+            const diffMs = time - Date.now();
+            const effectiveDiff = diffMs <= 0 ? 0 : diffMs;
+            if (effectiveDiff < minTime) {
+              minTime = effectiveDiff;
+            }
+          }
+        }
+      }
+
+      if (minTime !== Infinity) return minTime;
+
+      for (const [k, rawV] of Object.entries(acc.balances)) {
+        const lower = k.toLowerCase();
+        if (lower.startsWith('chat') || lower.startsWith('tab') || lower.startsWith('tap') || lower.includes('claude') || lower.includes('gpt')) continue;
+        if (typeof rawV === 'object' && rawV !== null && (rawV as any).resetTime) {
+          const resetTimeStr = (rawV as any).resetTime;
+          const date = new Date(resetTimeStr);
+          const time = date.getTime();
+          if (!isNaN(time)) {
+            const diffMs = time - Date.now();
+            const effectiveDiff = diffMs <= 0 ? 0 : diffMs;
+            if (effectiveDiff < minTime) {
+              minTime = effectiveDiff;
             }
           }
         }
@@ -3615,8 +3664,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           // 1. Separate accounts with available quota (> 0%) from accounts with 0% / depleted
           const aQuota = getAccountQuotaValue(a);
           const bQuota = getAccountQuotaValue(b);
-          const aHasQuota = aQuota > 0;
-          const bHasQuota = bQuota > 0;
+          const aHasQuota = aQuota > 0 && (a.status === AccountStatus.ACTIVE || a.status === AccountStatus.LOW_BALANCE);
+          const bHasQuota = bQuota > 0 && (b.status === AccountStatus.ACTIVE || b.status === AccountStatus.LOW_BALANCE);
 
           if (aHasQuota && !bHasQuota) return -1;
           if (!aHasQuota && bHasQuota) return 1;
@@ -3644,7 +3693,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           if (!aIsBroken && bIsBroken) return -1;
           if (aIsBroken && !bIsBroken) return 1;
 
-          // For normal depleted/active accounts with 0%: sort by renewal countdown ascending (soonest to recharge first!)
+          // For normal depleted accounts (0%): sort strictly by renewal countdown ascending (soonest to recharge first!)
           if (!aIsBroken && !bIsBroken) {
             const aTime = getAccountNextRegenTime(a);
             const bTime = getAccountNextRegenTime(b);
@@ -3695,24 +3744,57 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
        return i18n.t('webview.renewsInHoursMins', { hours: totalHours, mins });
     };
 
-    // Find the next reset time among all models
+    // Find the next reset time among primary models (Gemini Flash/Pro)
     let nextResetTime: string | undefined = undefined;
     let minDiffMs = Infinity;
 
     if (acc.balances) {
-      for (const [k, rawV] of Object.entries(acc.balances)) {
-        if (typeof rawV === 'object' && rawV !== null && 'resetTime' in rawV) {
+      const primaryKeys = [
+        'gemini-3.7-flash-tiered',
+        'gemini-3.7-flash',
+        'gemini-3.5-flash-high',
+        'gemini-3.6-flash-high',
+        'gemini-3.5-flash-medium',
+        'gemini-3.5-flash-low',
+        'gemini-3.1-pro-high',
+        'gemini-3.1-pro-low'
+      ];
+
+      for (const pk of primaryKeys) {
+        const rawV = acc.balances[pk];
+        if (typeof rawV === 'object' && rawV !== null && (rawV as any).resetTime) {
           const resetTimeStr = (rawV as any).resetTime as string;
           if (resetTimeStr) {
             const date = new Date(resetTimeStr);
             const time = date.getTime();
             if (!isNaN(time)) {
               const diffMs = time - Date.now();
-              if (diffMs > 0 && diffMs < minDiffMs) {
-                minDiffMs = diffMs;
+              const effDiff = diffMs <= 0 ? 0 : diffMs;
+              if (effDiff < minDiffMs) {
+                minDiffMs = effDiff;
                 nextResetTime = resetTimeStr;
-              } else if (minDiffMs === Infinity && diffMs <= 0 && !nextResetTime) {
-                nextResetTime = resetTimeStr;
+              }
+            }
+          }
+        }
+      }
+
+      if (!nextResetTime) {
+        for (const [k, rawV] of Object.entries(acc.balances)) {
+          const lower = k.toLowerCase();
+          if (lower.startsWith('chat') || lower.startsWith('tab') || lower.startsWith('tap') || lower.includes('claude') || lower.includes('gpt')) continue;
+          if (typeof rawV === 'object' && rawV !== null && 'resetTime' in rawV) {
+            const resetTimeStr = (rawV as any).resetTime as string;
+            if (resetTimeStr) {
+              const date = new Date(resetTimeStr);
+              const time = date.getTime();
+              if (!isNaN(time)) {
+                const diffMs = time - Date.now();
+                const effDiff = diffMs <= 0 ? 0 : diffMs;
+                if (effDiff < minDiffMs) {
+                  minDiffMs = effDiff;
+                  nextResetTime = resetTimeStr;
+                }
               }
             }
           }
