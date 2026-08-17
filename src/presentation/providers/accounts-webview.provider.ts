@@ -65,6 +65,19 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
   /** Current search query preserved across webview re-renders */
   private _searchQuery: string = '';
 
+  /** Active refresh progress state to preserve banner across webview re-renders/tab switches */
+  private _isRefreshingProgress: {
+    isRefreshing: boolean;
+    totalAccounts: number;
+    currentIndex: number;
+    currentEmail: string;
+  } = {
+    isRefreshing: false,
+    totalAccounts: 0,
+    currentIndex: 0,
+    currentEmail: '',
+  };
+
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly accountRepo: IAccountRepository,
@@ -72,7 +85,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
   ) {
     // Automatically re-detect active account and re-render when data changes
     this.accountService.onAccountsChanged(() => {
-      this.detectAndPinActiveAccount().then(() => this.refresh());
+      // Do not recreate full HTML DOM during active scan since cards update individually
+      if (!this._isRefreshingProgress.isRefreshing) {
+        this.detectAndPinActiveAccount().then(() => this.refresh());
+      }
     });
   }
 
@@ -216,16 +232,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             const currentLang = vscode.workspace.getConfiguration('antigravityAccount').get<string>('language');
             if (currentLang !== message.language) {
               await vscode.workspace.getConfiguration('antigravityAccount').update('language', message.language, vscode.ConfigurationTarget.Global);
-              // Give VS Code a moment to apply the config change and trigger the listener
-              setTimeout(() => {
-                this.refresh();
-              }, 150);
-            } else {
-              this.refresh();
             }
-          } else {
-            this.refresh();
           }
+          await this.refresh();
+          this._view?.webview.postMessage({ command: 'hideLoading' });
           break;
       }
     });
@@ -372,6 +382,14 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const totalAccounts = orderedEmails.length;
     let currentIndex = 0;
 
+    // Track active refresh progress state
+    this._isRefreshingProgress = {
+      isRefreshing: true,
+      totalAccounts,
+      currentIndex: 0,
+      currentEmail: orderedEmails[0] || '',
+    };
+
     // Create abort controller for this refresh cycle
     this._refreshAbortController = new AbortController();
     const signal = this._refreshAbortController.signal;
@@ -388,6 +406,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         force,
         onAccountStart: (email: string) => {
           currentIndex++;
+          this._isRefreshingProgress.currentIndex = currentIndex;
+          this._isRefreshingProgress.currentEmail = email;
           this._view?.webview.postMessage({ command: 'accountRefreshStart', email, currentIndex, totalAccounts });
         },
         onAccountDone: async (email: string, updatedBalances?: Record<string, any>, updatedStatus?: string) => {
@@ -403,13 +423,20 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           this._view?.webview.postMessage({ command: 'accountRefreshDone', email, html: cardHtml, balances: updatedBalances, status: updatedStatus });
         },
         onComplete: () => {
-          this.refresh();
+          // Will re-render after finally block
         }
       });
     } finally {
+      this._isRefreshingProgress = {
+        isRefreshing: false,
+        totalAccounts: 0,
+        currentIndex: 0,
+        currentEmail: '',
+      };
       this._refreshAbortController = null;
       const wasCancelled = !!signal.aborted || !didRun;
       this._view?.webview.postMessage({ command: 'refreshFinished', wasCancelled });
+      await this.refresh();
     }
   }
 
@@ -927,6 +954,28 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     }
     const effectivePreferred = preferredModel || '';
 
+    // Count accounts with quota > 0
+    let withQuotaCount = 0;
+    for (const acc of accounts) {
+      if (acc.status === AccountStatus.ACTIVE || acc.status === AccountStatus.LOW_BALANCE) {
+        let hasQ = false;
+        if (acc.balances) {
+          for (const rawV of Object.values(acc.balances)) {
+            if (typeof rawV === 'object' && rawV !== null && 'value' in rawV) {
+              if (Number((rawV as any).value) > 0) {
+                hasQ = true;
+                break;
+              }
+            } else if (typeof rawV === 'number' && rawV > 0) {
+              hasQ = true;
+              break;
+            }
+          }
+        }
+        if (hasQ) withQuotaCount++;
+      }
+    }
+
     // ── Sort accounts ──
     this.sortAccounts(accounts, effectivePreferred, this._pinnedActiveEmail);
 
@@ -1047,6 +1096,39 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             color: var(--text-primary); 
             font-weight: 700;
             letter-spacing: -0.02em;
+          }
+
+          .quota-count-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 12px;
+            letter-spacing: 0.02em;
+          }
+          .quota-count-badge.has-quota {
+            background: rgba(16, 185, 129, 0.12);
+            color: var(--success-color, #10b981);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+          }
+          .quota-count-badge.has-quota .quota-count-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: var(--success-color, #10b981);
+          }
+          .quota-count-badge.no-quota {
+            background: rgba(245, 158, 11, 0.12);
+            color: var(--warning-color, #f59e0b);
+            border: 1px solid rgba(245, 158, 11, 0.25);
+          }
+          .quota-count-badge.no-quota .quota-count-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: var(--warning-color, #f59e0b);
           }
           
           .btn-icon {
@@ -2178,7 +2260,15 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         </div>
 
         <div class="header-actions">
-          <h2>${i18n.t('accounts.title')}</h2>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <h2>${i18n.t('accounts.title')}</h2>
+            ${accounts.length > 0 ? `
+              <span class="quota-count-badge ${withQuotaCount > 0 ? 'has-quota' : 'no-quota'}" id="quotaCountBadge" title="${withQuotaCount} de ${accounts.length} cuentas con cuota disponible">
+                <span class="quota-count-dot"></span>
+                <span>${withQuotaCount}/${accounts.length}</span>
+              </span>
+            ` : ''}
+          </div>
           <div style="display:flex;align-items:center;gap:4px;">
             <button id="cancelRefreshBtn" class="btn-cancel-refresh" onclick="showCancelConfirm()" title="${i18n.t('accounts.cancelRefresh')}">
               <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px; height:12px; margin-inline-end: 4px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -2244,16 +2334,16 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
         <div id="accounts-list">
           <!-- Refresh Progress Banner -->
-          <div id="refreshProgressBanner" class="refresh-progress-banner">
+          <div id="refreshProgressBanner" class="refresh-progress-banner ${this._isRefreshingProgress.isRefreshing ? 'visible' : ''}">
             <div class="refresh-progress-info">
-              <span class="refresh-progress-email" id="refreshProgressEmail"></span>
+              <span class="refresh-progress-email" id="refreshProgressEmail">${this._isRefreshingProgress.isRefreshing && this._isRefreshingProgress.currentEmail ? `<span class="refresh-label">${i18n.t('accounts.refreshingAccount')}: </span>${this._isRefreshingProgress.currentEmail}` : ''}</span>
               <div class="refresh-progress-stats">
-                <span class="refresh-progress-count" id="refreshProgressCount">0/0</span>
-                <span class="refresh-progress-percent" id="refreshProgressPercent">0%</span>
+                <span class="refresh-progress-count" id="refreshProgressCount">${this._isRefreshingProgress.currentIndex} / ${this._isRefreshingProgress.totalAccounts}</span>
+                <span class="refresh-progress-percent" id="refreshProgressPercent">${this._isRefreshingProgress.totalAccounts > 0 ? Math.round((this._isRefreshingProgress.currentIndex / this._isRefreshingProgress.totalAccounts) * 100) : 0}%</span>
               </div>
             </div>
             <div class="refresh-progress-bar-track">
-              <div class="refresh-progress-bar-fill" id="refreshProgressBar"></div>
+              <div class="refresh-progress-bar-fill" id="refreshProgressBar" style="width: ${this._isRefreshingProgress.totalAccounts > 0 ? Math.round((this._isRefreshingProgress.currentIndex / this._isRefreshingProgress.totalAccounts) * 100) : 0}%;"></div>
             </div>
           </div>
           <!-- Refresh Toast -->
@@ -2443,6 +2533,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           const savedSearchQuery = ${JSON.stringify(this._searchQuery)};
           
           // vscode is now defined in the first script tag globally to allow window.onerror logging before this script runs.
+          let state = vscode.getState() || { activeModels: {} };
+          if (!state) state = { activeModels: {} };
+          if (!state.activeModels) state.activeModels = {};
 
           function toggleModels(headerElement, wrapperId) {
             const wrapper = document.getElementById(wrapperId);
@@ -2477,7 +2570,14 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           // ── Refresh button ──
-          let isRefreshing = false;
+          let isRefreshing = ${this._isRefreshingProgress.isRefreshing};
+          if (isRefreshing) {
+            setTimeout(() => {
+              setActionsDisabled(true);
+              setSearchDisabled(true);
+            }, 0);
+          }
+
           function handleRefresh() {
             if (isRefreshing) return;
             const searchInput = document.getElementById('searchInput');
@@ -2527,15 +2627,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             const cards = document.querySelectorAll('.account-card');
 
             const getCheckModel = (card) => {
-              // 1. Check account-specific active model first
               const email = card.dataset.email;
               const activeModel = state.activeModels && state.activeModels[email];
               if (activeModel) return activeModel.toLowerCase();
-              
-              // 2. Fallback to global preferred model
               const globalPref = (typeof currentPreferredModel === 'string' ? currentPreferredModel : '').toLowerCase();
               if (globalPref) return globalPref;
-              
               return null;
             };
 
@@ -2544,10 +2640,14 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                 const balances = JSON.parse(card.dataset.modelBalances || '{}');
                 const checkModel = getCheckModel(card);
                 if (checkModel) {
-                  const val = balances[checkModel];
-                  return val !== undefined && val > 0;
+                  if (balances[checkModel] !== undefined) {
+                    return balances[checkModel] > 0;
+                  }
+                  const matchingKey = Object.keys(balances).find(k => k.toLowerCase() === checkModel.toLowerCase() || k.toLowerCase().includes(checkModel.toLowerCase()) || checkModel.toLowerCase().includes(k.toLowerCase()));
+                  if (matchingKey !== undefined) {
+                    return balances[matchingKey] > 0;
+                  }
                 }
-                // If no specific model is targeted, check if any model has quota > 0
                 return Object.values(balances).some(val => typeof val === 'number' && val > 0);
               } catch (e) {
                 return false;
@@ -2560,16 +2660,16 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               targetEmails = Array.from(cards)
                 .filter(c => {
                   const status = c.dataset.status;
-                  const isBasicActive = (status === 'active' || status === 'low_balance');
-                  return isBasicActive && hasQuota(c);
+                  const isAvailable = (status === 'active' || status === 'low_balance');
+                  return isAvailable && hasQuota(c);
                 })
                 .map(c => c.dataset.email);
             } else if (segment === 'without-quota') {
               targetEmails = Array.from(cards)
                 .filter(c => {
                   const status = c.dataset.status;
-                  const isBasicInactive = (status === 'depleted' || status === 'token_expired' || status === 'ineligible' || status === 'error');
-                  return isBasicInactive || !hasQuota(c);
+                  const isDepletedOrError = (status === 'depleted' || status === 'token_expired' || status === 'ineligible' || status === 'error');
+                  return isDepletedOrError || !hasQuota(c);
                 })
                 .map(c => c.dataset.email);
             }
@@ -2707,10 +2807,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             sendMessage('cancelRefresh');
           }
 
-          let state = vscode.getState() || { activeModels: {} };
-          if (!state) state = { activeModels: {} };
-          if (!state.activeModels) state.activeModels = {};
-          
           function applyActiveModels() {
              document.querySelectorAll('.account-card').forEach(card => {
                 const email = card.dataset?.email || card.querySelector('.user-info p').innerText.trim();
@@ -3379,10 +3475,71 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Sorts the accounts array based on active status, preferred model balance, account status hierarchy, and alphabetical name.
+   * Sorts the accounts array based on active status, preferred model balance, renewal countdown, and alphabetical name.
    */
   private sortAccounts(accounts: any[], effectivePreferred: string, pinnedEmailLower: string | null): void {
     const sortBy = ExtensionConfig.getInstance().getSortBy();
+
+    // Helper: compute remaining quota percentage (0-100)
+    const getAccountQuotaValue = (acc: any): number => {
+      if (!acc.balances) return -1;
+
+      // 1. If preferred model is set and has balance > 0, return it
+      if (effectivePreferred) {
+        const val = this.getModelBalanceValue(acc.balances, effectivePreferred);
+        if (val > 0) return val;
+      }
+
+      // 2. Otherwise find the maximum quota value across all models
+      let maxQuota = -1;
+      for (const [k, rawV] of Object.entries(acc.balances)) {
+        if (typeof rawV === 'object' && rawV !== null && 'value' in rawV) {
+          const val = typeof (rawV as any).value === 'number' ? (rawV as any).value : Number((rawV as any).value);
+          if (val > maxQuota) {
+            maxQuota = val;
+          }
+        } else if (typeof rawV === 'number' && rawV > maxQuota) {
+          maxQuota = rawV;
+        }
+      }
+      return maxQuota;
+    };
+
+    // Helper: compute soonest remaining time until renewal in ms (0 = ready now or already passed)
+    const getAccountNextRegenTime = (acc: any): number => {
+      if (!acc.balances) return Infinity;
+      let minTime = Infinity;
+      for (const [k, rawV] of Object.entries(acc.balances)) {
+        if (typeof rawV === 'object' && rawV !== null && 'resetTime' in rawV) {
+          const resetTimeStr = (rawV as any).resetTime;
+          if (resetTimeStr) {
+            const date = new Date(resetTimeStr);
+            const time = date.getTime();
+            if (!isNaN(time)) {
+              const diffMs = time - Date.now();
+              const effectiveDiff = diffMs <= 0 ? 0 : diffMs;
+              if (effectiveDiff < minTime) {
+                minTime = effectiveDiff;
+              }
+            }
+          }
+        }
+      }
+      return minTime;
+    };
+
+    // Status weight: Active/Low balance first, Depleted next, Expired/Error last
+    const getStatusWeight = (status: AccountStatus) => {
+      switch (status) {
+        case AccountStatus.ACTIVE: return 0;
+        case AccountStatus.LOW_BALANCE: return 1;
+        case AccountStatus.DEPLETED: return 2;
+        case AccountStatus.TOKEN_EXPIRED: return 3;
+        case AccountStatus.ERROR: return 4;
+        case AccountStatus.INELIGIBLE: return 5;
+        default: return 6;
+      }
+    };
 
     accounts.sort((a, b) => {
       // 1. Pinned active account always goes first
@@ -3415,86 +3572,88 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         case 'date-added': {
           const dateA = a.addedAt ? new Date(a.addedAt).getTime() : 0;
           const dateB = b.addedAt ? new Date(b.addedAt).getTime() : 0;
-          return dateB - dateA; // Newest first
-        }
-        case 'quota': {
-          const getRemainingQuotaSum = (balances: Record<string, any> | undefined) => {
-            if (!balances) return -1;
-            let sum = 0;
-            let count = 0;
-            for (const [k, rawV] of Object.entries(balances)) {
-              if (typeof rawV === 'object' && rawV !== null && 'value' in rawV) {
-                sum += rawV.value;
-                count++;
-              }
-            }
-            return count > 0 ? sum / count : -1;
-          };
-          const aQuota = getRemainingQuotaSum(a.balances);
-          const bQuota = getRemainingQuotaSum(b.balances);
-          if (aQuota !== bQuota) {
-            return bQuota - aQuota; // Descending (highest remaining percentage first)
-          }
+          if (dateA !== dateB) return dateB - dateA; // Newest first
           break;
         }
-        case 'quota-regen': {
-          const getNextRegenTime = (balances: Record<string, any> | undefined) => {
-            if (!balances) return Infinity;
-            let minTime = Infinity;
-            for (const [k, rawV] of Object.entries(balances)) {
-              if (typeof rawV === 'object' && rawV !== null && 'resetTime' in rawV) {
-                const resetTimeStr = rawV.resetTime;
-                if (resetTimeStr) {
-                  const date = new Date(resetTimeStr);
-                  const diffMs = date.getTime() - Date.now();
-                  if (diffMs > 0 && diffMs < minTime) {
-                    minTime = diffMs;
-                  }
-                }
-              }
-            }
-            return minTime;
-          };
-          const aTime = getNextRegenTime(a.balances);
-          const bTime = getNextRegenTime(b.balances);
+        case 'quota': {
+          const aQuota = getAccountQuotaValue(a);
+          const bQuota = getAccountQuotaValue(b);
+          if (aQuota !== bQuota) {
+            return bQuota - aQuota; // Descending (highest remaining quota first)
+          }
+          // On tie (e.g. both 0% or both 100%), sort by soonest renewal time
+          const aTime = getAccountNextRegenTime(a);
+          const bTime = getAccountNextRegenTime(b);
           if (aTime !== bTime) {
             return aTime - bTime; // Ascending (soonest first)
           }
           break;
         }
+        case 'quota-regen': {
+          const aTime = getAccountNextRegenTime(a);
+          const bTime = getAccountNextRegenTime(b);
+          if (aTime !== bTime) {
+            return aTime - bTime; // Ascending (soonest first)
+          }
+          // On tie, sort by highest remaining quota
+          const aQuota = getAccountQuotaValue(a);
+          const bQuota = getAccountQuotaValue(b);
+          if (aQuota !== bQuota) {
+            return bQuota - aQuota;
+          }
+          break;
+        }
         case 'default':
         default: {
-          // 2. Sorting by preferred model balance if selected
-          if (effectivePreferred) {
-            const aVal = this.getModelBalanceValue(a.balances, effectivePreferred);
-            const bVal = this.getModelBalanceValue(b.balances, effectivePreferred);
-            if (aVal !== bVal) {
-              return bVal - aVal; // Descending (highest first)
+          // 1. Separate accounts with available quota (> 0%) from accounts with 0% / depleted
+          const aQuota = getAccountQuotaValue(a);
+          const bQuota = getAccountQuotaValue(b);
+          const aHasQuota = aQuota > 0;
+          const bHasQuota = bQuota > 0;
+
+          if (aHasQuota && !bHasQuota) return -1;
+          if (!aHasQuota && bHasQuota) return 1;
+
+          // If BOTH have quota > 0: sort by quota descending (highest first)
+          if (aHasQuota && bHasQuota) {
+            if (aQuota !== bQuota) {
+              return bQuota - aQuota;
             }
-          } else {
-            // 3. Fallback: Sort by account status hierarchy (accounts with quota first)
-            const getStatusWeight = (status: AccountStatus) => {
-              switch (status) {
-                case AccountStatus.ACTIVE: return 0;
-                case AccountStatus.LOW_BALANCE: return 1;
-                case AccountStatus.DEPLETED: return 2;
-                case AccountStatus.TOKEN_EXPIRED: return 3;
-                case AccountStatus.ERROR: return 4;
-                case AccountStatus.INELIGIBLE: return 5;
-                default: return 6;
-              }
-            };
-            const aWeight = getStatusWeight(a.status);
-            const bWeight = getStatusWeight(b.status);
-            if (aWeight !== bWeight) {
-              return aWeight - bWeight;
+            // On tie with same quota (e.g. both 100%), sort by renewal time ascending (soonest to recharge first)
+            const aTime = getAccountNextRegenTime(a);
+            const bTime = getAccountNextRegenTime(b);
+            if (aTime !== bTime) {
+              return aTime - bTime;
             }
+          }
+
+          // If BOTH have 0% / depleted quota:
+          // Check if either is an expired / error / ineligible account vs just depleted
+          const aWeight = getStatusWeight(a.status);
+          const bWeight = getStatusWeight(b.status);
+          const aIsBroken = aWeight >= 3;
+          const bIsBroken = bWeight >= 3;
+
+          if (!aIsBroken && bIsBroken) return -1;
+          if (aIsBroken && !bIsBroken) return 1;
+
+          // For normal depleted/active accounts with 0%: sort by renewal countdown ascending (soonest to recharge first!)
+          if (!aIsBroken && !bIsBroken) {
+            const aTime = getAccountNextRegenTime(a);
+            const bTime = getAccountNextRegenTime(b);
+            if (aTime !== bTime) {
+              return aTime - bTime; // Soonest to recharge first
+            }
+          }
+
+          if (aWeight !== bWeight) {
+            return aWeight - bWeight;
           }
           break;
         }
       }
 
-      // 4. Tie-breaker: Alphabetical by display name
+      // Final tie-breaker: Alphabetical by display name / email
       const nameA = a.displayName || a.alias || a.name || a.email || '';
       const nameB = b.displayName || b.alias || b.name || b.email || '';
       return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
@@ -3539,10 +3698,15 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           const resetTimeStr = (rawV as any).resetTime as string;
           if (resetTimeStr) {
             const date = new Date(resetTimeStr);
-            const diffMs = date.getTime() - Date.now();
-            if (diffMs > 0 && diffMs < minDiffMs) {
-              minDiffMs = diffMs;
-              nextResetTime = resetTimeStr;
+            const time = date.getTime();
+            if (!isNaN(time)) {
+              const diffMs = time - Date.now();
+              if (diffMs > 0 && diffMs < minDiffMs) {
+                minDiffMs = diffMs;
+                nextResetTime = resetTimeStr;
+              } else if (minDiffMs === Infinity && diffMs <= 0 && !nextResetTime) {
+                nextResetTime = resetTimeStr;
+              }
             }
           }
         }

@@ -5,6 +5,22 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-08-17
+
+### Added
+- **Intelligent Renewal-Aware Sorting**: Default sorting (`default`) now automatically organizes accounts into distinct, intuitive priority tiers:
+  1. Active pinned account at the top.
+  2. Accounts with available quota (> 0%) ordered by highest remaining quota percentage descending.
+  3. Depleted accounts (0% quota) ordered by **soonest recharge/renewal countdown** ascending (accounts closest to renewing appear first; accounts already recharged appear at the top of this group).
+  4. Inactive, expired, and error accounts grouped at the bottom.
+- **Persistent Scan Progress**: The refresh/scan progress banner state is now fully tracked in the backend provider and preserved across tab switches, webview reopens, and focus changes without losing percentage or current account details.
+
+### Fixed
+- **Segment Scanning Reliability**: Fixed `hasQuota` evaluation in Webview to accurately match friendly model names (`3.5 Flash (High)`, `Sonnet 4.6`, etc.) and ensure "Scan With Quota" and "Scan Without Quota" segments query live balance data without cache skips.
+- **Elapsed Renewal Time Calculation**: Fixed an issue where accounts whose reset time had already passed (`diffMs <= 0`) were assigned infinite duration and sent to the bottom of the list. They are now correctly identified as "Available now" and prioritized for use.
+- **DOM Stability During Refresh**: Removed destructive full-DOM rebuilds during progressive scans to ensure smooth, flicker-free single-card updates.
+- **Antigravity IDE 2.0 Compatibility**: Resolved legacy `%APPDATA%\Antigravity` path conflict that caused recurring *"Migrate Settings, Keybindings, and Extensions"* prompt on IDE startup.
+
 ## [0.2.4] - 2026-06-24
 
 ### Fixed
