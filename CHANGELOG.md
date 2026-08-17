@@ -5,6 +5,12 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-08-17
+
+### Fixed
+- **Accurate Quota & Renewal Sorting**: Resolved internal autocompletion token interference in balance calculations, correctly identifying accounts with usable Gemini model quota vs depleted accounts.
+- **Renewal Countdown Precision**: Prioritized primary Gemini model reset times, displaying accurate renewal countdowns and "Available now" states.
+
 ## [0.2.5] - 2026-08-17
 
 ### Added
