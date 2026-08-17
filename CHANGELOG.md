@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.5] - 2026-08-17
 
 ### Added
+- **Expanded Internationalization (10 Languages)**: Full native localization support for **English**, **Español**, **中文 (简体)**, **Português (Brasil)**, **Français**, **Deutsch**, **日本語**, **Русский**, **한국어**, and **العربية** (with RTL text support), plus automatic editor language detection.
+- **Quota Accounts Counter Badge**: Discreet header counter (`● X/Y`) showing the exact number of accounts with available quota at a glance.
 - **Intelligent Renewal-Aware Sorting**: Default sorting (`default`) now automatically organizes accounts into distinct, intuitive priority tiers:
   1. Active pinned account at the top.
   2. Accounts with available quota (> 0%) ordered by highest remaining quota percentage descending.

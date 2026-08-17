@@ -62,11 +62,31 @@ export class I18nService {
    * Falls back to 'en' if the requested locale is not registered.
    */
   setLocale(code: string): void {
-    if (!this.locales.has(code)) {
+    const lower = (code || '').toLowerCase();
+    if (this.locales.has(code)) {
+      this.currentLocale = code;
+    } else if (lower === 'zh' || lower === 'zh-cn' || lower === 'zh-hans') {
+      this.currentLocale = 'zh-CN';
+    } else if (lower === 'pt' || lower === 'pt-br') {
+      this.currentLocale = 'pt-BR';
+    } else if (lower === 'es') {
+      this.currentLocale = 'es';
+    } else if (lower === 'ar') {
+      this.currentLocale = 'ar';
+    } else if (lower === 'fr') {
+      this.currentLocale = 'fr';
+    } else if (lower === 'de') {
+      this.currentLocale = 'de';
+    } else if (lower === 'ja') {
+      this.currentLocale = 'ja';
+    } else if (lower === 'ru') {
+      this.currentLocale = 'ru';
+    } else if (lower === 'ko') {
+      this.currentLocale = 'ko';
+    } else {
       Logger.getInstance().warn(`Locale '${code}' not found, falling back to 'en'`);
-      code = 'en';
+      this.currentLocale = 'en';
     }
-    this.currentLocale = code;
   }
 
   /**
@@ -192,7 +212,7 @@ export class I18nService {
   }
 
   /**
-   * Register built-in locales (English + Arabic + Spanish).
+   * Register built-in locales.
    */
   private registerBuiltInLocales(): void {
     // English
@@ -211,6 +231,48 @@ export class I18nService {
     this.registerLocale(
       { code: 'es', name: 'Español', dir: 'ltr' },
       require('./locales/es.json')
+    );
+
+    // Chinese (Simplified)
+    this.registerLocale(
+      { code: 'zh-CN', name: '中文 (简体)', dir: 'ltr' },
+      require('./locales/zh-CN.json')
+    );
+
+    // Portuguese (Brazil)
+    this.registerLocale(
+      { code: 'pt-BR', name: 'Português (Brasil)', dir: 'ltr' },
+      require('./locales/pt-BR.json')
+    );
+
+    // French
+    this.registerLocale(
+      { code: 'fr', name: 'Français', dir: 'ltr' },
+      require('./locales/fr.json')
+    );
+
+    // German
+    this.registerLocale(
+      { code: 'de', name: 'Deutsch', dir: 'ltr' },
+      require('./locales/de.json')
+    );
+
+    // Japanese
+    this.registerLocale(
+      { code: 'ja', name: '日本語', dir: 'ltr' },
+      require('./locales/ja.json')
+    );
+
+    // Russian
+    this.registerLocale(
+      { code: 'ru', name: 'Русский', dir: 'ltr' },
+      require('./locales/ru.json')
+    );
+
+    // Korean
+    this.registerLocale(
+      { code: 'ko', name: '한국어', dir: 'ltr' },
+      require('./locales/ko.json')
     );
   }
 }

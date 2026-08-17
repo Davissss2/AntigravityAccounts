@@ -1,0 +1,289 @@
+{
+  "common": {
+    "appName": "Antigravity Account",
+    "loading": "読み込み中...",
+    "error": "エラー",
+    "success": "成功",
+    "confirm": "確認",
+    "cancel": "キャンセル",
+    "save": "保存",
+    "delete": "削除",
+    "edit": "編集",
+    "refresh": "更新",
+    "close": "閉じる",
+    "yes": "はい",
+    "no": "いいえ",
+    "ok": "OK",
+    "back": "戻る",
+    "next": "次へ",
+    "settings": "設定",
+    "search": "検索...",
+    "noResults": "結果が見つかりません",
+    "retry": "再試行"
+  },
+  "commands": {
+    "openPanel": {
+      "placeholder": "アカウント管理パネルはまもなく実装されます。"
+    },
+    "addAccount": {
+      "placeholder": "アカウント追加フローはまもなく実装されます。"
+    },
+    "switchAccount": {
+      "placeholder": "アカウント切り替えフローはまもなく実装されます。"
+    },
+    "refreshBalances": {
+      "placeholder": "残高更新はまもなく実装されます。"
+    },
+    "setLanguage": {
+      "placeholder": "表示言語を選択"
+    }
+  },
+  "accounts": {
+    "title": "アカウント一覧",
+    "addButton": "アカウント追加",
+    "removeButton": "アカウント削除",
+    "switchButton": "切り替え",
+    "refreshButton": "更新",
+    "settingsButton": "設定",
+    "noAccounts": "まだアカウントが追加されていません",
+    "addFirstAccount": "最初のアカウントを追加して開始してください",
+    "active": "アクティブ",
+    "inactive": "非アクティブ",
+    "expired": "期限切れ",
+    "blocked": "一時的に制限中",
+    "alias": {
+      "title": "アカウントの別名",
+      "placeholder": "このアカウントのニックネームを入力",
+      "save": "別名を保存"
+    },
+    "confirmDelete": "このアカウントを削除してもよろしいですか？",
+    "deleteWarning": "これにより、アカウントと保存されているトークンが完全に削除されます。",
+    "balance": "{{amount}} クレジット",
+    "balanceOf": "{{amount}} / {{total}} クレジット",
+    "plan": {
+      "free": "無料プラン",
+      "premium": "AI Premium",
+      "ultra": "AI Ultra",
+      "unknown": "不明なプラン"
+    },
+    "status": {
+      "active": "正常",
+      "lowBalance": "残量少",
+      "depleted": "クレジット枯渇",
+      "expired": "トークン期限切れ",
+      "error": "接続エラー",
+      "ineligible": "対象外"
+    },
+    "sort": {
+      "byBalance": "残高順",
+      "byDate": "追加日順",
+      "byName": "名前順"
+    },
+    "noExportAccounts": "エクスポートするアカウントがありません。",
+    "preparingExport": "エクスポートデータを準備中...",
+    "noValidExportData": "エクスポート可能な有効なデータが見つかりません。",
+    "saveBackup": "バックアップを保存",
+    "exportSuccess": "✅ {{count}} 件のアカウントを正常にエクスポートしました（暗号化済み）。",
+    "exportFailed": "❌ エクスポートに失敗しました: {{error}}",
+    "exportPasswordPrompt": "このバックアップを保護するパスワードを設定（6文字以上）",
+    "exportPasswordPlaceholder": "バックアップパスワードを入力",
+    "exportPasswordConfirm": "パスワードを再入力して確認",
+    "passwordTooShort": "パスワードは6文字以上である必要があります",
+    "passwordMismatch": "❌ パスワードが一致しません。エクスポートを中止しました。",
+    "importPasswordPrompt": "このバックアップの暗号化に使用したパスワードを入力",
+    "importPasswordPlaceholder": "バックアップパスワードを入力",
+    "wrongPassword": "❌ パスワードが正しくないか、ファイルが破損しています。",
+    "legacyFormatWarning": "⚠️ このバックアップは暗号化されていない古い形式です。安全のため新形式で再エクスポートすることをお勧めします。",
+    "selectBackup": "バックアップファイルを選択",
+    "verifyingFile": "ファイルを検証中...",
+    "invalidFile": "❌ 選択されたファイルが無効または破損しています。",
+    "noBackupData": "❌ 有効なバックアップデータが含まれていません。",
+    "incompleteAccount": "❌ {{email}} のアカウントデータが不完全です。",
+    "importingAccounts": "アカウントをインポート中...",
+    "importSuccess": "✅ {{count}} 件のアカウントを正常にインポートしました。",
+    "importSkipped": "\n⏭️ {{count}} 件のアカウントをスキップしました（既に存在）。",
+    "importFailed": "❌ インポートに失敗しました: {{error}}",
+    "confirmSwitch": "アカウント:\n{{email}} をアクティブにしますか？",
+    "refreshingBalances": "残高を更新中...",
+    "refreshingAccount": "更新中",
+    "refreshSuccess": "✅ すべての残高が正常に更新されました。",
+    "cancelRefresh": "キャンセル",
+    "refreshCancelled": "更新がキャンセルされました。",
+    "cancellingRefresh": "キャンセル中...",
+    "confirmCancelTitle": "更新をキャンセルしますか？",
+    "confirmCancelMessage": "残高の更新を中止してもよろしいですか？",
+    "confirmCancelYes": "はい、中止します",
+    "confirmCancelNo": "続行",
+    "models": "モデル",
+    "availableModels": "利用可能なモデル ({{count}})",
+    "activate": "有効化",
+    "remove": "削除",
+    "reAuthenticate": "再ログイン",
+    "expiredBanner": "セッションが期限切れです。アクセスを復元するには再ログインしてください。",
+    "ineligibleBanner": "この Google アカウントは Antigravity の利用対象外です。",
+    "noAvailableModels": "利用可能なモデルがありません",
+    "noAccountsRegistered": "登録済みのアカウントはありません。",
+    "addNewAccount": "➕ 新規アカウント追加",
+    "more": "その他",
+    "exportAccounts": "アカウントをエクスポート",
+    "importAccounts": "アカウントをインポート",
+    "settings": "設定",
+    "searchPlaceholder": "名前またはメールアドレスで検索...",
+    "noSearchResults": "一致するアカウントが見つかりません。",
+    "refreshThisAccount": "このアカウントを更新"
+  },
+  "statusBar": {
+    "noAccount": "アカウントなし",
+    "credits": "{{amount}} クレジット",
+    "tooltip": "クリックしてアカウント切り替え"
+  },
+  "notifications": {
+    "lowBalance": "⚠️ {{email}} の残高低下: 残り {{amount}} クレジット",
+    "depleted": "🔴 {{email}} のクレジットが枯渇しました！次のアカウントへ切り替えます...",
+    "switched": "✅ {{email}} に切り替えました（{{amount}} クレジット）",
+    "tokenExpired": "🔑 {{email}} のトークンが期限切れです。再ログインしてください。",
+    "connectionError": "❌ {{email}} への接続に失敗しました",
+    "refreshComplete": "✅ すべての残高が更新されました"
+  },
+  "auth": {
+    "signingIn": "Google でサインイン中...",
+    "waitingForBrowser": "ブラウザでの認証を待機中...",
+    "authSuccess": "認証に成功しました！",
+    "authFailed": "認証に失敗しました。再試行してください。",
+    "browserOpened": "ログイン用のブラウザウィンドウが開きました。",
+    "reAuthenticating": "{{email}} を再認証中..."
+  },
+  "settings": {
+    "title": "設定",
+    "refreshInterval": {
+      "label": "更新間隔",
+      "description": "残高データを更新する頻度（分）"
+    },
+    "autoRefresh": {
+      "label": "自動更新",
+      "description": "パネルを開いた時に自動的に残高を更新"
+    },
+    "lowCreditThreshold": {
+      "label": "残量少警告の閾値",
+      "description": "クレジットがこの値を下回った時に警告"
+    },
+    "language": {
+      "label": "表示言語",
+      "description": "拡張機能の表示言語"
+    },
+    "export": "設定をエクスポート",
+    "import": "設定をインポート"
+  },
+  "webview": {
+    "unspecified": "未指定",
+    "availableNow": "今すぐ利用可能",
+    "renewsInDaysMins": "{{days}}日 {{mins}}分後に更新",
+    "renewsInDaysHoursMins": "{{days}}日 {{hours}}時間 {{mins}}分後に更新",
+    "renewsInHoursMins": "{{hours}}時間 {{mins}}分後に更新",
+    "selectThisModel": "このモデルを選択",
+    "veryLowBalance": "残量が非常に少なくなっています",
+    "showAvailableModels": "利用可能なモデルを表示",
+    "activatePreferredModel": "この優先モデルを有効化",
+    "preferredModelSort": "ソート用の優先モデル",
+    "noSelectionDefault": "なし（デフォルト順）",
+    "sortExplanation": "アカウントはこのモデルの残高順に優先して並べ替えられます。",
+    "loginRequired": "このオプションを有効にするにはサインインしてください",
+    "activating": "アクティブ化中...",
+    "language": "言語",
+    "languageAuto": "自動（システム標準）",
+    "autoRefreshLabel": "残高の自動更新",
+    "autoRefreshDescription": "有効にすると、パネルを開いた時に自動的に残高が更新されます。",
+    "autoRotateLabel": "アカウントの自動ローテーション",
+    "autoRotateDescription": "現在の残高がなくなると、クレジットのある別のアカウントに自動で切り替えます。",
+    "refreshIntervalLabel": "更新間隔",
+    "refreshIntervalDescription": "前回の更新からこの間隔を超えた場合、残高を再取得します。",
+    "intervalImmediate": "即時",
+    "interval5Min": "5分",
+    "interval15Min": "15分",
+    "interval30Min": "30分",
+    "interval1Hour": "1時間",
+    "interval1Day": "1日",
+    "immediateConfirmTitle": "⚠️ 警告",
+    "immediateConfirmMessage": "アカウントが5個以上ある場合、「即時」設定はAPI制限やアカウント停止の原因となる可能性があるため非推奨です。有効にしますか？",
+    "immediateConfirmYes": "はい、有効にします",
+    "immediateConfirmCancel": "キャンセル",
+    "notAntigravityTitle": "Antigravity エディタが必要です",
+    "notAntigravityMessage": "この拡張機能は Antigravity エディタ専用に設計されています。",
+    "downloadAntigravity": "Antigravity をダウンロード",
+    "sortBy": "並び替え",
+    "sortDefault": "デフォルト順",
+    "sortNameAsc": "名前 (A-Z)",
+    "sortNameDesc": "名前 (Z-A)",
+    "sortEmailAsc": "メール (A-Z)",
+    "sortEmailDesc": "メール (Z-A)",
+    "sortDateAdded": "追加日順",
+    "sortQuota": "残りクォータ順",
+    "sortQuotaRegen": "クォータ更新時間順",
+    "scanSegment": "セグメントスキャン",
+    "scanAll": "すべてスキャン",
+    "scanWithQuota": "クォータありをスキャン",
+    "scanWithoutQuota": "クォータなしをスキャン",
+    "noAccountsInSegment": "選択されたセグメントに一致するアカウントがありません。",
+    "cacheDurationLabel": "キャッシュ有効期間",
+    "cacheDurationDescription": "この期間内に更新済みの場合はスキャンをスキップして時間を節約します。",
+    "day": "日",
+    "days": "日",
+    "lowCreditNotificationsLabel": "残量少デスクトップ通知",
+    "lowCreditNotificationsDescription": "モデルのクレジット残量が閾値を下回った際にデスクトップ通知を受け取ります。",
+    "editAliasTooltip": "アカウント別名を編集",
+    "editAliasPlaceholder": "別名（例: 業務用、個人用）",
+    "saveAliasTooltip": "別名を保存",
+    "cancelAliasTooltip": "キャンセル"
+  },
+  "service": {
+    "generatingDeviceProfile": "デバイスプロファイルを生成中...",
+    "refreshQueued": "スキャンのクールダウン中です。{{seconds}} 秒後に自動開始します...",
+    "accountAddedErrorBalance": "アカウント {{email}} を追加しましたが、残高の取得に失敗しました。後で再試行します。",
+    "accountAddedSuccess": "アカウント {{email}} を正常に追加しました。残高: [{{balances}}]",
+    "accountAddError": "アカウント追加エラー: {{error}}",
+    "missingLoginData": "{{email}} のログイン情報が見つかりません。削除して再度追加してください。",
+    "sessionExpiredFailed": "{{email}} のセッションが期限切れです。再ログインしてください。",
+    "refreshInProgress": "⏳ 残高の更新が既に進行中です...",
+    "refreshCooldown": "⏳ 次の更新まで {{seconds}} 秒お待ちください。",
+    "accountRemoved": "アカウント {{email}} とすべてのデータを正常に削除しました。",
+    "switchFailed": "アカウント {{email}} への切り替えに失敗しました。",
+    "reAuthSuccess": "✅ {{email}} のセッションを正常に復元しました。",
+    "reAuthFailed": "❌ {{email}} の再認証に失敗しました: {{error}}",
+    "reAuthEmailMismatch": "サインインしたアカウント ({{actual}}) が期待されるアカウント ({{expected}}) と一致しません。",
+    "accountIneligible": "アカウント {{email}} は Antigravity の対象外です。",
+    "switchIneligibleAccount": "アカウント {{email}} は対象外のため切り替えることができません。"
+  },
+  "stateDb": {
+    "outdatedAntigravity": "インストールされている Antigravity のバージョンが {{minVersion}} より古いためサポートされていません。\n{{minVersion}} 以上にアップデートしてください。",
+    "dbNotFound": "Antigravity データベースが見つかりません。\nAntigravity を一度起動してログインしてください。",
+    "injectionFailed": "データベースへのデータ注入に失敗しました: {{error}}\n他のすべての Antigravity ウィンドウを閉じて再試行してください。",
+    "reloadPrompt": "このウィンドウを閉じて、新しいアカウントで Antigravity を再起動します。"
+  },
+  "oauth": {
+    "timeout": "認証がタイムアウトしました。再試行してください。",
+    "authFailedTitle": "認証失敗",
+    "authFailedDetail": "認証中にエラーが発生しました: {{error}}",
+    "authSuccessTitle": "認証完了",
+    "authSuccessDetail": "アカウントが Antigravity 拡張機能に正常に連携されました。このウィンドウを閉じてエディタに戻ってください。",
+    "noPorts": "ローカル認証サーバーを実行可能なポートがありません。",
+    "closeWindow": "ウィンドウを閉じる"
+  },
+  "authService": {
+    "noRefreshToken": "Refresh Token が取得できませんでした。すべての権限を許可して再試行してください。",
+    "noEmail": "メールアドレスを取得できませんでした。権限を確認してください。"
+  },
+  "extension": {
+    "noAccountsToSwitch": "アカウントが登録されていません。最初にアカウントを追加してください。",
+    "selectAccountToSwitch": "切り替えるアカウントを選択してください"
+  },
+  "switchPrompt": {
+    "title": "アカウントを {{email}} に正常に切り替えました",
+    "detail": "新しいアカウントを有効化するにはエディタの再読み込みが必要です。今すぐ再読み込みしますか？",
+    "actionYes": "今すぐ再読み込み",
+    "actionNo": "後で"
+  },
+  "theme": {
+    "darkMode": "ダークモード",
+    "lightMode": "ライトモード"
+  }
+}

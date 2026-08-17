@@ -1,0 +1,289 @@
+{
+  "common": {
+    "appName": "Antigravity Account",
+    "loading": "Загрузка...",
+    "error": "Ошибка",
+    "success": "Успешно",
+    "confirm": "Подтвердить",
+    "cancel": "Отмена",
+    "save": "Сохранить",
+    "delete": "Удалить",
+    "edit": "Редактировать",
+    "refresh": "Обновить",
+    "close": "Закрыть",
+    "yes": "Да",
+    "no": "Нет",
+    "ok": "ОК",
+    "back": "Назад",
+    "next": "Далее",
+    "settings": "Настройки",
+    "search": "Поиск...",
+    "noResults": "Ничего не найдено",
+    "retry": "Повторить"
+  },
+  "commands": {
+    "openPanel": {
+      "placeholder": "Панель диспетчера аккаунтов скоро будет доступна."
+    },
+    "addAccount": {
+      "placeholder": "Добавление аккаунта скоро будет доступно."
+    },
+    "switchAccount": {
+      "placeholder": "Переключение аккаунтов скоро будет доступно."
+    },
+    "refreshBalances": {
+      "placeholder": "Обновление баланса скоро будет доступно."
+    },
+    "setLanguage": {
+      "placeholder": "Выберите язык интерфейса"
+    }
+  },
+  "accounts": {
+    "title": "Аккаунты",
+    "addButton": "Добавить аккаунт",
+    "removeButton": "Удалить аккаунт",
+    "switchButton": "Переключить",
+    "refreshButton": "Обновить",
+    "settingsButton": "Настройки",
+    "noAccounts": "Аккаунты еще не добавлены",
+    "addFirstAccount": "Добавьте первый аккаунт для начала работы",
+    "active": "Активен",
+    "inactive": "Неактивен",
+    "expired": "Истёк",
+    "blocked": "Временно заблокирован",
+    "alias": {
+      "title": "Псевдоним аккаунта",
+      "placeholder": "Введите имя для этого аккаунта",
+      "save": "Сохранить псевдоним"
+    },
+    "confirmDelete": "Вы уверены, что хотите удалить этот аккаунт?",
+    "deleteWarning": "Это действие навсегда удалит аккаунт и сохраненные токены.",
+    "balance": "{{amount}} кредитов",
+    "balanceOf": "{{amount}} / {{total}} кредитов",
+    "plan": {
+      "free": "Бесплатный",
+      "premium": "AI Premium",
+      "ultra": "AI Ultra",
+      "unknown": "Неизвестный тариф"
+    },
+    "status": {
+      "active": "Активен",
+      "lowBalance": "Мало кредитов",
+      "depleted": "Кредиты исчерпаны",
+      "expired": "Токен истёк",
+      "error": "Ошибка подключения",
+      "ineligible": "Недоступно"
+    },
+    "sort": {
+      "byBalance": "По балансу",
+      "byDate": "По дате добавления",
+      "byName": "По алфавиту"
+    },
+    "noExportAccounts": "Нет аккаунтов для экспорта.",
+    "preparingExport": "Подготовка данных для экспорта...",
+    "noValidExportData": "Нет данных для экспорта.",
+    "saveBackup": "Сохранить резервную копию",
+    "exportSuccess": "✅ Успешно экспортировано {{count}} аккаунтов (зашифровано).",
+    "exportFailed": "❌ Ошибка экспорта: {{error}}",
+    "exportPasswordPrompt": "Задайте пароль для защиты резервной копии (мин. 6 символов)",
+    "exportPasswordPlaceholder": "Введите пароль",
+    "exportPasswordConfirm": "Подтвердите пароль",
+    "passwordTooShort": "Пароль должен содержать не менее 6 символов",
+    "passwordMismatch": "❌ Пароли не совпадают. Экспорт отменен.",
+    "importPasswordPrompt": "Введите пароль, использованный для шифрования",
+    "importPasswordPlaceholder": "Введите пароль",
+    "wrongPassword": "❌ Неверный пароль или файл поврежден.",
+    "legacyFormatWarning": "⚠️ Этот файл использует старый незашифрованный формат. Рекомендуется повторно экспортировать в новом формате.",
+    "selectBackup": "Выбрать файл резервной копии",
+    "verifyingFile": "Проверка файла...",
+    "invalidFile": "❌ Выбранный файл недействителен или поврежден.",
+    "noBackupData": "❌ Файл не содержит действительных данных резервной копии.",
+    "incompleteAccount": "❌ Данные аккаунта {{email}} неполные.",
+    "importingAccounts": "Импорт аккаунтов...",
+    "importSuccess": "✅ Успешно импортировано {{count}} аккаунтов.",
+    "importSkipped": "\n⏭️ Пропущено {{count}} аккаунтов (уже существуют).",
+    "importFailed": "❌ Ошибка импорта: {{error}}",
+    "confirmSwitch": "Вы уверены, что хотите активировать аккаунт:\n{{email}}?",
+    "refreshingBalances": "Обновление балансов...",
+    "refreshingAccount": "Обновление",
+    "refreshSuccess": "✅ Все балансы успешно обновлены.",
+    "cancelRefresh": "Отмена",
+    "refreshCancelled": "Обновление отменено.",
+    "cancellingRefresh": "Отмена...",
+    "confirmCancelTitle": "Отменить обновление?",
+    "confirmCancelMessage": "Вы уверены, что хотите остановить обновление балансов?",
+    "confirmCancelYes": "Да, остановить",
+    "confirmCancelNo": "Продолжить",
+    "models": "Модели",
+    "availableModels": "Доступные модели ({{count}})",
+    "activate": "Активировать",
+    "remove": "Удалить",
+    "reAuthenticate": "Войти снова",
+    "expiredBanner": "Сессия истекла. Пожалуйста, войдите снова.",
+    "ineligibleBanner": "Этот аккаунт Google не поддерживается Antigravity.",
+    "noAvailableModels": "Нет доступных моделей",
+    "noAccountsRegistered": "Аккаунты еще не зарегистрированы.",
+    "addNewAccount": "➕ Добавить аккаунт",
+    "more": "Ещё",
+    "exportAccounts": "Экспорт аккаунтов",
+    "importAccounts": "Импорт аккаунтов",
+    "settings": "Настройки",
+    "searchPlaceholder": "Поиск по имени или email...",
+    "noSearchResults": "Нет подходящих аккаунтов.",
+    "refreshThisAccount": "Обновить этот аккаунт"
+  },
+  "statusBar": {
+    "noAccount": "Нет аккаунта",
+    "credits": "{{amount}} кредитов",
+    "tooltip": "Нажмите для переключения аккаунта"
+  },
+  "notifications": {
+    "lowBalance": "⚠️ Мало кредитов на {{email}}: осталось {{amount}}",
+    "depleted": "🔴 Кредиты исчерпаны на {{email}}! Переключение на следующий...",
+    "switched": "✅ Переключено на {{email}} ({{amount}} кредитов)",
+    "tokenExpired": "🔑 Токен истёк для {{email}}. Войдите снова.",
+    "connectionError": "❌ Ошибка подключения к {{email}}",
+    "refreshComplete": "✅ Все балансы обновлены"
+  },
+  "auth": {
+    "signingIn": "Вход через Google...",
+    "waitingForBrowser": "Ожидание авторизации в браузере...",
+    "authSuccess": "Успешная авторизация!",
+    "authFailed": "Ошибка авторизации. Попробуйте снова.",
+    "browserOpened": "Окно браузера открыто для входа.",
+    "reAuthenticating": "Повторный вход для {{email}}..."
+  },
+  "settings": {
+    "title": "Настройки",
+    "refreshInterval": {
+      "label": "Интервал обновления",
+      "description": "Частота обновления балансов (в минутах)"
+    },
+    "autoRefresh": {
+      "label": "Автообновление",
+      "description": "Автоматически обновлять балансы при открытии панели"
+    },
+    "lowCreditThreshold": {
+      "label": "Порог низкого баланса",
+      "description": "Предупреждать, когда кредиты падают ниже этого значения"
+    },
+    "language": {
+      "label": "Язык",
+      "description": "Язык интерфейса расширения"
+    },
+    "export": "Экспорт настроек",
+    "import": "Импорт настроек"
+  },
+  "webview": {
+    "unspecified": "Не указано",
+    "availableNow": "Доступно сейчас",
+    "renewsInDaysMins": "Обновится через {{days}}д {{mins}}м",
+    "renewsInDaysHoursMins": "Обновится через {{days}}д {{hours}}ч {{mins}}м",
+    "renewsInHoursMins": "Обновится через {{hours}}ч {{mins}}м",
+    "selectThisModel": "Выбрать эту модель",
+    "veryLowBalance": "Критически мало кредитов",
+    "showAvailableModels": "Показать доступные модели",
+    "activatePreferredModel": "Активировать предпочтительную модель",
+    "preferredModelSort": "Предпочтительная модель для сортировки",
+    "noSelectionDefault": "Нет (По умолчанию)",
+    "sortExplanation": "Аккаунты будут в первую очередь сортироваться по балансу этой модели.",
+    "loginRequired": "Войдите в аккаунт, чтобы включить эту опцию",
+    "activating": "Активация...",
+    "language": "Язык",
+    "languageAuto": "Авто (Системный)",
+    "autoRefreshLabel": "Автообновление балансов",
+    "autoRefreshDescription": "Балансы обновляются автоматически при открытии панели.",
+    "autoRotateLabel": "Авторотация аккаунтов",
+    "autoRotateDescription": "Автоматически переключаться на другой аккаунт с кредитами при исчерпании текущего.",
+    "refreshIntervalLabel": "Интервал обновления",
+    "refreshIntervalDescription": "Балансы будут обновлены, если прошло больше времени, чем указано.",
+    "intervalImmediate": "Сразу",
+    "interval5Min": "5 Минут",
+    "interval15Min": "15 Минут",
+    "interval30Min": "30 Минут",
+    "interval1Hour": "1 Час",
+    "interval1Day": "1 День",
+    "immediateConfirmTitle": "⚠️ Внимание",
+    "immediateConfirmMessage": "Опция 'Сразу' не рекомендуется при наличии более 5 аккаунтов во избежание блокировок API. Включить?",
+    "immediateConfirmYes": "Да, включить",
+    "immediateConfirmCancel": "Отмена",
+    "notAntigravityTitle": "Требуется Antigravity",
+    "notAntigravityMessage": "Это расширение разработано исключительно для редактора Antigravity.",
+    "downloadAntigravity": "Скачать Antigravity",
+    "sortBy": "Сортировка",
+    "sortDefault": "По умолчанию",
+    "sortNameAsc": "Имя (А-Я)",
+    "sortNameDesc": "Имя (Я-А)",
+    "sortEmailAsc": "Email (A-Z)",
+    "sortEmailDesc": "Email (Z-A)",
+    "sortDateAdded": "Дата добавления",
+    "sortQuota": "Остаток квоты",
+    "sortQuotaRegen": "Время сброса квоты",
+    "scanSegment": "Сканировать сегмент",
+    "scanAll": "Сканировать все",
+    "scanWithQuota": "С квотой",
+    "scanWithoutQuota": "Без квоты",
+    "noAccountsInSegment": "Аккаунтов в выбранном сегменте не найдено.",
+    "cacheDurationLabel": "Срок действия кэша",
+    "cacheDurationDescription": "Экономит время, не сканируя аккаунт, если он обновлялся недавно.",
+    "day": "День",
+    "days": "Дней",
+    "lowCreditNotificationsLabel": "Уведомления о низком балансе",
+    "lowCreditNotificationsDescription": "Получать уведомления, когда баланс опускается ниже порога.",
+    "editAliasTooltip": "Редактировать псевдоним",
+    "editAliasPlaceholder": "Псевдоним (напр. Работа, Личный)",
+    "saveAliasTooltip": "Сохранить",
+    "cancelAliasTooltip": "Отмена"
+  },
+  "service": {
+    "generatingDeviceProfile": "Генерация профиля устройства...",
+    "refreshQueued": "Сканирование ожидает кулдаун. Запуск через {{seconds}} сек...",
+    "accountAddedErrorBalance": "Аккаунт {{email}} добавлен, но не удалось получить баланс. Попробуем позже.",
+    "accountAddedSuccess": "Аккаунт {{email}} успешно добавлен. Баланс: [{{balances}}]",
+    "accountAddError": "Ошибка при добавлении аккаунта: {{error}}",
+    "missingLoginData": "Данные входа для {{email}} отсутствуют. Удалите и добавьте заново.",
+    "sessionExpiredFailed": "Сессия для {{email}} истекла. Пожалуйста, войдите снова.",
+    "refreshInProgress": "⏳ Обновление балансов уже выполняется...",
+    "refreshCooldown": "⏳ Пожалуйста, подождите {{seconds}} сек. перед новым обновлением.",
+    "accountRemoved": "Аккаунт {{email}} и все данные успешно удалены.",
+    "switchFailed": "Не удалось переключиться на {{email}}. Попробуйте снова.",
+    "reAuthSuccess": "✅ Сессия успешно восстановлена для {{email}}.",
+    "reAuthFailed": "❌ Ошибка повторного входа для {{email}}: {{error}}",
+    "reAuthEmailMismatch": "Вошедший аккаунт ({{actual}}) не совпадает с ожидаемым ({{expected}}).",
+    "accountIneligible": "Аккаунт {{email}} не поддерживается Antigravity.",
+    "switchIneligibleAccount": "Невозможно переключиться на {{email}}, так как он не поддерживается."
+  },
+  "stateDb": {
+    "outdatedAntigravity": "Установленная версия Antigravity старше {{minVersion}} и не поддерживается.\nОбновите Antigravity до версии {{minVersion}} или новее.",
+    "dbNotFound": "База данных Antigravity не найдена.\nЗапустите Antigravity и войдите хотя бы один раз.",
+    "injectionFailed": "Ошибка записи в базу данных: {{error}}\nЗакройте все окна Antigravity и попробуйте снова.",
+    "reloadPrompt": "Это окно закроется, и Antigravity откроется с новым аккаунтом."
+  },
+  "oauth": {
+    "timeout": "Время ожидания авторизации истекло. Попробуйте снова.",
+    "authFailedTitle": "Ошибка авторизации",
+    "authFailedDetail": "Произошла ошибка при авторизации: {{error}}",
+    "authSuccessTitle": "Успешная авторизация",
+    "authSuccessDetail": "Аккаунт успешно подключен к расширению. Вы можете закрыть это окно.",
+    "noPorts": "Нет свободных портов для запуска локального сервера авторизации.",
+    "closeWindow": "Закрыть окно"
+  },
+  "authService": {
+    "noRefreshToken": "Токен обновления не получен. Примите все разрешения.",
+    "noEmail": "Email не получен. Проверьте разрешения."
+  },
+  "extension": {
+    "noAccountsToSwitch": "Нет зарегистрированных аккаунтов. Сначала добавьте аккаунт.",
+    "selectAccountToSwitch": "Выберите аккаунт для переключения"
+  },
+  "switchPrompt": {
+    "title": "Успешное переключение на {{email}}",
+    "detail": "Требуется перезагрузить редактор для активации нового аккаунта. Перезагрузить сейчас?",
+    "actionYes": "Перезагрузить сейчас",
+    "actionNo": "Позже"
+  },
+  "theme": {
+    "darkMode": "Тёмная тема",
+    "lightMode": "Светлая тема"
+  }
+}

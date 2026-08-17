@@ -1,0 +1,289 @@
+{
+  "common": {
+    "appName": "Antigravity Account",
+    "loading": "로딩 중...",
+    "error": "오류",
+    "success": "성공",
+    "confirm": "확인",
+    "cancel": "취소",
+    "save": "저장",
+    "delete": "삭제",
+    "edit": "편집",
+    "refresh": "새로고침",
+    "close": "닫기",
+    "yes": "예",
+    "no": "아니요",
+    "ok": "확인",
+    "back": "뒤로",
+    "next": "다음",
+    "settings": "설정",
+    "search": "검색...",
+    "noResults": "결과 없음",
+    "retry": "다시 시도"
+  },
+  "commands": {
+    "openPanel": {
+      "placeholder": "계정 관리자 패널이 곧 구현됩니다."
+    },
+    "addAccount": {
+      "placeholder": "계정 추가 흐름이 곧 구현됩니다."
+    },
+    "switchAccount": {
+      "placeholder": "계정 전환 흐름이 곧 구현됩니다."
+    },
+    "refreshBalances": {
+      "placeholder": "크레딧 새로고침이 곧 구현됩니다."
+    },
+    "setLanguage": {
+      "placeholder": "표시 언어 선택"
+    }
+  },
+  "accounts": {
+    "title": "계정 목록",
+    "addButton": "계정 추가",
+    "removeButton": "계정 삭제",
+    "switchButton": "전환",
+    "refreshButton": "새로고침",
+    "settingsButton": "설정",
+    "noAccounts": "아직 추가된 계정이 없습니다",
+    "addFirstAccount": "첫 번째 계정을 추가하여 시작하세요",
+    "active": "활성",
+    "inactive": "비활성",
+    "expired": "만료됨",
+    "blocked": "일시 차단됨",
+    "alias": {
+      "title": "계정 별칭",
+      "placeholder": "이 계정의 별칭을 입력하세요",
+      "save": "별칭 저장"
+    },
+    "confirmDelete": "이 계정을 삭제하시겠습니까?",
+    "deleteWarning": "계정과 저장된 토큰이 영구적으로 삭제됩니다.",
+    "balance": "{{amount}} 크레딧",
+    "balanceOf": "{{amount}} / {{total}} 크레딧",
+    "plan": {
+      "free": "무료",
+      "premium": "AI Premium",
+      "ultra": "AI Ultra",
+      "unknown": "알 수 없는 플랜"
+    },
+    "status": {
+      "active": "활성",
+      "lowBalance": "잔여량 부족",
+      "depleted": "크레딧 소진",
+      "expired": "토큰 만료됨",
+      "error": "연결 오류",
+      "ineligible": "지원되지 않음"
+    },
+    "sort": {
+      "byBalance": "잔여량 순",
+      "byDate": "추가된 날짜 순",
+      "byName": "이름 순"
+    },
+    "noExportAccounts": "내보낼 계정이 없습니다.",
+    "preparingExport": "내보내기 데이터 준비 중...",
+    "noValidExportData": "내보낼 유효한 데이터가 없습니다.",
+    "saveBackup": "백업 저장",
+    "exportSuccess": "✅ {{count}}개 계정을 성공적으로 내보냈습니다(암호화됨).",
+    "exportFailed": "❌ 내보내기 실패: {{error}}",
+    "exportPasswordPrompt": "백업을 보호할 비밀번호 설정(최소 6자)",
+    "exportPasswordPlaceholder": "백업 비밀번호 입력",
+    "exportPasswordConfirm": "비밀번호 확인",
+    "passwordTooShort": "비밀번호는 최소 6자 이상이어야 합니다",
+    "passwordMismatch": "❌ 비밀번호가 일치하지 않습니다. 내보내기가 취소되었습니다.",
+    "importPasswordPrompt": "백업 암호화에 사용된 비밀번호 입력",
+    "importPasswordPlaceholder": "백업 비밀번호 입력",
+    "wrongPassword": "❌ 비밀번호가 잘못되었거나 파일이 손상되었습니다.",
+    "legacyFormatWarning": "⚠️ 이 백업은 암호화되지 않은 이전 형식을 사용합니다. 안전을 위해 새 암호화 형식으로 다시 내보내는 것을 권장합니다.",
+    "selectBackup": "백업 파일 선택",
+    "verifyingFile": "파일 검증 중...",
+    "invalidFile": "❌ 선택한 파일이 유효하지 않거나 손상되었습니다.",
+    "noBackupData": "❌ 파일에 유효한 백업 데이터가 없습니다.",
+    "incompleteAccount": "❌ {{email}}의 계정 데이터가 불완전합니다.",
+    "importingAccounts": "계정 가져오는 중...",
+    "importSuccess": "✅ {{count}}개 계정을 성공적으로 가져왔습니다.",
+    "importSkipped": "\n⏭️ {{count}}개 계정을 건너뛰었습니다(이미 존재함).",
+    "importFailed": "❌ 가져오기 실패: {{error}}",
+    "confirmSwitch": "계정을 활성화하시겠습니까:\n{{email}}?",
+    "refreshingBalances": "잔여 크레딧 새로고침 중...",
+    "refreshingAccount": "새로고침 중",
+    "refreshSuccess": "✅ 모든 잔여량이 성공적으로 업데이트되었습니다.",
+    "cancelRefresh": "취소",
+    "refreshCancelled": "새로고침이 취소되었습니다.",
+    "cancellingRefresh": "취소 중...",
+    "confirmCancelTitle": "새로고침을 취소하시겠습니까?",
+    "confirmCancelMessage": "크레딧 업데이트를 중단하시겠습니까?",
+    "confirmCancelYes": "예, 중단합니다",
+    "confirmCancelNo": "계속",
+    "models": "모델",
+    "availableModels": "사용 가능한 모델 ({{count}})",
+    "activate": "활성화",
+    "remove": "삭제",
+    "reAuthenticate": "다시 로그인",
+    "expiredBanner": "세션이 만료되었습니다. 다시 로그인하여 접근을 복원하세요.",
+    "ineligibleBanner": "이 Google 계정은 Antigravity 사용 대상이 아닙니다.",
+    "noAvailableModels": "사용 가능한 모델이 없습니다",
+    "noAccountsRegistered": "등록된 계정이 없습니다.",
+    "addNewAccount": "➕ 새 계정 추가",
+    "more": "더보기",
+    "exportAccounts": "계정 내보내기",
+    "importAccounts": "계정 가져오기",
+    "settings": "설정",
+    "searchPlaceholder": "이름 또는 이메일로 검색...",
+    "noSearchResults": "검색 결과와 일치하는 계정이 없습니다.",
+    "refreshThisAccount": "이 계정 새로고침"
+  },
+  "statusBar": {
+    "noAccount": "계정 없음",
+    "credits": "{{amount}} 크레딧",
+    "tooltip": "클릭하여 계정 전환"
+  },
+  "notifications": {
+    "lowBalance": "⚠️ {{email}} 잔여량 부족: {{amount}} 크레딧 남음",
+    "depleted": "🔴 {{email}} 크레딧 소진! 다음 계정으로 전환 중...",
+    "switched": "✅ {{email}} (으)로 전환됨 ({{amount}} 크레딧)",
+    "tokenExpired": "🔑 {{email}} 토큰 만료됨. 다시 로그인하세요.",
+    "connectionError": "❌ {{email}} 연결 실패",
+    "refreshComplete": "✅ 모든 크레딧이 업데이트되었습니다"
+  },
+  "auth": {
+    "signingIn": "Google 계정으로 로그인 중...",
+    "waitingForBrowser": "브라우저 인증 대기 중...",
+    "authSuccess": "인증에 성공했습니다!",
+    "authFailed": "인증에 실패했습니다. 다시 시도하세요.",
+    "browserOpened": "로그인을 위한 브라우저 창이 열렸습니다.",
+    "reAuthenticating": "{{email}} 재인증 중..."
+  },
+  "settings": {
+    "title": "설정",
+    "refreshInterval": {
+      "label": "새로고침 간격",
+      "description": "크레딧 데이터를 새로고침할 주기(분)"
+    },
+    "autoRefresh": {
+      "label": "자동 새로고침",
+      "description": "패널을 열 때 크레딧 자동 새로고침"
+    },
+    "lowCreditThreshold": {
+      "label": "잔여량 부족 경고 기준",
+      "description": "크레딧이 이 값 이하로 떨어지면 경고"
+    },
+    "language": {
+      "label": "언어",
+      "description": "확장 프로그램 표시 언어"
+    },
+    "export": "설정 내보내기",
+    "import": "설정 가져오기"
+  },
+  "webview": {
+    "unspecified": "미지정",
+    "availableNow": "지금 사용 가능",
+    "renewsInDaysMins": "{{days}}일 {{mins}}분 후 갱신",
+    "renewsInDaysHoursMins": "{{days}}일 {{hours}}시간 {{mins}}분 후 갱신",
+    "renewsInHoursMins": "{{hours}}시간 {{mins}}분 후 갱신",
+    "selectThisModel": "이 모델 선택",
+    "veryLowBalance": "잔여량이 매우 부족합니다",
+    "showAvailableModels": "사용 가능한 모델 표시",
+    "activatePreferredModel": "이 선호 모델 활성화",
+    "preferredModelSort": "정렬용 선호 모델",
+    "noSelectionDefault": "없음(기본 정렬)",
+    "sortExplanation": "계정이 이 모델의 크레딧 잔여량 순으로 우선 정렬됩니다.",
+    "loginRequired": "이 옵션을 활성화하려면 로그인하세요",
+    "activating": "활성화 중...",
+    "language": "언어",
+    "languageAuto": "자동(시스템 기본값)",
+    "autoRefreshLabel": "크레딧 자동 새로고침",
+    "autoRefreshDescription": "활성화하면 패널을 열 때 크레딧이 자동으로 새로고침됩니다.",
+    "autoRotateLabel": "계정 자동 로테이션",
+    "autoRotateDescription": "현재 계정의 크레딧이 소진되면 크레딧이 있는 다른 계정으로 자동 전환합니다.",
+    "refreshIntervalLabel": "새로고침 간격",
+    "refreshIntervalDescription": "마지막 업데이트 이후 이 간격이 지나면 새로고침합니다.",
+    "intervalImmediate": "즉시",
+    "interval5Min": "5분",
+    "interval15Min": "15분",
+    "interval30Min": "30분",
+    "interval1Hour": "1시간",
+    "interval1Day": "1일",
+    "immediateConfirmTitle": "⚠️ 경고",
+    "immediateConfirmMessage": "계정이 5개 이상인 경우 '즉시' 옵션은 과도한 요청으로 인한 계정 제한을 유발할 수 있으므로 권장하지 않습니다. 활성화하시겠습니까?",
+    "immediateConfirmYes": "예, 활성화합니다",
+    "immediateConfirmCancel": "취소",
+    "notAntigravityTitle": "Antigravity 에디터 필요",
+    "notAntigravityMessage": "이 확장은 Antigravity 코드 에디터 전용으로 설계되었습니다.",
+    "downloadAntigravity": "Antigravity 다운로드",
+    "sortBy": "정렬 기준",
+    "sortDefault": "기본 정렬",
+    "sortNameAsc": "이름 (A-Z)",
+    "sortNameDesc": "이름 (Z-A)",
+    "sortEmailAsc": "이메일 (A-Z)",
+    "sortEmailDesc": "이메일 (Z-A)",
+    "sortDateAdded": "추가된 날짜",
+    "sortQuota": "남은 쿼터",
+    "sortQuotaRegen": "쿼터 갱신 시간",
+    "scanSegment": "세그먼트 스캔",
+    "scanAll": "전체 스캔",
+    "scanWithQuota": "쿼터 있는 계정 스캔",
+    "scanWithoutQuota": "쿼터 없는 계정 스캔",
+    "noAccountsInSegment": "선택한 세그먼트에 일치하는 계정이 없습니다.",
+    "cacheDurationLabel": "캐시 유효 기간",
+    "cacheDurationDescription": "해당 기간 내에 업데이트된 계정은 스캔을 건너뛰어 시간을 절약합니다.",
+    "day": "일",
+    "days": "일",
+    "lowCreditNotificationsLabel": "잔여량 부족 알림",
+    "lowCreditNotificationsDescription": "모델 크레딧이 기준값 이하로 떨어지면 데스크톱 알림을 받습니다.",
+    "editAliasTooltip": "계정 별칭 편집",
+    "editAliasPlaceholder": "별칭(예: 업무용, 개인용)",
+    "saveAliasTooltip": "별칭 저장",
+    "cancelAliasTooltip": "취소"
+  },
+  "service": {
+    "generatingDeviceProfile": "디바이스 프로필 생성 중...",
+    "refreshQueued": "스캔 대기 중입니다. {{seconds}}초 후에 자동으로 시작됩니다...",
+    "accountAddedErrorBalance": "계정 {{email}}이 추가되었으나 크레딧 조회가 실패했습니다. 나중에 다시 시도합니다.",
+    "accountAddedSuccess": "계정 {{email}}이 성공적으로 추가되었습니다. 크레딧: [{{balances}}]",
+    "accountAddError": "계정 추가 오류: {{error}}",
+    "missingLoginData": "{{email}}의 로그인 정보가 없습니다. 삭제 후 다시 추가하세요.",
+    "sessionExpiredFailed": "{{email}}의 세션이 만료되었습니다. 다시 로그인하세요.",
+    "refreshInProgress": "⏳ 크레딧 새로고침이 이미 진행 중입니다...",
+    "refreshCooldown": "⏳ 다시 새로고침하기 전에 {{seconds}}초 기다려 주세요.",
+    "accountRemoved": "{{email}} 계정과 모든 데이터가 삭제되었습니다.",
+    "switchFailed": "{{email}} 계정으로 전환하지 못했습니다. 확인 후 다시 시도하세요.",
+    "reAuthSuccess": "✅ {{email}}의 세션이 성공적으로 복원되었습니다.",
+    "reAuthFailed": "❌ {{email}} 재인증 실패: {{error}}",
+    "reAuthEmailMismatch": "로그인한 계정({{actual}})이 예상된 계정({{expected}})과 일치하지 않습니다.",
+    "accountIneligible": "{{email}} 계정은 Antigravity 대상이 아닙니다.",
+    "switchIneligibleAccount": "대상 계정이 아니므로 {{email}} 계정으로 전환할 수 없습니다."
+  },
+  "stateDb": {
+    "outdatedAntigravity": "설치된 Antigravity 버전이 {{minVersion}}보다 오래되어 지원되지 않습니다.\n{{minVersion}} 이상으로 업데이트하세요.",
+    "dbNotFound": "Antigravity 데이터베이스를 찾을 수 없습니다.\nAntigravity를 한 번 이상 실행하고 로그인하세요.",
+    "injectionFailed": "데이터베이스 주입 실패: {{error}}\n다른 모든 Antigravity 창을 닫고 다시 시도하세요.",
+    "reloadPrompt": "이 창이 닫히고 새 계정으로 Antigravity가 다시 열립니다."
+  },
+  "oauth": {
+    "timeout": "인증 시간이 초과되었습니다. 다시 시도하세요.",
+    "authFailedTitle": "인증 실패",
+    "authFailedDetail": "인증 중 오류가 발생했습니다: {{error}}",
+    "authSuccessTitle": "인증 성공",
+    "authSuccessDetail": "계정이 Antigravity 확장 프로그램에 성공적으로 연결되었습니다. 이 창을 닫으셔도 됩니다.",
+    "noPorts": "로컬 인증 서버를 실행할 수 있는 포트가 없습니다.",
+    "closeWindow": "창 닫기"
+  },
+  "authService": {
+    "noRefreshToken": "Refresh Token을 받지 못했습니다. 모든 권한을 수락하고 다시 시도하세요.",
+    "noEmail": "이메일을 가져오지 못했습니다. 권한을 확인하세요."
+  },
+  "extension": {
+    "noAccountsToSwitch": "등록된 계정이 없습니다. 먼저 계정을 추가하세요.",
+    "selectAccountToSwitch": "전환할 계정을 선택하세요"
+  },
+  "switchPrompt": {
+    "title": "{{email}} 계정으로 성공적으로 전환되었습니다",
+    "detail": "새 계정을 적용하려면 에디터를 다시 로드해야 합니다. 지금 다시 로드하시겠습니까?",
+    "actionYes": "지금 다시 로드",
+    "actionNo": "나중에"
+  },
+  "theme": {
+    "darkMode": "다크 모드",
+    "lightMode": "라이트 모드"
+  }
+}

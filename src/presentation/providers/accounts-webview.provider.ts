@@ -2380,8 +2380,15 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               <select id="languageSelect" style="width:100%; padding:8px; background:var(--vscode-dropdown-background); color:var(--vscode-dropdown-foreground); border:1px solid var(--vscode-dropdown-border); border-radius:4px;">
                 <option value="auto" ${configLanguage === 'auto' ? 'selected' : ''}>${i18n.t('webview.languageAuto')}</option>
                 <option value="en" ${configLanguage === 'en' ? 'selected' : ''}>English</option>
-                <option value="ar" ${configLanguage === 'ar' ? 'selected' : ''}>العربية</option>
                 <option value="es" ${configLanguage === 'es' ? 'selected' : ''}>Español</option>
+                <option value="zh-CN" ${configLanguage === 'zh-CN' ? 'selected' : ''}>中文 (简体)</option>
+                <option value="pt-BR" ${configLanguage === 'pt-BR' ? 'selected' : ''}>Português (Brasil)</option>
+                <option value="fr" ${configLanguage === 'fr' ? 'selected' : ''}>Français</option>
+                <option value="de" ${configLanguage === 'de' ? 'selected' : ''}>Deutsch</option>
+                <option value="ja" ${configLanguage === 'ja' ? 'selected' : ''}>日本語</option>
+                <option value="ru" ${configLanguage === 'ru' ? 'selected' : ''}>Русский</option>
+                <option value="ko" ${configLanguage === 'ko' ? 'selected' : ''}>한국어</option>
+                <option value="ar" ${configLanguage === 'ar' ? 'selected' : ''}>العربية</option>
               </select>
             </div>
 

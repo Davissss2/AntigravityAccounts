@@ -1,0 +1,289 @@
+{
+  "common": {
+    "appName": "Antigravity Account",
+    "loading": "Chargement...",
+    "error": "Erreur",
+    "success": "Succès",
+    "confirm": "Confirmer",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "refresh": "Actualiser",
+    "close": "Fermer",
+    "yes": "Oui",
+    "no": "Non",
+    "ok": "OK",
+    "back": "Retour",
+    "next": "Suivant",
+    "settings": "Paramètres",
+    "search": "Rechercher...",
+    "noResults": "Aucun résultat trouvé",
+    "retry": "Réessayer"
+  },
+  "commands": {
+    "openPanel": {
+      "placeholder": "Le panneau du gestionnaire de comptes sera bientôt disponible."
+    },
+    "addAccount": {
+      "placeholder": "L'ajout de compte sera bientôt disponible."
+    },
+    "switchAccount": {
+      "placeholder": "Le changement de compte sera bientôt disponible."
+    },
+    "refreshBalances": {
+      "placeholder": "L'actualisation des soldes sera bientôt disponible."
+    },
+    "setLanguage": {
+      "placeholder": "Sélectionner la langue d'affichage"
+    }
+  },
+  "accounts": {
+    "title": "Comptes",
+    "addButton": "Ajouter un compte",
+    "removeButton": "Supprimer le compte",
+    "switchButton": "Basculer",
+    "refreshButton": "Actualiser",
+    "settingsButton": "Paramètres",
+    "noAccounts": "Aucun compte ajouté pour le moment",
+    "addFirstAccount": "Ajoutez votre premier compte pour commencer",
+    "active": "Actif",
+    "inactive": "Inactif",
+    "expired": "Expiré",
+    "blocked": "Temporairement bloqué",
+    "alias": {
+      "title": "Alias du compte",
+      "placeholder": "Entrez un pseudonyme pour ce compte",
+      "save": "Enregistrer l'alias"
+    },
+    "confirmDelete": "Voulez-vous vraiment supprimer ce compte ?",
+    "deleteWarning": "Cette action supprimera définitivement le compte et ses jetons associés.",
+    "balance": "{{amount}} crédits",
+    "balanceOf": "{{amount}} / {{total}} crédits",
+    "plan": {
+      "free": "Gratuit",
+      "premium": "AI Premium",
+      "ultra": "AI Ultra",
+      "unknown": "Forfait inconnu"
+    },
+    "status": {
+      "active": "Actif",
+      "lowBalance": "Solde faible",
+      "depleted": "Crédits épuisés",
+      "expired": "Jeton expiré",
+      "error": "Erreur de connexion",
+      "ineligible": "Inéligible"
+    },
+    "sort": {
+      "byBalance": "Trier par solde",
+      "byDate": "Trier par date d'ajout",
+      "byName": "Trier par ordre alphabétique"
+    },
+    "noExportAccounts": "Aucun compte à exporter.",
+    "preparingExport": "Préparation des données d'exportation...",
+    "noValidExportData": "Aucune donnée valide trouvée pour l'exportation.",
+    "saveBackup": "Enregistrer la sauvegarde",
+    "exportSuccess": "✅ {{count}} comptes exportés avec succès (chiffrés).",
+    "exportFailed": "❌ Échec de l'exportation : {{error}}",
+    "exportPasswordPrompt": "Définissez un mot de passe pour protéger cette sauvegarde (min 6 caractères)",
+    "exportPasswordPlaceholder": "Entrez le mot de passe",
+    "exportPasswordConfirm": "Confirmez le mot de passe",
+    "passwordTooShort": "Le mot de passe doit comporter au moins 6 caractères",
+    "passwordMismatch": "❌ Les mots de passe ne correspondent pas. Exportation annulée.",
+    "importPasswordPrompt": "Entrez le mot de passe utilisé pour chiffrer cette sauvegarde",
+    "importPasswordPlaceholder": "Entrez le mot de passe",
+    "wrongPassword": "❌ Mot de passe incorrect ou fichier corrompu. Veuillez réessayer.",
+    "legacyFormatWarning": "⚠️ Cette sauvegarde utilise un ancien format non chiffré. Veuillez réexporter avec le nouveau format pour une meilleure sécurité.",
+    "selectBackup": "Sélectionner le fichier de sauvegarde",
+    "verifyingFile": "Vérification du fichier...",
+    "invalidFile": "❌ Le fichier sélectionné est invalide ou corrompu.",
+    "noBackupData": "❌ Le fichier ne contient aucune donnée de sauvegarde valide.",
+    "incompleteAccount": "❌ Données incomplètes pour {{email}}.",
+    "importingAccounts": "Importation des comptes...",
+    "importSuccess": "✅ {{count}} comptes importés avec succès.",
+    "importSkipped": "\n⏭️ {{count}} comptes ignorés (déjà existants).",
+    "importFailed": "❌ Échec de l'importation : {{error}}",
+    "confirmSwitch": "Voulez-vous vraiment activer le compte :\n{{email}} ?",
+    "refreshingBalances": "Actualisation des soldes...",
+    "refreshingAccount": "Actualisation",
+    "refreshSuccess": "✅ Tous les soldes ont été actualisés avec succès.",
+    "cancelRefresh": "Annuler",
+    "refreshCancelled": "Actualisation annulée.",
+    "cancellingRefresh": "Annulation en cours...",
+    "confirmCancelTitle": "Annuler l'actualisation ?",
+    "confirmCancelMessage": "Voulez-vous vraiment interrompre l'actualisation des soldes ?",
+    "confirmCancelYes": "Oui, arrêter",
+    "confirmCancelNo": "Continuer",
+    "models": "Modèles",
+    "availableModels": "Modèles disponibles ({{count}})",
+    "activate": "Activer",
+    "remove": "Supprimer",
+    "reAuthenticate": "Se reconnecter",
+    "expiredBanner": "Session expirée. Veuillez vous reconnecter pour restaurer l'accès.",
+    "ineligibleBanner": "Ce compte Google n'est pas éligible à Antigravity. Veuillez associer un compte compatible.",
+    "noAvailableModels": "Aucun modèle disponible",
+    "noAccountsRegistered": "Aucun compte enregistré pour le moment.",
+    "addNewAccount": "➕ Ajouter un compte",
+    "more": "Plus",
+    "exportAccounts": "Exporter les comptes",
+    "importAccounts": "Importer des comptes",
+    "settings": "Paramètres",
+    "searchPlaceholder": "Rechercher par nom ou e-mail...",
+    "noSearchResults": "Aucun compte ne correspond à votre recherche.",
+    "refreshThisAccount": "Actualiser ce compte"
+  },
+  "statusBar": {
+    "noAccount": "Aucun compte",
+    "credits": "{{amount}} crédits",
+    "tooltip": "Cliquer pour changer de compte"
+  },
+  "notifications": {
+    "lowBalance": "⚠️ Solde faible sur {{email}} : {{amount}} crédits restants",
+    "depleted": "🔴 Crédits épuisés sur {{email}} ! Basculement vers le compte suivant...",
+    "switched": "✅ Basculé vers {{email}} ({{amount}} crédits)",
+    "tokenExpired": "🔑 Jeton expiré pour {{email}}. Veuillez vous reconnecter.",
+    "connectionError": "❌ Impossible de se connecter à {{email}}",
+    "refreshComplete": "✅ Tous les soldes ont été actualisés"
+  },
+  "auth": {
+    "signingIn": "Connexion avec Google...",
+    "waitingForBrowser": "En attente de l'authentification dans le navigateur...",
+    "authSuccess": "Authentification réussie !",
+    "authFailed": "Échec de l'authentification. Veuillez réessayer.",
+    "browserOpened": "Une fenêtre de navigateur a été ouverte pour la connexion.",
+    "reAuthenticating": "Réauthentification de {{email}}..."
+  },
+  "settings": {
+    "title": "Paramètres",
+    "refreshInterval": {
+      "label": "Intervalle d'actualisation",
+      "description": "Fréquence d'actualisation des soldes (en minutes)"
+    },
+    "autoRefresh": {
+      "label": "Actualisation automatique",
+      "description": "Actualiser automatiquement les soldes à l'ouverture du panneau"
+    },
+    "lowCreditThreshold": {
+      "label": "Seuil d'alerte de solde faible",
+      "description": "Avertir lorsque les crédits tombent en dessous de ce montant"
+    },
+    "language": {
+      "label": "Langue",
+      "description": "Langue d'affichage de l'extension"
+    },
+    "export": "Exporter les paramètres",
+    "import": "Importer les paramètres"
+  },
+  "webview": {
+    "unspecified": "Non spécifié",
+    "availableNow": "Disponible maintenant",
+    "renewsInDaysMins": "Renouvellement dans {{days}}j {{mins}}m",
+    "renewsInDaysHoursMins": "Renouvellement dans {{days}}j {{hours}}h {{mins}}m",
+    "renewsInHoursMins": "Renouvellement dans {{hours}}h {{mins}}m",
+    "selectThisModel": "Sélectionner ce modèle",
+    "veryLowBalance": "Solde très faible",
+    "showAvailableModels": "Afficher les modèles disponibles",
+    "activatePreferredModel": "Activer ce modèle préféré",
+    "preferredModelSort": "Modèle préféré pour le tri",
+    "noSelectionDefault": "Aucun (Tri par défaut)",
+    "sortExplanation": "Les comptes seront d'abord triés selon le solde de ce modèle.",
+    "loginRequired": "Connectez-vous à un compte pour activer cette option",
+    "activating": "Activation...",
+    "language": "Langue",
+    "languageAuto": "Automatique (Par défaut du système)",
+    "autoRefreshLabel": "Actualisation automatique des soldes",
+    "autoRefreshDescription": "Lorsqu'activé, les soldes sont actualisés dès l'ouverture du panneau.",
+    "autoRotateLabel": "Rotation automatique des comptes",
+    "autoRotateDescription": "Bascule automatiquement vers un autre compte avec des crédits lorsque le compte actuel est épuisé.",
+    "refreshIntervalLabel": "Intervalle d'actualisation",
+    "refreshIntervalDescription": "Les soldes seront actualisés si l'intervalle est dépassé.",
+    "intervalImmediate": "Immédiatement",
+    "interval5Min": "5 Minutes",
+    "interval15Min": "15 Minutes",
+    "interval30Min": "30 Minutes",
+    "interval1Hour": "1 Heure",
+    "interval1Day": "1 Jour",
+    "immediateConfirmTitle": "⚠️ Avertissement",
+    "immediateConfirmMessage": "L'option 'Immédiatement' est déconseillée avec plus de 5 comptes car elle peut provoquer des suspensions dues au nombre élevé de requêtes. Activer ?",
+    "immediateConfirmYes": "Oui, Activer",
+    "immediateConfirmCancel": "Annuler",
+    "notAntigravityTitle": "Antigravity Requis",
+    "notAntigravityMessage": "Cette extension fonctionne exclusivement avec l'éditeur de code Antigravity.",
+    "downloadAntigravity": "Télécharger Antigravity",
+    "sortBy": "Trier par",
+    "sortDefault": "Par défaut",
+    "sortNameAsc": "Nom (A-Z)",
+    "sortNameDesc": "Nom (Z-A)",
+    "sortEmailAsc": "E-mail (A-Z)",
+    "sortEmailDesc": "E-mail (Z-A)",
+    "sortDateAdded": "Date d'ajout",
+    "sortQuota": "Quota restant",
+    "sortQuotaRegen": "Temps de renouvellement",
+    "scanSegment": "Scanner un segment",
+    "scanAll": "Scanner tout",
+    "scanWithQuota": "Scanner avec quota",
+    "scanWithoutQuota": "Scanner sans quota",
+    "noAccountsInSegment": "Aucun compte correspondant au segment sélectionné.",
+    "cacheDurationLabel": "Durée de validité du cache",
+    "cacheDurationDescription": "Évite de rescanner un compte s'il a été mis à jour durant cette période.",
+    "day": "Jour",
+    "days": "Jours",
+    "lowCreditNotificationsLabel": "Notifications de solde faible",
+    "lowCreditNotificationsDescription": "Recevez des notifications bureau lorsque le solde d'un modèle passe sous le seuil.",
+    "editAliasTooltip": "Modifier l'alias",
+    "editAliasPlaceholder": "Alias (ex: Pro, Perso)",
+    "saveAliasTooltip": "Enregistrer l'alias",
+    "cancelAliasTooltip": "Annuler"
+  },
+  "service": {
+    "generatingDeviceProfile": "Génération du profil de périphérique...",
+    "refreshQueued": "Scan en attente de temporisation. Démarrage dans {{seconds}} secondes...",
+    "accountAddedErrorBalance": "Compte {{email}} ajouté, mais la récupération du solde a échoué. Nouvel essai plus tard.",
+    "accountAddedSuccess": "Compte {{email}} ajouté avec succès. Soldes : [{{balances}}]",
+    "accountAddError": "Erreur lors de l'ajout du compte : {{error}}",
+    "missingLoginData": "Données de connexion manquantes pour {{email}}. Veuillez le supprimer et le réajouter.",
+    "sessionExpiredFailed": "La session pour {{email}} a expiré et n'a pas pu être renouvelée. Veuillez vous reconnecter.",
+    "refreshInProgress": "⏳ Actualisation des soldes en cours...",
+    "refreshCooldown": "⏳ Veuillez patienter {{seconds}} secondes avant d'actualiser à nouveau.",
+    "accountRemoved": "Le compte {{email}} et toutes ses données ont été supprimés.",
+    "switchFailed": "Échec du basculement vers {{email}}. Veuillez vérifier les erreurs et réessayer.",
+    "reAuthSuccess": "✅ Session restaurée avec succès pour {{email}}.",
+    "reAuthFailed": "❌ Échec de la réauthentification pour {{email}} : {{error}}",
+    "reAuthEmailMismatch": "Le compte connecté ({{actual}}) ne correspond pas au compte attendu ({{expected}}).",
+    "accountIneligible": "Le compte {{email}} n'est pas éligible pour Antigravity.",
+    "switchIneligibleAccount": "Impossible de basculer vers {{email}} car il n'est pas éligible."
+  },
+  "stateDb": {
+    "outdatedAntigravity": "La version d'Antigravity installée est antérieure à {{minVersion}} et n'est pas prise en charge.\nVeuillez mettre à jour Antigravity vers la version {{minVersion}} ou supérieure.",
+    "dbNotFound": "Base de données Antigravity introuvable.\nAssurez-vous d'avoir ouvert et de vous être connecté à Antigravity au moins une fois.",
+    "injectionFailed": "Échec de l'injection des données dans la base : {{error}}\nFermez toutes les fenêtres Antigravity et réessayez.",
+    "reloadPrompt": "Cette fenêtre va se fermer et Antigravity sera réouvert avec le nouveau compte."
+  },
+  "oauth": {
+    "timeout": "Délai d'attente d'authentification dépassé. Veuillez réessayer.",
+    "authFailedTitle": "Échec de l'authentification",
+    "authFailedDetail": "Une erreur est survenue lors de l'authentification : {{error}}",
+    "authSuccessTitle": "Authentification réussie",
+    "authSuccessDetail": "Le compte a été associé à l'extension. Vous pouvez fermer cette fenêtre.",
+    "noPorts": "Aucun port disponible pour exécuter le serveur d'authentification local.",
+    "closeWindow": "Fermer la fenêtre"
+  },
+  "authService": {
+    "noRefreshToken": "Refresh Token non reçu. Veuillez réessayer et accepter toutes les autorisations.",
+    "noEmail": "E-mail non récupéré. Veuillez vérifier les autorisations."
+  },
+  "extension": {
+    "noAccountsToSwitch": "Aucun compte enregistré. Veuillez d'abord ajouter un compte.",
+    "selectAccountToSwitch": "Sélectionnez le compte vers lequel vous souhaitez basculer"
+  },
+  "switchPrompt": {
+    "title": "Compte basculé vers {{email}} avec succès",
+    "detail": "L'éditeur doit être rechargé pour activer le nouveau compte. Recharger maintenant ?",
+    "actionYes": "Recharger maintenant",
+    "actionNo": "Plus tard"
+  },
+  "theme": {
+    "darkMode": "Mode Sombre",
+    "lightMode": "Mode Clair"
+  }
+}

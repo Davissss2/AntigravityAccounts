@@ -1,0 +1,289 @@
+{
+  "common": {
+    "appName": "Antigravity Account",
+    "loading": "Wird geladen...",
+    "error": "Fehler",
+    "success": "Erfolg",
+    "confirm": "Bestätigen",
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "refresh": "Aktualisieren",
+    "close": "Schließen",
+    "yes": "Ja",
+    "no": "Nein",
+    "ok": "OK",
+    "back": "Zurück",
+    "next": "Weiter",
+    "settings": "Einstellungen",
+    "search": "Suchen...",
+    "noResults": "Keine Ergebnisse gefunden",
+    "retry": "Wiederholen"
+  },
+  "commands": {
+    "openPanel": {
+      "placeholder": "Konto-Manager-Panel wird in Kürze implementiert."
+    },
+    "addAccount": {
+      "placeholder": "Konto-Hinzufügen-Ablauf wird in Kürze implementiert."
+    },
+    "switchAccount": {
+      "placeholder": "Konto-Wechsel-Ablauf wird in Kürze implementiert."
+    },
+    "refreshBalances": {
+      "placeholder": "Guthaben-Aktualisierung wird in Kürze implementiert."
+    },
+    "setLanguage": {
+      "placeholder": "Anzeigesprache auswählen"
+    }
+  },
+  "accounts": {
+    "title": "Konten",
+    "addButton": "Konto hinzufügen",
+    "removeButton": "Konto entfernen",
+    "switchButton": "Wechseln",
+    "refreshButton": "Aktualisieren",
+    "settingsButton": "Einstellungen",
+    "noAccounts": "Noch keine Konten hinzugefügt",
+    "addFirstAccount": "Fügen Sie Ihr erstes Konto hinzu, um zu beginnen",
+    "active": "Aktiv",
+    "inactive": "Inaktiv",
+    "expired": "Abgelaufen",
+    "blocked": "Vorübergehend gesperrt",
+    "alias": {
+      "title": "Konto-Alias",
+      "placeholder": "Geben Sie einen Spitznamen für dieses Konto ein",
+      "save": "Alias speichern"
+    },
+    "confirmDelete": "Möchten Sie dieses Konto wirklich entfernen?",
+    "deleteWarning": "Dadurch werden das Konto und seine gespeicherten Tokens dauerhaft entfernt.",
+    "balance": "{{amount}} Credits",
+    "balanceOf": "{{amount}} / {{total}} Credits",
+    "plan": {
+      "free": "Kostenlos",
+      "premium": "AI Premium",
+      "ultra": "AI Ultra",
+      "unknown": "Unbekannter Plan"
+    },
+    "status": {
+      "active": "Aktiv",
+      "lowBalance": "Niedriges Guthaben",
+      "depleted": "Credits aufgebraucht",
+      "expired": "Token abgelaufen",
+      "error": "Verbindungsfehler",
+      "ineligible": "Nicht berechtigt"
+    },
+    "sort": {
+      "byBalance": "Nach Guthaben sortieren",
+      "byDate": "Nach Hinzufügedatum sortieren",
+      "byName": "Alphabetisch sortieren"
+    },
+    "noExportAccounts": "Keine Konten zum Exportieren.",
+    "preparingExport": "Exportdaten werden vorbereitet...",
+    "noValidExportData": "Keine gültigen Daten zum Exportieren gefunden.",
+    "saveBackup": "Backup speichern",
+    "exportSuccess": "✅ {{count}} Konten erfolgreich exportiert (verschlüsselt).",
+    "exportFailed": "❌ Export fehlgeschlagen: {{error}}",
+    "exportPasswordPrompt": "Legen Sie ein Passwort zum Schutz dieses Backups fest (mindestens 6 Zeichen)",
+    "exportPasswordPlaceholder": "Backup-Passwort eingeben",
+    "exportPasswordConfirm": "Backup-Passwort bestätigen",
+    "passwordTooShort": "Das Passwort muss mindestens 6 Zeichen lang sein",
+    "passwordMismatch": "❌ Passwörter stimmen nicht überein. Export abgebrochen.",
+    "importPasswordPrompt": "Geben Sie das Passwort ein, mit dem dieses Backup verschlüsselt wurde",
+    "importPasswordPlaceholder": "Backup-Passwort eingeben",
+    "wrongPassword": "❌ Falsches Passwort oder beschädigte Datei. Bitte erneut versuchen.",
+    "legacyFormatWarning": "⚠️ Dieses Backup verwendet ein älteres, unverschlüsseltes Format. Bitte exportieren Sie es erneut im neuen verschlüsselten Format.",
+    "selectBackup": "Backup-Datei auswählen",
+    "verifyingFile": "Datei wird überprüft...",
+    "invalidFile": "❌ Die ausgewählte Datei ist ungültig oder beschädigt.",
+    "noBackupData": "❌ Die Datei enthält keine gültigen Backup-Daten.",
+    "incompleteAccount": "❌ Kontodaten für {{email}} sind unvollständig.",
+    "importingAccounts": "Konten werden importiert...",
+    "importSuccess": "✅ {{count}} Konten erfolgreich importiert.",
+    "importSkipped": "\n⏭️ {{count}} Konten übersprungen (bereits vorhanden).",
+    "importFailed": "❌ Import fehlgeschlagen: {{error}}",
+    "confirmSwitch": "Möchten Sie das Konto wirklich aktivieren:\n{{email}}?",
+    "refreshingBalances": "Guthaben wird aktualisiert...",
+    "refreshingAccount": "Wird aktualisiert",
+    "refreshSuccess": "✅ Alle Guthaben erfolgreich aktualisiert.",
+    "cancelRefresh": "Abbrechen",
+    "refreshCancelled": "Aktualisierung abgebrochen.",
+    "cancellingRefresh": "Wird abgebrochen...",
+    "confirmCancelTitle": "Aktualisierung abbrechen?",
+    "confirmCancelMessage": "Möchten Sie die Aktualisierung der Guthaben wirklich beenden?",
+    "confirmCancelYes": "Ja, beenden",
+    "confirmCancelNo": "Fortsetzen",
+    "models": "Modelle",
+    "availableModels": "Verfügbare Modelle ({{count}})",
+    "activate": "Aktivieren",
+    "remove": "Entfernen",
+    "reAuthenticate": "Erneut anmelden",
+    "expiredBanner": "Sitzung abgelaufen. Bitte erneut anmelden.",
+    "ineligibleBanner": "Dieses Google-Konto ist nicht für Antigravity berechtigt.",
+    "noAvailableModels": "Keine Modelle verfügbar",
+    "noAccountsRegistered": "Noch keine Konten registriert.",
+    "addNewAccount": "➕ Neues Konto hinzufügen",
+    "more": "Mehr",
+    "exportAccounts": "Konten exportieren",
+    "importAccounts": "Konten importieren",
+    "settings": "Einstellungen",
+    "searchPlaceholder": "Nach Name oder E-Mail suchen...",
+    "noSearchResults": "Keine passenden Konten gefunden.",
+    "refreshThisAccount": "Dieses Konto aktualisieren"
+  },
+  "statusBar": {
+    "noAccount": "Kein Konto",
+    "credits": "{{amount}} Credits",
+    "tooltip": "Klicken zum Kontowechsel"
+  },
+  "notifications": {
+    "lowBalance": "⚠️ Niedriges Guthaben bei {{email}}: {{amount}} Credits verbleibend",
+    "depleted": "🔴 Credits aufgebraucht bei {{email}}! Wechsel zum nächsten Konto...",
+    "switched": "✅ Gewechselt zu {{email}} ({{amount}} Credits)",
+    "tokenExpired": "🔑 Token abgelaufen für {{email}}. Bitte neu anmelden.",
+    "connectionError": "❌ Verbindung zu {{email}} fehlgeschlagen",
+    "refreshComplete": "✅ Alle Guthaben aktualisiert"
+  },
+  "auth": {
+    "signingIn": "Anmeldung bei Google...",
+    "waitingForBrowser": "Warten auf Browser-Authentifizierung...",
+    "authSuccess": "Erfolgreich authentifiziert!",
+    "authFailed": "Authentifizierung fehlgeschlagen. Bitte erneut versuchen.",
+    "browserOpened": "Ein Browserfenster für die Anmeldung wurde geöffnet.",
+    "reAuthenticating": "Erneute Authentifizierung von {{email}}..."
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "refreshInterval": {
+      "label": "Aktualisierungsintervall",
+      "description": "Wie oft Guthabendaten aktualisiert werden (in Minuten)"
+    },
+    "autoRefresh": {
+      "label": "Automatische Aktualisierung",
+      "description": "Guthaben beim Öffnen des Panels automatisch aktualisieren"
+    },
+    "lowCreditThreshold": {
+      "label": "Warnschwelle für niedriges Guthaben",
+      "description": "Warnen, wenn Credits unter diesen Wert fallen"
+    },
+    "language": {
+      "label": "Sprache",
+      "description": "Anzeigesprache der Erweiterung"
+    },
+    "export": "Einstellungen exportieren",
+    "import": "Einstellungen importieren"
+  },
+  "webview": {
+    "unspecified": "Nicht angegeben",
+    "availableNow": "Jetzt verfügbar",
+    "renewsInDaysMins": "Erneuert sich in {{days}}T {{mins}}M",
+    "renewsInDaysHoursMins": "Erneuert sich in {{days}}T {{hours}}Std {{mins}}M",
+    "renewsInHoursMins": "Erneuert sich in {{hours}}Std {{mins}}M",
+    "selectThisModel": "Dieses Modell auswählen",
+    "veryLowBalance": "Sehr niedriges Guthaben",
+    "showAvailableModels": "Verfügbare Modelle anzeigen",
+    "activatePreferredModel": "Dieses bevorzugte Modell aktivieren",
+    "preferredModelSort": "Bevorzugtes Modell für Sortierung",
+    "noSelectionDefault": "Keines (Standard-Sortierung)",
+    "sortExplanation": "Konten werden zuerst nach dem Guthaben dieses Modells sortiert.",
+    "loginRequired": "Melden Sie sich an, um diese Option zu aktivieren",
+    "activating": "Wird aktiviert...",
+    "language": "Sprache",
+    "languageAuto": "Automatisch (Systemstandard)",
+    "autoRefreshLabel": "Guthaben automatisch aktualisieren",
+    "autoRefreshDescription": "Wenn aktiviert, werden die Guthaben beim Öffnen des Panels automatisch aktualisiert.",
+    "autoRotateLabel": "Automatische Kontorotation",
+    "autoRotateDescription": "Wechselt automatisch zu einem anderen Konto, wenn das aktuelle Konto keine Credits mehr hat.",
+    "refreshIntervalLabel": "Aktualisierungsintervall",
+    "refreshIntervalDescription": "Guthaben werden aktualisiert, wenn mehr Zeit als dieser Intervall vergangen ist.",
+    "intervalImmediate": "Sofort",
+    "interval5Min": "5 Minuten",
+    "interval15Min": "15 Minuten",
+    "interval30Min": "30 Minuten",
+    "interval1Hour": "1 Stunde",
+    "interval1Day": "1 Tag",
+    "immediateConfirmTitle": "⚠️ Warnung",
+    "immediateConfirmMessage": "Die Option 'Sofort' wird bei mehr als 5 Konten nicht empfohlen, da sie Kontosperren verursachen kann. Aktivieren?",
+    "immediateConfirmYes": "Ja, aktivieren",
+    "immediateConfirmCancel": "Abbrechen",
+    "notAntigravityTitle": "Antigravity erforderlich",
+    "notAntigravityMessage": "Diese Erweiterung funktioniert ausschließlich mit dem Antigravity-Code-Editor.",
+    "downloadAntigravity": "Antigravity herunterladen",
+    "sortBy": "Sortieren nach",
+    "sortDefault": "Standard",
+    "sortNameAsc": "Name (A-Z)",
+    "sortNameDesc": "Name (Z-A)",
+    "sortEmailAsc": "E-Mail (A-Z)",
+    "sortEmailDesc": "E-Mail (Z-A)",
+    "sortDateAdded": "Hinzugefügt am",
+    "sortQuota": "Verbleibende Quote",
+    "sortQuotaRegen": "Erneuerungszeit",
+    "scanSegment": "Segment scannen",
+    "scanAll": "Alle scannen",
+    "scanWithQuota": "Mit Quote scannen",
+    "scanWithoutQuota": "Ohne Quote scannen",
+    "noAccountsInSegment": "Keine Konten im ausgewählten Segment gefunden.",
+    "cacheDurationLabel": "Cache-Gültigkeitsdauer",
+    "cacheDurationDescription": "Spart Zeit, indem das Konto nicht gescannt wird, wenn es in diesem Zeitraum aktualisiert wurde.",
+    "day": "Tag",
+    "days": "Tage",
+    "lowCreditNotificationsLabel": "Benachrichtigungen bei niedrigem Guthaben",
+    "lowCreditNotificationsDescription": "Erhalten Sie Desktop-Benachrichtigungen, wenn das Guthaben unter den Schwellenwert fällt.",
+    "editAliasTooltip": "Konto-Alias bearbeiten",
+    "editAliasPlaceholder": "Alias (z. B. Arbeit, Privat)",
+    "saveAliasTooltip": "Alias speichern",
+    "cancelAliasTooltip": "Abbrechen"
+  },
+  "service": {
+    "generatingDeviceProfile": "Geräteprofil wird generiert...",
+    "refreshQueued": "Scan pausiert. Startet automatisch in {{seconds}} Sekunden...",
+    "accountAddedErrorBalance": "Konto {{email}} hinzugefügt, aber Guthabenabruf fehlgeschlagen. Späterer Neuversuch.",
+    "accountAddedSuccess": "Konto {{email}} erfolgreich hinzugefügt. Guthaben: [{{balances}}]",
+    "accountAddError": "Fehler beim Hinzufügen des Kontos: {{error}}",
+    "missingLoginData": "Anmeldedaten für {{email}} fehlen. Bitte entfernen und erneut hinzufügen.",
+    "sessionExpiredFailed": "Sitzung für {{email}} ist abgelaufen. Bitte erneut anmelden.",
+    "refreshInProgress": "⏳ Guthabenaktualisierung läuft bereits...",
+    "refreshCooldown": "⏳ Bitte warten Sie {{seconds}} Sekunden vor der nächsten Aktualisierung.",
+    "accountRemoved": "Konto {{email}} und alle zugehörigen Daten wurden entfernt.",
+    "switchFailed": "Wechsel zu Konto {{email}} fehlgeschlagen. Bitte prüfen und erneut versuchen.",
+    "reAuthSuccess": "✅ Sitzung für {{email}} erfolgreich wiederhergestellt.",
+    "reAuthFailed": "❌ Erneute Authentifizierung für {{email}} fehlgeschlagen: {{error}}",
+    "reAuthEmailMismatch": "Das angemeldete Konto ({{actual}}) stimmt nicht mit dem erwarteten Konto ({{expected}}) überein.",
+    "accountIneligible": "Konto {{email}} ist für Antigravity nicht berechtigt.",
+    "switchIneligibleAccount": "Zu Konto {{email}} kann nicht gewechselt werden, da es nicht berechtigt ist."
+  },
+  "stateDb": {
+    "outdatedAntigravity": "Die installierte Antigravity-Version ist älter als {{minVersion}} und wird nicht unterstützt.\nBitte aktualisieren Sie auf {{minVersion}} oder neuer.",
+    "dbNotFound": "Antigravity-Datenbank nicht gefunden.\nBitte starten Sie Antigravity und melden Sie sich mindestens einmal an.",
+    "injectionFailed": "Daten konnten nicht in die Datenbank eingefügt werden: {{error}}\nSchließen Sie alle Antigravity-Fenster und versuchen Sie es erneut.",
+    "reloadPrompt": "Dieses Fenster wird geschlossen und Antigravity mit dem neuen Konto neu geöffnet."
+  },
+  "oauth": {
+    "timeout": "Authentifizierungs-Timeout. Bitte erneut versuchen.",
+    "authFailedTitle": "Authentifizierung fehlgeschlagen",
+    "authFailedDetail": "Ein Fehler ist bei der Authentifizierung aufgetreten: {{error}}",
+    "authSuccessTitle": "Authentifizierung erfolgreich",
+    "authSuccessDetail": "Das Konto wurde erfolgreich mit der Erweiterung verknüpft. Sie können dieses Fenster schließen.",
+    "noPorts": "Keine verfügbaren Ports zum Ausführen des lokalen Authentifizierungsservers.",
+    "closeWindow": "Fenster schließen"
+  },
+  "authService": {
+    "noRefreshToken": "Refresh-Token nicht erhalten. Bitte akzeptieren Sie alle Berechtigungen.",
+    "noEmail": "E-Mail nicht abgerufen. Bitte Berechtigungen prüfen."
+  },
+  "extension": {
+    "noAccountsToSwitch": "Keine Konten registriert. Bitte zuerst ein Konto hinzufügen.",
+    "selectAccountToSwitch": "Wählen Sie das Konto aus, zu dem Sie wechseln möchten"
+  },
+  "switchPrompt": {
+    "title": "Erfolgreich zu Konto {{email}} gewechselt",
+    "detail": "Der Editor muss neu geladen werden, um das neue Konto zu aktivieren. Jetzt neu laden?",
+    "actionYes": "Jetzt neu laden",
+    "actionNo": "Später"
+  },
+  "theme": {
+    "darkMode": "Dunkler Modus",
+    "lightMode": "Heller Modus"
+  }
+}

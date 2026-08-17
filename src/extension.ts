@@ -54,11 +54,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const updateLanguage = () => {
     let language = config.getLanguage();
     if (language === 'auto') {
-      const editorLang = vscode.env.language.split('-')[0].toLowerCase();
-      if (editorLang === 'ar') {
-        language = 'ar';
-      } else if (editorLang === 'es') {
-        language = 'es';
+      const fullLang = (vscode.env.language || '').toLowerCase();
+      const editorLang = fullLang.split('-')[0];
+      if (fullLang.startsWith('zh')) {
+        language = 'zh-CN';
+      } else if (fullLang.startsWith('pt')) {
+        language = 'pt-BR';
+      } else if (['ar', 'es', 'fr', 'de', 'ja', 'ru', 'ko'].includes(editorLang)) {
+        language = editorLang;
       } else {
         language = 'en';
       }

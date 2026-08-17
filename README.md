@@ -34,6 +34,7 @@
 - 🔄 **Smart Auto-Rotation:** Automatically cycle to the next account with available quota when your current session runs out of balance.
 - 🔔 **Desktop Balance Alerts:** Receive native desktop notifications when model balances fall below your configured threshold.
 - 🔐 **Password-Encrypted Backups:** Safely export and import all registered accounts and device profiles with AES-256-GCM encryption.
+- 🌍 **Full Multilingual Localization (10 Languages):** Native interface support for English, Español, 中文 (简体), Português (Brasil), Français, Deutsch, 日本語, Русский, 한국어, and العربية (with bidirectional RTL support).
 - 🛡️ **Anti-Ban & Anti-Correlation:** Randomized device profiles (`storage.json` & `state.vscdb`) and human-like request throttling (3–7s delays) to prevent API rate-limiting or account cross-correlation.
 
 ---

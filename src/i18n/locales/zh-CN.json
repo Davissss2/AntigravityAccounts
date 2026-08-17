@@ -1,0 +1,289 @@
+{
+  "common": {
+    "appName": "Antigravity Account",
+    "loading": "加载中...",
+    "error": "错误",
+    "success": "成功",
+    "confirm": "确认",
+    "cancel": "取消",
+    "save": "保存",
+    "delete": "删除",
+    "edit": "编辑",
+    "refresh": "刷新",
+    "close": "关闭",
+    "yes": "是",
+    "no": "否",
+    "ok": "确定",
+    "back": "返回",
+    "next": "下一步",
+    "settings": "设置",
+    "search": "搜索...",
+    "noResults": "未找到结果",
+    "retry": "重试"
+  },
+  "commands": {
+    "openPanel": {
+      "placeholder": "账号管理面板即将实现。"
+    },
+    "addAccount": {
+      "placeholder": "添加账号流程即将实现。"
+    },
+    "switchAccount": {
+      "placeholder": "切换账号流程即将实现。"
+    },
+    "refreshBalances": {
+      "placeholder": "额度刷新即将实现。"
+    },
+    "setLanguage": {
+      "placeholder": "选择显示语言"
+    }
+  },
+  "accounts": {
+    "title": "账号列表",
+    "addButton": "添加账号",
+    "removeButton": "移除账号",
+    "switchButton": "切换",
+    "refreshButton": "刷新",
+    "settingsButton": "设置",
+    "noAccounts": "尚未添加任何账号",
+    "addFirstAccount": "添加您的第一个账号以开始使用",
+    "active": "已激活",
+    "inactive": "未激活",
+    "expired": "已过期",
+    "blocked": "临时受限",
+    "alias": {
+      "title": "账号别名",
+      "placeholder": "为此账号输入昵称",
+      "save": "保存别名"
+    },
+    "confirmDelete": "您确定要移除此账号吗？",
+    "deleteWarning": "这将永久移除此账号及其存储的令牌。",
+    "balance": "{{amount}} 积分",
+    "balanceOf": "{{amount}} / {{total}} 积分",
+    "plan": {
+      "free": "免费版",
+      "premium": "AI Premium",
+      "ultra": "AI Ultra",
+      "unknown": "未知方案"
+    },
+    "status": {
+      "active": "正常使用",
+      "lowBalance": "额度较低",
+      "depleted": "额度耗尽",
+      "expired": "令牌过期",
+      "error": "连接错误",
+      "ineligible": "不符合条件"
+    },
+    "sort": {
+      "byBalance": "按余额排序",
+      "byDate": "按添加日期排序",
+      "byName": "按字母排序"
+    },
+    "noExportAccounts": "没有可导出的账号。",
+    "preparingExport": "正在准备导出数据...",
+    "noValidExportData": "未找到有效的导出数据。",
+    "saveBackup": "保存备份",
+    "exportSuccess": "✅ 成功导出 {{count}} 个账号（已加密）。",
+    "exportFailed": "❌ 导出失败：{{error}}",
+    "exportPasswordPrompt": "设置密码以保护此备份（至少 6 个字符）",
+    "exportPasswordPlaceholder": "输入备份密码",
+    "exportPasswordConfirm": "确认备份密码",
+    "passwordTooShort": "密码必须至少为 6 个字符",
+    "passwordMismatch": "❌ 密码不匹配。已取消导出。",
+    "importPasswordPrompt": "输入加密此备份时使用的密码",
+    "importPasswordPlaceholder": "输入备份密码",
+    "wrongPassword": "❌ 密码错误或文件损坏，请重试。",
+    "legacyFormatWarning": "⚠️ 此备份使用的是旧版未加密格式。建议重新导出为新版加密格式以提升安全性。",
+    "selectBackup": "选择备份文件",
+    "verifyingFile": "正在验证文件...",
+    "invalidFile": "❌ 所选文件无效或已损坏。",
+    "noBackupData": "❌ 该文件不包含有效的备份数据。",
+    "incompleteAccount": "❌ {{email}} 的账号数据不完整。",
+    "importingAccounts": "正在导入账号...",
+    "importSuccess": "✅ 成功导入 {{count}} 个账号。",
+    "importSkipped": "\n⏭️ 已跳过 {{count}} 个账号（已存在）。",
+    "importFailed": "❌ 导入失败：{{error}}",
+    "confirmSwitch": "您确定要激活账号：\n{{email}} 吗？",
+    "refreshingBalances": "正在刷新余额...",
+    "refreshingAccount": "正在刷新",
+    "refreshSuccess": "✅ 所有余额刷新成功。",
+    "cancelRefresh": "取消",
+    "refreshCancelled": "刷新已取消。",
+    "cancellingRefresh": "正在取消...",
+    "confirmCancelTitle": "取消刷新？",
+    "confirmCancelMessage": "您确定要停止更新余额吗？",
+    "confirmCancelYes": "是的，停止",
+    "confirmCancelNo": "继续",
+    "models": "模型",
+    "availableModels": "可用模型 ({{count}})",
+    "activate": "激活",
+    "remove": "删除",
+    "reAuthenticate": "重新登录",
+    "expiredBanner": "会话已过期。请重新登录以恢复访问权限。",
+    "ineligibleBanner": "此 Google 账号不符合使用 Antigravity 的资格。请关联受支持的账号。",
+    "noAvailableModels": "无可用模型",
+    "noAccountsRegistered": "尚未注册任何账号。",
+    "addNewAccount": "➕ 添加新账号",
+    "more": "更多",
+    "exportAccounts": "导出账号",
+    "importAccounts": "导入账号",
+    "settings": "设置",
+    "searchPlaceholder": "按名称或邮箱搜索...",
+    "noSearchResults": "没有匹配的账号。",
+    "refreshThisAccount": "刷新此账号"
+  },
+  "statusBar": {
+    "noAccount": "无账号",
+    "credits": "{{amount}} 积分",
+    "tooltip": "点击切换账号"
+  },
+  "notifications": {
+    "lowBalance": "⚠️ {{email}} 余额不足：剩余 {{amount}} 积分",
+    "depleted": "🔴 {{email}} 积分已耗尽！正在切换到下一个账号...",
+    "switched": "✅ 已切换到 {{email}}（{{amount}} 积分）",
+    "tokenExpired": "🔑 {{email}} 的令牌已过期，请重新登录。",
+    "connectionError": "❌ 无法连接到 {{email}}",
+    "refreshComplete": "✅ 所有余额已刷新"
+  },
+  "auth": {
+    "signingIn": "正在通过 Google 登录...",
+    "waitingForBrowser": "正在等待浏览器认证...",
+    "authSuccess": "认证成功！",
+    "authFailed": "认证失败，请重试。",
+    "browserOpened": "已打开浏览器窗口以进行登录。",
+    "reAuthenticating": "正在重新认证 {{email}}..."
+  },
+  "settings": {
+    "title": "设置",
+    "refreshInterval": {
+      "label": "刷新间隔",
+      "description": "刷新余额数据的频率（分钟）"
+    },
+    "autoRefresh": {
+      "label": "自动刷新",
+      "description": "打开面板时自动刷新余额"
+    },
+    "lowCreditThreshold": {
+      "label": "低额度预警阈值",
+      "description": "当积分低于此数量时发出警告"
+    },
+    "language": {
+      "label": "界面语言",
+      "description": "插件的显示语言"
+    },
+    "export": "导出设置",
+    "import": "导入设置"
+  },
+  "webview": {
+    "unspecified": "未指定",
+    "availableNow": "现在可用",
+    "renewsInDaysMins": "{{days}}天 {{mins}}分后重置",
+    "renewsInDaysHoursMins": "{{days}}天 {{hours}}小时 {{mins}}分后重置",
+    "renewsInHoursMins": "{{hours}}小时 {{mins}}分后重置",
+    "selectThisModel": "选择此模型",
+    "veryLowBalance": "余额极低",
+    "showAvailableModels": "显示可用模型",
+    "activatePreferredModel": "激活此首选模型",
+    "preferredModelSort": "首选排序模型",
+    "noSelectionDefault": "无（默认排序）",
+    "sortExplanation": "账号将首先按此模型的余额进行排序。",
+    "loginRequired": "登录账号以启用此选项",
+    "activating": "正在激活...",
+    "language": "语言",
+    "languageAuto": "自动（系统默认）",
+    "autoRefreshLabel": "自动刷新余额",
+    "autoRefreshDescription": "启用后，在打开面板时会自动刷新余额。",
+    "autoRotateLabel": "自动轮换账号",
+    "autoRotateDescription": "当当前活跃账号额度耗尽时，自动切换到下一个有额度的账号。",
+    "refreshIntervalLabel": "刷新间隔",
+    "refreshIntervalDescription": "如果距离上次更新已超过此间隔，余额将自动刷新。",
+    "intervalImmediate": "立即",
+    "interval5Min": "5 分钟",
+    "interval15Min": "15 分钟",
+    "interval30Min": "30 分钟",
+    "interval1Hour": "1 小时",
+    "interval1Day": "1 天",
+    "immediateConfirmTitle": "⚠️ 警告",
+    "immediateConfirmMessage": "如果您拥有超过 5 个账号，不建议使用“立即”选项，因为请求过于频繁可能会导致账号受限。确定要启用吗？",
+    "immediateConfirmYes": "是的，启用",
+    "immediateConfirmCancel": "取消",
+    "notAntigravityTitle": "需要 Antigravity 编辑器",
+    "notAntigravityMessage": "此扩展专为 Antigravity 代码编辑器设计，无法在其他编辑器中运行。",
+    "downloadAntigravity": "下载 Antigravity",
+    "sortBy": "排序方式",
+    "sortDefault": "默认排序",
+    "sortNameAsc": "名称 (A-Z)",
+    "sortNameDesc": "名称 (Z-A)",
+    "sortEmailAsc": "邮箱 (A-Z)",
+    "sortEmailDesc": "邮箱 (Z-A)",
+    "sortDateAdded": "添加日期",
+    "sortQuota": "剩余额度",
+    "sortQuotaRegen": "额度重置时间",
+    "scanSegment": "分段扫描",
+    "scanAll": "扫描全部",
+    "scanWithQuota": "扫描有额度账号",
+    "scanWithoutQuota": "扫描无额度账号",
+    "noAccountsInSegment": "未找到符合所选分段的账号。",
+    "cacheDurationLabel": "缓存有效期",
+    "cacheDurationDescription": "如果在此期间内已刷新过，则不再扫描该账号，以节省时间。",
+    "day": "天",
+    "days": "天",
+    "lowCreditNotificationsLabel": "低额度通知",
+    "lowCreditNotificationsDescription": "当任何活跃模型的积分低于阈值时，接收桌面通知。",
+    "editAliasTooltip": "编辑账号别名",
+    "editAliasPlaceholder": "别名（如 工作、个人）",
+    "saveAliasTooltip": "保存别名",
+    "cancelAliasTooltip": "取消"
+  },
+  "service": {
+    "generatingDeviceProfile": "正在生成设备指纹...",
+    "refreshQueued": "扫描冷却中，将在 {{seconds}} 秒后自动开始...",
+    "accountAddedErrorBalance": "已添加账号 {{email}}，但获取余额失败，稍后将重试。",
+    "accountAddedSuccess": "成功添加账号 {{email}}。余额: [{{balances}}]",
+    "accountAddError": "添加账号出错：{{error}}",
+    "missingLoginData": "{{email}} 的登录数据丢失，请删除并重新添加。",
+    "sessionExpiredFailed": "{{email}} 的会话已过期且无法自动续期，请重新登录。",
+    "refreshInProgress": "⏳ 正在刷新余额中...",
+    "refreshCooldown": "⏳ 请等待 {{seconds}} 秒后再刷新。",
+    "accountRemoved": "已成功移除账号 {{email}} 及其所有数据。",
+    "switchFailed": "切换到账号 {{email}} 失败，请检查错误并重试。",
+    "reAuthSuccess": "✅ 已成功恢复 {{email}} 的会话。",
+    "reAuthFailed": "❌ {{email}} 重新认证失败：{{error}}",
+    "reAuthEmailMismatch": "登录的账号 ({{actual}}) 与预期的账号 ({{expected}}) 不一致，请使用正确的 Google 账号登录。",
+    "accountIneligible": "账号 {{email}} 不符合使用 Antigravity 的资格，请更换账号登录。",
+    "switchIneligibleAccount": "无法切换到账号 {{email}}，因为它不符合资格。"
+  },
+  "stateDb": {
+    "outdatedAntigravity": "安装的 Antigravity 版本早于 {{minVersion}}，不受支持。\n请升级到 {{minVersion}} 或更高版本以使用账号切换功能。",
+    "dbNotFound": "未找到 Antigravity 数据库。\n请确保已至少启动并登录过一次 Antigravity。",
+    "injectionFailed": "向数据库注入数据失败：{{error}}\n请尝试关闭所有其他 Antigravity 窗口后重试。",
+    "reloadPrompt": "此窗口将关闭，并使用新账号重新打开 Antigravity。"
+  },
+  "oauth": {
+    "timeout": "认证超时，请重试。",
+    "authFailedTitle": "认证失败",
+    "authFailedDetail": "认证过程中发生错误：{{error}}",
+    "authSuccessTitle": "认证成功",
+    "authSuccessDetail": "账号已成功关联到 Antigravity 插件。您可以关闭此窗口并返回编辑器。",
+    "noPorts": "没有可用于启动本地认证服务的可用端口。",
+    "closeWindow": "关闭窗口"
+  },
+  "authService": {
+    "noRefreshToken": "未收到刷新令牌，请重试并允许所有权限。",
+    "noEmail": "未获取到邮箱，请检查权限设置。"
+  },
+  "extension": {
+    "noAccountsToSwitch": "尚未注册任何账号，请先添加账号。",
+    "selectAccountToSwitch": "选择要切换的目标账号"
+  },
+  "switchPrompt": {
+    "title": "已成功切换账号至 {{email}}",
+    "detail": "需要重新加载编辑器以激活新账号。是否立即重新加载？（所有打开的文件将自动保存）",
+    "actionYes": "立即重新加载",
+    "actionNo": "稍后"
+  },
+  "theme": {
+    "darkMode": "深色模式",
+    "lightMode": "浅色模式"
+  }
+}

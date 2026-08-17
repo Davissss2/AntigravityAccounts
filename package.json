@@ -120,14 +120,28 @@
           "enum": [
             "auto",
             "en",
-            "ar",
-            "es"
+            "es",
+            "zh-CN",
+            "pt-BR",
+            "fr",
+            "de",
+            "ja",
+            "ru",
+            "ko",
+            "ar"
           ],
           "enumDescriptions": [
             "Auto (Detect from Editor)",
             "English",
-            "العربية",
-            "Español"
+            "Español",
+            "中文 (简体)",
+            "Português (Brasil)",
+            "Français",
+            "Deutsch",
+            "日本語",
+            "Русский",
+            "한국어",
+            "العربية"
           ],
           "description": "Display language for the extension UI"
         },
