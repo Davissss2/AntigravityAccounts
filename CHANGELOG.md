@@ -5,6 +5,28 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-08-24
+
+### 🌌 Brand Identity & Visual Evolution
+- **Striking New Extension Logo**: Introduced a futuristic emblem featuring a levitating geometric 'A' monogram with luminous orbital energy rings in electric violet, cyan, and deep purple gradients over an obsidian background.
+- **Multi-Theme Customization Engine**: Choose between four curated visual themes directly in Settings:
+  - 🟣 **Dark Purple (Original / Default)**: The iconic obsidian `#0c0a17` dark aesthetic with rich `#161327` cards, glowing purple active borders, and emerald indicators.
+  - 🖤 **Midnight Black (OLED Pure)**: Deep `#06070a` OLED background with `#0c0e14` minimalist cards and neon cyan highlights.
+  - 🌊 **Deep Ocean Blue**: Navy blue `#060c1a` surfaces with sapphire accents.
+  - 🪟 **VS Code Adaptive**: Native binding to active editor theme colors (`--vscode-*`).
+
+### 🛠️ Balance & Model Quota Enhancements
+- **Accurate Model Quota Matching**: Fixed an issue where legacy model keys (`Gemini 3.7 Flash Tiered`, `Gemini 3.7 Flash`, `gemini-3.7-flash`) failed exact match against formatted balances, showing phantom 0% badges. Bidirectional normalization (`normalizeModelKey`) now guarantees accurate quota extraction across all model variants.
+- **Smart Fallback Display**: If a preferred model is not configured on an account, the card automatically falls back to showing the account's best available model instead of an artificial 0% badge.
+- **Full Gemini 3.7 Flash & Claude Support**: Native support and friendly names for **Gemini 3.7 Flash**, **Claude Sonnet 4.6**, **Claude Opus 4.6**, **Gemini 3.5 Flash**, **Gemini 3.1 Pro**, and **GPT-OSS 120B**.
+
+### 🎨 UI/UX Polish & Ergonomics
+- **Enhanced Card Hierarchy**: Crisp distinction between Account Display Name, custom editable Alias (with pencil trigger), and Google Account email.
+- **Renewal Timer Pill**: Dedicated renewal countdown badge with clock icon and live renewal calculation (*"Recarga en 2h 45m"* / *"Disponible ahora"*).
+- **Collapsible Model Drawer**: Interactive 1-click model switcher with real-time preview and semantic color gradients (Emerald ≥60%, Amber 20%–59%, Red <20%).
+- **Integrated Search Toolbar**: Client-side filtering with search icon and instant clear button (`✕`).
+- **Interactive Settings Modal**: Direct theme switching, auto-refresh toggles, and cache duration options with smooth glassmorphism.
+
 ## [0.2.6] - 2026-08-17
 
 ### Fixed

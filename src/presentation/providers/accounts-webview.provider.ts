@@ -17,7 +17,7 @@ import { Account, AccountTokens, AccountStatus } from '../../core/domain/models/
 import { DeviceProfile } from '../../core/domain/models/device-profile.model';
 import { CryptoUtils } from '../../core/utils/crypto.utils';
 import { ExtensionConfig } from '../../core/config/extension.config';
-import { getFriendlyModelName } from '../../core/utils/model.utils';
+import { getFriendlyModelName, normalizeModelKey } from '../../core/utils/model.utils';
 import { isEmailMatch } from '../../core/utils/account.utils';
 
 /** Shape of an individual account inside the backup */
@@ -206,37 +206,45 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         case 'importAccounts':
           await this.handleImport();
           break;
-        case 'saveSettings':
+        case 'saveSettings': {
+          const config = vscode.workspace.getConfiguration('antigravityAccount');
+          const updates: Promise<any>[] = [];
+
           if (message.preferredModel !== undefined) {
-            await this.accountRepo.setPreferredModel(message.preferredModel);
+            updates.push(this.accountRepo.setPreferredModel(message.preferredModel));
           }
-          if (message.sortBy !== undefined) {
-            await vscode.workspace.getConfiguration('antigravityAccount').update('sortBy', message.sortBy, vscode.ConfigurationTarget.Global);
+          if (message.theme !== undefined && config.get<string>('theme') !== message.theme) {
+            updates.push(Promise.resolve(config.update('theme', message.theme, vscode.ConfigurationTarget.Global)));
           }
-          if (message.cacheDurationDays !== undefined) {
-            await vscode.workspace.getConfiguration('antigravityAccount').update('cacheDurationDays', message.cacheDurationDays, vscode.ConfigurationTarget.Global);
+          if (message.sortBy !== undefined && config.get<string>('sortBy') !== message.sortBy) {
+            updates.push(Promise.resolve(config.update('sortBy', message.sortBy, vscode.ConfigurationTarget.Global)));
           }
-          if (message.autoRefreshEnabled !== undefined) {
-            await vscode.workspace.getConfiguration('antigravityAccount').update('autoRefreshEnabled', message.autoRefreshEnabled, vscode.ConfigurationTarget.Global);
+          if (message.cacheDurationDays !== undefined && config.get<number>('cacheDurationDays') !== message.cacheDurationDays) {
+            updates.push(Promise.resolve(config.update('cacheDurationDays', message.cacheDurationDays, vscode.ConfigurationTarget.Global)));
           }
-          if (message.autoRotateEnabled !== undefined) {
-            await vscode.workspace.getConfiguration('antigravityAccount').update('autoRotateEnabled', message.autoRotateEnabled, vscode.ConfigurationTarget.Global);
+          if (message.autoRefreshEnabled !== undefined && config.get<boolean>('autoRefreshEnabled') !== message.autoRefreshEnabled) {
+            updates.push(Promise.resolve(config.update('autoRefreshEnabled', message.autoRefreshEnabled, vscode.ConfigurationTarget.Global)));
           }
-          if (message.lowCreditNotificationsEnabled !== undefined) {
-            await vscode.workspace.getConfiguration('antigravityAccount').update('lowCreditNotificationsEnabled', message.lowCreditNotificationsEnabled, vscode.ConfigurationTarget.Global);
+          if (message.autoRotateEnabled !== undefined && config.get<boolean>('autoRotateEnabled') !== message.autoRotateEnabled) {
+            updates.push(Promise.resolve(config.update('autoRotateEnabled', message.autoRotateEnabled, vscode.ConfigurationTarget.Global)));
           }
-          if (message.refreshIntervalMinutes !== undefined) {
-            await vscode.workspace.getConfiguration('antigravityAccount').update('refreshIntervalMinutes', message.refreshIntervalMinutes, vscode.ConfigurationTarget.Global);
+          if (message.lowCreditNotificationsEnabled !== undefined && config.get<boolean>('lowCreditNotificationsEnabled') !== message.lowCreditNotificationsEnabled) {
+            updates.push(Promise.resolve(config.update('lowCreditNotificationsEnabled', message.lowCreditNotificationsEnabled, vscode.ConfigurationTarget.Global)));
           }
-          if (message.language !== undefined) {
-            const currentLang = vscode.workspace.getConfiguration('antigravityAccount').get<string>('language');
-            if (currentLang !== message.language) {
-              await vscode.workspace.getConfiguration('antigravityAccount').update('language', message.language, vscode.ConfigurationTarget.Global);
-            }
+          if (message.refreshIntervalMinutes !== undefined && config.get<number>('refreshIntervalMinutes') !== message.refreshIntervalMinutes) {
+            updates.push(Promise.resolve(config.update('refreshIntervalMinutes', message.refreshIntervalMinutes, vscode.ConfigurationTarget.Global)));
+          }
+          if (message.language !== undefined && config.get<string>('language') !== message.language) {
+            updates.push(Promise.resolve(config.update('language', message.language, vscode.ConfigurationTarget.Global)));
+          }
+
+          if (updates.length > 0) {
+            await Promise.all(updates);
           }
           await this.refresh();
           this._view?.webview.postMessage({ command: 'hideLoading' });
           break;
+        }
       }
     });
 
@@ -870,6 +878,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     const configLanguage = vscode.workspace.getConfiguration('antigravityAccount').get<string>('language', 'auto');
+    const configTheme = vscode.workspace.getConfiguration('antigravityAccount').get<string>('theme', 'dark-purple');
     const configAutoRefresh = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('autoRefreshEnabled', true);
     const configAutoRotate = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('autoRotateEnabled', false);
     const configLowCreditNotifications = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('lowCreditNotificationsEnabled', true);
@@ -897,6 +906,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const availableModelKeysSet = new Set<string>([
       'Sonnet 4.6',
       'Opus 4.6',
+      '3.7 Flash',
       '3.1 Pro (Low)',
       '3.1 Pro (High)',
       '3.5 Flash (Med)',
@@ -923,25 +933,13 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       acc.isActive = (pinnedEmailLower !== null && acc.email.toLowerCase() === pinnedEmailLower);
     });
 
-
     // Read stored preference (null = never set, "" = explicitly none)
     let preferredModel = await this.accountRepo.getPreferredModel();
 
-    // Normalize legacy names to the new shortened names
+    // Normalize legacy names or raw model IDs to the new shortened names
     if (preferredModel) {
-      const legacyMap: Record<string, string> = {
-        'Gemini 3.5 Flash (Low)': '3.5 Flash (Med)',
-        'Gemini 3.5 Flash (Medium)': '3.5 Flash (High)',
-        'Gemini 3.5 Flash (High)': '3.5 Flash (High)',
-        'Gemini 3.1 Pro (Low)': '3.1 Pro (Low)',
-        'Gemini 3.1 Pro (High)': '3.1 Pro (High)',
-        'GPT-OSS 120B (Medium)': 'GPT-OSS 120B',
-        'Claude Sonnet 4.6 (Thinking)': 'Sonnet 4.6',
-        'Claude Opus 4.6 (Thinking)': 'Opus 4.6'
-      };
-      
-      const normalized = legacyMap[preferredModel];
-      if (normalized) {
+      const normalized = normalizeModelKey(preferredModel);
+      if (normalized && normalized !== preferredModel) {
         preferredModel = normalized;
         await this.accountRepo.setPreferredModel(normalized); // Migrate in storage
       }
@@ -952,7 +950,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       preferredModel = this.findNewestClaudeKey(availableModelKeys) || '';
       await this.accountRepo.setPreferredModel(preferredModel);
     }
-    const effectivePreferred = preferredModel || '';
+    const effectivePreferred = preferredModel ? normalizeModelKey(preferredModel) : '';
 
     // Count accounts with quota > 0
     let withQuotaCount = 0;
@@ -1018,43 +1016,150 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
     return `
       <!DOCTYPE html>
-      <html lang="${isRtl ? 'ar' : 'en'}" dir="${isRtl ? 'rtl' : 'ltr'}">
+      <html lang="${isRtl ? 'ar' : 'en'}" dir="${isRtl ? 'rtl' : 'ltr'}" data-theme="${configTheme}">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Antigravity Accounts</title>
         <style>
-          :root {
-            /* ── VS Code Theme Integration ── */
+          /* ── Default: Dark Purple (Original Antigravity Theme) ── */
+          :root,
+          [data-theme="dark-purple"],
+          .theme-dark-purple {
+            --background-dark: #0c0a17;
+            --surface-color: #161327;
+            --surface-light: #211c3b;
+            --surface-subtle: #110e20;
+            
+            --primary-color: #7c3aed;
+            --primary-dark: #6d28d9;
+            --primary-light: #a78bfa;
+            --secondary-color: #262042;
+            
+            --text-primary: #f9fafb;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            
+            --border-color: rgba(139, 92, 246, 0.18);
+            --focus-border: #8b5cf6;
+            
+            --danger-color: #ef4444;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            
+            --glass-bg: #161327;
+            --glass-border: rgba(139, 92, 246, 0.22);
+            --shadow-color: rgba(0, 0, 0, 0.45);
+            --hover-bg: #1f1a38;
+            
+            --active-glow: 0 0 16px rgba(139, 92, 246, 0.35);
+            --primary-gradient: linear-gradient(135deg, #7c3aed, #4f46e5);
+            --primary-gradient-hover: linear-gradient(135deg, #8b5cf6, #6366f1);
+            --danger-gradient: linear-gradient(135deg, #ef4444, #b91c1c);
+            --warning-gradient: linear-gradient(135deg, #f59e0b, #b45309);
+          }
+
+          [data-theme="midnight"],
+          .theme-midnight {
+            --background-dark: #050608;
+            --surface-color: #0d0f14;
+            --surface-light: #141720;
+            --surface-subtle: #08090d;
+            
+            --primary-color: #0284c7;
+            --primary-dark: #0369a1;
+            --primary-light: #38bdf8;
+            --secondary-color: #161b24;
+            
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            
+            --border-color: rgba(255, 255, 255, 0.08);
+            --focus-border: #38bdf8;
+            
+            --danger-color: #f43f5e;
+            --success-color: #10b981;
+            --warning-color: #fbbf24;
+            
+            --glass-bg: #0d0f14;
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --shadow-color: rgba(0, 0, 0, 0.6);
+            --hover-bg: #141720;
+            
+            --active-glow: 0 0 16px rgba(56, 189, 248, 0.25);
+            --primary-gradient: linear-gradient(135deg, #0284c7, #6366f1);
+            --primary-gradient-hover: linear-gradient(135deg, #38bdf8, #818cf8);
+            --danger-gradient: linear-gradient(135deg, #f43f5e, #be123c);
+            --warning-gradient: linear-gradient(135deg, #f59e0b, #b45309);
+          }
+
+          [data-theme="deep-blue"],
+          .theme-deep-blue {
+            --background-dark: #050b18;
+            --surface-color: #0a1326;
+            --surface-light: #111f3d;
+            --surface-subtle: #070e1c;
+            
+            --primary-color: #2563eb;
+            --primary-dark: #1d4ed8;
+            --primary-light: #60a5fa;
+            --secondary-color: #152344;
+            
+            --text-primary: #f0f9ff;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            
+            --border-color: rgba(96, 165, 250, 0.18);
+            --focus-border: #60a5fa;
+            
+            --danger-color: #ef4444;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            
+            --glass-bg: #0a1326;
+            --glass-border: rgba(96, 165, 250, 0.2);
+            --shadow-color: rgba(0, 0, 0, 0.5);
+            --hover-bg: #111f3d;
+            
+            --active-glow: 0 0 18px rgba(96, 165, 250, 0.3);
+            --primary-gradient: linear-gradient(135deg, #2563eb, #0284c7);
+            --primary-gradient-hover: linear-gradient(135deg, #3b82f6, #38bdf8);
+            --danger-gradient: linear-gradient(135deg, #ef4444, #b91c1c);
+            --warning-gradient: linear-gradient(135deg, #f59e0b, #b45309);
+          }
+
+          [data-theme="vscode"],
+          .theme-vscode {
             --background-dark: transparent;
-            --surface-color: var(--vscode-editor-background, var(--vscode-sideBar-background));
-            --surface-light: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.08));
+            --surface-color: var(--vscode-sideBarSectionHeader-background, var(--vscode-editor-background, rgba(128, 128, 128, 0.05)));
+            --surface-light: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.09));
+            --surface-subtle: var(--vscode-input-background, rgba(128, 128, 128, 0.06));
             
-            --primary-color: var(--vscode-button-background, #7c3aed);
-            --primary-dark: var(--vscode-button-hoverBackground, #6d28d9);
-            --primary-light: var(--vscode-textLink-foreground, #a78bfa);
-            --secondary-color: var(--vscode-button-secondaryBackground, #4b5563);
+            --primary-color: var(--vscode-button-background, #007acc);
+            --primary-dark: var(--vscode-button-hoverBackground, #0062a3);
+            --primary-light: var(--vscode-textLink-foreground, var(--vscode-focusBorder, #3b82f6));
+            --secondary-color: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.14));
             
-            --text-primary: var(--vscode-foreground, #e5e7eb);
+            --text-primary: var(--vscode-foreground, var(--vscode-editor-foreground, #e5e7eb));
             --text-secondary: var(--vscode-descriptionForeground, #9ca3af);
+            --text-muted: var(--vscode-disabledForeground, rgba(128, 128, 128, 0.55));
             
-            --border-color: var(--vscode-widget-border, var(--vscode-panel-border, rgba(255, 255, 255, 0.08)));
+            --border-color: var(--vscode-widget-border, var(--vscode-panel-border, var(--vscode-sideBar-border, rgba(128, 128, 128, 0.18))));
+            --focus-border: var(--vscode-focusBorder, var(--vscode-button-background, #007acc));
             
-            --danger-color: var(--vscode-errorForeground, #ef4444);
-            --success-color: var(--vscode-testing-iconPassed, #10b981);
-            --warning-color: var(--vscode-editorWarning-foreground, #f59e0b);
+            --danger-color: var(--vscode-errorForeground, var(--vscode-charts-red, #ef4444));
+            --success-color: var(--vscode-testing-iconPassed, var(--vscode-charts-green, #10b981));
+            --warning-color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow, #f59e0b));
             
-            /* Responsive neutral alphas for light/dark mode */
-            --glass-bg: rgba(255, 255, 255, 0.02);
-            --glass-border: rgba(255, 255, 255, 0.06);
-            --shadow-color: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.25));
-            --focus-border: var(--vscode-focusBorder, #7c3aed);
-            --hover-bg: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+            --glass-bg: var(--surface-color);
+            --glass-border: var(--border-color);
+            --shadow-color: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.18));
+            --hover-bg: var(--surface-light);
             
-            /* Curated premium gradients */
-            --active-glow: 0 0 20px rgba(124, 58, 237, 0.25);
-            --primary-gradient: linear-gradient(135deg, #7c3aed, #3b82f6);
-            --primary-gradient-hover: linear-gradient(135deg, #8b5cf6, #60a5fa);
+            --active-glow: 0 0 14px rgba(124, 58, 237, 0.22);
+            --primary-gradient: linear-gradient(135deg, var(--vscode-button-background, #007acc), var(--vscode-textLink-foreground, #3b82f6));
+            --primary-gradient-hover: linear-gradient(135deg, var(--vscode-button-hoverBackground, #0062a3), var(--vscode-textLink-activeForeground, #60a5fa));
             --danger-gradient: linear-gradient(135deg, #ef4444, #b91c1c);
             --warning-gradient: linear-gradient(135deg, #f59e0b, #b45309);
           }
@@ -1068,37 +1173,45 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             background: transparent;
           }
           ::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.12);
+            background: var(--vscode-scrollbarSlider-background, rgba(128, 128, 128, 0.25));
             border-radius: 4px;
           }
           ::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.24);
+            background: var(--vscode-scrollbarSlider-hoverBackground, rgba(128, 128, 128, 0.45));
           }
 
           body {
-            padding: 16px;
+            padding: 12px;
             background-color: var(--background-dark);
             color: var(--text-primary);
             font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif);
+            font-size: 13px;
+            line-height: 1.4;
             margin: 0;
             container-type: inline-size;
+            box-sizing: border-box;
+            transition: background-color 0.2s ease, color 0.2s ease;
+          }
+
+          *, *::before, *::after {
+            box-sizing: border-box;
           }
           
           .header-actions {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 12px;
+            margin-bottom: 14px;
+            padding-bottom: 10px;
             border-bottom: 1px solid var(--border-color);
           }
 
           .header-actions h2 { 
             margin: 0; 
-            font-size: 1.15rem; 
+            font-size: 1.05rem; 
             color: var(--text-primary); 
             font-weight: 700;
-            letter-spacing: -0.02em;
+            letter-spacing: -0.01em;
           }
 
           .quota-count-badge {
@@ -1113,86 +1226,87 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
           .quota-count-badge.has-quota {
             background: rgba(16, 185, 129, 0.12);
-            color: var(--success-color, #10b981);
+            color: var(--success-color);
             border: 1px solid rgba(16, 185, 129, 0.25);
           }
           .quota-count-badge.has-quota .quota-count-dot {
             width: 6px;
             height: 6px;
             border-radius: 50%;
-            background-color: var(--success-color, #10b981);
+            background-color: var(--success-color);
+            box-shadow: 0 0 6px var(--success-color);
           }
           .quota-count-badge.no-quota {
             background: rgba(245, 158, 11, 0.12);
-            color: var(--warning-color, #f59e0b);
+            color: var(--warning-color);
             border: 1px solid rgba(245, 158, 11, 0.25);
           }
           .quota-count-badge.no-quota .quota-count-dot {
             width: 6px;
             height: 6px;
             border-radius: 50%;
-            background-color: var(--warning-color, #f59e0b);
+            background-color: var(--warning-color);
           }
           
           .btn-icon {
             background: var(--surface-light);
-            border: 1px solid var(--glass-border);
+            border: 1px solid var(--border-color);
             color: var(--text-primary);
             cursor: pointer;
-            padding: 8px 12px;
-            border-radius: 8px;
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            padding: 6px 10px;
+            border-radius: 6px;
+            transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.95rem;
-            margin-inline-start: 6px;
+            font-size: 0.9rem;
+            margin-inline-start: 4px;
           }
           .btn-icon:hover {
             background: var(--primary-color);
             color: var(--vscode-button-foreground, #ffffff);
             border-color: var(--primary-color);
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.2);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
           }
           .btn-icon:active {
             transform: translateY(0);
           }
 
           .account-card {
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
-            border-radius: 14px;
-            padding: 16px;
-            margin-bottom: 16px;
-            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            content-visibility: auto;
+            contain-intrinsic-size: auto 140px;
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 14px;
+            margin-bottom: 12px;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
             position: relative;
-            box-shadow: 0 4px 12px var(--shadow-color);
-            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 6px var(--shadow-color);
           }
 
           .account-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 24px var(--shadow-color);
-            border-color: rgba(124, 58, 237, 0.3);
+            transform: translateY(-1.5px);
+            box-shadow: 0 6px 16px var(--shadow-color);
+            border-color: var(--focus-border);
           }
 
           .account-card.active {
-            border: 1.5px solid transparent;
-            background: linear-gradient(var(--surface-color), var(--surface-color)) padding-box,
-                        var(--primary-gradient) border-box;
-            box-shadow: var(--active-glow), 0 4px 12px var(--shadow-color);
+            border: 1.5px solid var(--focus-border);
+            box-shadow: var(--active-glow), 0 3px 10px var(--shadow-color);
+            background: var(--surface-color);
           }
 
           .account-card.refreshing {
             border-color: var(--primary-light) !important;
-            box-shadow: 0 0 15px rgba(167, 139, 250, 0.25), 0 4px 12px var(--shadow-color);
-            opacity: 0.85;
+            box-shadow: 0 0 12px rgba(124, 58, 237, 0.2), 0 2px 6px var(--shadow-color);
+            opacity: 0.88;
             animation: cardRefreshPulse 2s infinite ease-in-out;
           }
           @keyframes cardRefreshPulse {
-            0%, 100% { opacity: 0.7; }
-            50% { opacity: 0.95; }
+            0%, 100% { opacity: 0.75; }
+            50% { opacity: 0.98; }
           }
 
           .btn-card-refresh {
@@ -1200,13 +1314,13 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             border: none;
             color: var(--text-secondary);
             cursor: pointer;
-            padding: 2px;
+            padding: 2px 4px;
             border-radius: 4px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-            opacity: 0.6;
+            opacity: 0.7;
           }
           .btn-card-refresh:hover {
             color: var(--primary-light);
@@ -1228,7 +1342,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .toolbar-container {
             display: flex;
             gap: 8px;
-            margin-bottom: 16px;
+            margin-bottom: 14px;
           }
           .toolbar-sort, .toolbar-scan {
             position: relative;
@@ -1236,12 +1350,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             display: flex;
             align-items: center;
             gap: 4px;
-            background: rgba(255, 255, 255, 0.01);
+            background: var(--surface-subtle);
             border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 6px 10px;
             box-sizing: border-box;
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
             user-select: none;
             -webkit-user-select: none;
             cursor: pointer;
@@ -1262,8 +1376,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             appearance: none;
           }
           .toolbar-sort select option, .toolbar-scan select option {
-            background: var(--surface-color);
-            color: var(--text-primary);
+            background: var(--vscode-dropdown-background, var(--vscode-editor-background));
+            color: var(--vscode-dropdown-foreground, var(--text-primary));
           }
           .toolbar-label {
             font-size: 0.72rem;
@@ -1279,32 +1393,33 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
           .card-header {
             display: flex;
-            align-items: center;
-            gap: 14px;
-            margin-bottom: 16px;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 12px;
             min-width: 0;
           }
 
           .avatar {
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
             background: var(--primary-gradient);
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 700;
-            font-size: 1.25rem;
+            font-size: 1.1rem;
             color: white;
-            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
             object-fit: cover;
-            border: 1.5px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-color);
+            flex-shrink: 0;
           }
 
           .user-info { flex: 1; overflow: hidden; min-width: 0; }
           .user-info h4 { 
-            margin: 0 0 3px 0; 
-            font-size: 0.98rem; 
+            margin: 0 0 2px 0; 
+            font-size: 0.94rem; 
             font-weight: 600;
             white-space: nowrap; 
             overflow: hidden; 
@@ -1322,42 +1437,43 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
           .badge {
             font-size: 0.68rem;
-            padding: 4px 10px;
-            border-radius: 20px;
+            padding: 3px 8px;
+            border-radius: 12px;
             font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.04em;
+            flex-shrink: 0;
           }
           
           .active-badge {
-            background: rgba(16, 185, 129, 0.1);
-            color: #34d399;
-            border: 1px solid rgba(16, 185, 129, 0.2);
-            box-shadow: 0 0 10px rgba(16, 185, 129, 0.15);
+            background: rgba(16, 185, 129, 0.12);
+            color: var(--success-color);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.15);
             position: relative;
-            padding-inline-start: 22px;
+            padding-inline-start: 18px;
           }
           
           .active-badge::before {
             content: '';
             position: absolute;
-            left: 8px;
+            left: 6px;
             top: 50%;
             transform: translateY(-50%);
-            width: 6px;
-            height: 6px;
+            width: 5px;
+            height: 5px;
             border-radius: 50%;
-            background: #10b981;
-            box-shadow: 0 0 8px #10b981;
+            background: var(--success-color);
+            box-shadow: 0 0 6px var(--success-color);
             animation: badgePulse 2s infinite;
           }
           [dir="rtl"] .active-badge {
-            padding-inline-start: 10px;
-            padding-inline-end: 22px;
+            padding-inline-start: 8px;
+            padding-inline-end: 18px;
           }
           [dir="rtl"] .active-badge::before {
             left: auto;
-            right: 8px;
+            right: 6px;
           }
 
           @keyframes badgePulse {
@@ -1369,36 +1485,36 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .balances-container {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 16px;
-            padding: 12px;
-            background: rgba(255, 255, 255, 0.01);
-            border-radius: 10px;
-            border: 1px solid var(--glass-border);
+            gap: 6px;
+            margin-bottom: 12px;
+            padding: 10px;
+            background: var(--surface-subtle);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
           }
 
           .balance-badge {
             display: flex;
             flex-direction: column;
-            background: var(--glass-bg);
-            padding: 8px 10px;
-            border-radius: 8px;
+            background: var(--surface-color);
+            padding: 6px 8px;
+            border-radius: 6px;
             flex: 1;
-            min-width: 75px;
+            min-width: 70px;
             text-align: center;
-            border: 1px solid var(--glass-border);
+            border: 1px solid var(--border-color);
           }
 
           .balance-name { 
             font-size: 0.65rem; 
             color: var(--text-secondary); 
-            margin-bottom: 4px; 
+            margin-bottom: 2px; 
             text-transform: uppercase; 
             letter-spacing: 0.5px;
             font-weight: 600;
           }
           .balance-value { 
-            font-size: 1.1rem; 
+            font-size: 1.05rem; 
             font-weight: 700; 
             color: var(--primary-light); 
           }
@@ -1407,18 +1523,18 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             display: flex;
             gap: 8px;
             justify-content: flex-end;
-            margin-top: 14px;
-            padding-top: 12px;
-            border-top: 1px solid rgba(255, 255, 255, 0.04);
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border-color);
           }
 
           .credits-container {
             display: flex;
-            margin-bottom: 16px;
-            padding: 12px;
-            background: rgba(255, 255, 255, 0.01);
-            border-radius: 10px;
-            border: 1px solid var(--glass-border);
+            margin-bottom: 12px;
+            padding: 10px;
+            background: var(--surface-subtle);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
           }
 
           .credit-badge {
@@ -1436,41 +1552,41 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           .credit-value {
-            font-size: 1.15rem;
+            font-size: 1.1rem;
             color: var(--primary-light);
             font-weight: 800;
             letter-spacing: -0.01em;
           }
 
           .models-section {
-            margin-bottom: 14px;
+            margin-bottom: 10px;
           }
 
           .collapse-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid var(--glass-border);
-            border-radius: 10px;
+            background: var(--surface-subtle);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
             cursor: pointer;
             user-select: none;
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
             min-width: 0;
             gap: 6px;
           }
           
           .normal-collapse {
-            padding: 10px 14px;
+            padding: 8px 12px;
           }
           
           .normal-collapse:hover {
             background: var(--hover-bg);
-            border-color: rgba(255, 255, 255, 0.1);
+            border-color: var(--focus-border);
           }
 
           .collapse-title {
-            font-size: 0.82rem;
+            font-size: 0.8rem;
             font-weight: 600;
             color: var(--text-primary);
             white-space: nowrap;
@@ -1483,13 +1599,13 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           
           .unified-collapse:hover {
             background: var(--hover-bg);
-            border-color: rgba(255, 255, 255, 0.1);
+            border-color: var(--focus-border);
           }
           
           .collapse-header-right {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             min-width: 0;
             flex-shrink: 1;
             overflow: hidden;
@@ -1499,12 +1615,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             display: flex;
             align-items: center;
             gap: 6px;
-            background: rgba(255, 255, 255, 0.02);
-            padding: 4px 8px;
-            border-radius: 8px;
-            border: 1px solid var(--glass-border);
+            background: var(--surface-color);
+            padding: 3px 8px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
             font-size: 0.72rem;
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
             cursor: pointer;
             min-width: 0;
             flex-shrink: 1;
@@ -1520,7 +1636,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             background: var(--primary-gradient);
             color: white;
             border-color: transparent;
-            box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
           }
 
           .pref-badge-name {
@@ -1534,10 +1650,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           .pref-badge-bar {
-            width: 36px;
-            min-width: 24px;
+            width: 34px;
+            min-width: 20px;
             height: 4px;
-            background: rgba(255,255,255,0.1);
+            background: rgba(128, 128, 128, 0.2);
             border-radius: 2px;
             overflow: hidden;
             flex-shrink: 1;
@@ -1553,8 +1669,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .collapse-icon {
             font-size: 0.75rem;
             color: var(--text-secondary);
-            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-            margin-inline-end: 4px;
+            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            margin-inline-end: 2px;
           }
           
           .collapse-header.expanded .collapse-icon {
@@ -1566,18 +1682,18 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             height: 14px;
             display: inline-block;
             vertical-align: middle;
-            stroke-width: 2.5px;
+            stroke-width: 2.2px;
           }
           .btn-icon .icon-svg {
-            width: 16px;
-            height: 16px;
+            width: 15px;
+            height: 15px;
           }
           .chevron-svg {
             width: 12px;
             height: 12px;
             color: var(--text-secondary);
-            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-            margin-inline-end: 4px;
+            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            margin-inline-end: 2px;
             vertical-align: middle;
           }
           .collapse-header.expanded .chevron-svg {
@@ -1596,19 +1712,19 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
           .empty-state-svg {
             color: var(--text-secondary);
-            opacity: 0.4;
-            margin-bottom: 16px;
+            opacity: 0.5;
+            margin-bottom: 14px;
             animation: floatAnimation 4s ease-in-out infinite;
           }
           @keyframes floatAnimation {
             0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-6px); }
+            50% { transform: translateY(-4px); }
           }
 
           .collapsible-wrapper {
             display: grid;
             grid-template-rows: 0fr;
-            transition: grid-template-rows 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: grid-template-rows 0.25s cubic-bezier(0.16, 1, 0.3, 1);
           }
 
           .collapsible-wrapper.expanded {
@@ -1622,29 +1738,29 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .models-container {
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            padding-top: 10px;
+            gap: 6px;
+            padding-top: 8px;
           }
 
           .model-card {
-            background: rgba(255, 255, 255, 0.01);
-            padding: 10px 12px;
-            border-radius: 10px;
-            border: 1px solid var(--glass-border);
+            background: var(--surface-subtle);
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
             display: flex;
             flex-direction: column;
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
           }
 
           .model-card.active-model {
             border-color: var(--focus-border);
-            background: rgba(124, 58, 237, 0.05);
-            box-shadow: 0 0 12px rgba(124, 58, 237, 0.15);
+            background: var(--surface-light);
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.12);
           }
 
           .model-card:hover {
             background: var(--surface-light);
-            border-color: rgba(255, 255, 255, 0.15);
+            border-color: var(--focus-border);
             transform: translateX(2px);
           }
           [dir="rtl"] .model-card:hover {
@@ -1655,13 +1771,13 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 6px;
+            margin-bottom: 5px;
             gap: 6px;
             min-width: 0;
           }
 
           .model-name {
-            font-size: 0.82rem;
+            font-size: 0.8rem;
             font-weight: 600;
             color: var(--text-primary);
             white-space: nowrap;
@@ -1681,23 +1797,22 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .progress-bar-container {
             width: 100%;
             height: 6px;
-            background: rgba(255, 255, 255, 0.08);
-            border-radius: 4px;
+            background: rgba(128, 128, 128, 0.18);
+            border-radius: 3px;
             overflow: hidden;
-            margin-bottom: 4px;
-            border: 1px solid rgba(255, 255, 255, 0.03);
-            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+            margin-bottom: 3px;
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
           }
 
           .progress-bar {
             height: 100%;
-            border-radius: 4px;
-            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 3px;
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
             overflow: hidden;
           }
 
-          /* Subtle shimmer animation for premium feel */
+          /* Subtle shimmer animation */
           .progress-bar::after {
             content: '';
             position: absolute;
@@ -1705,7 +1820,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             background: linear-gradient(
               90deg,
               rgba(255, 255, 255, 0) 0%,
-              rgba(255, 255, 255, 0.15) 50%,
+              rgba(255, 255, 255, 0.18) 50%,
               rgba(255, 255, 255, 0) 100%
             );
             transform: translateX(-100%);
@@ -1720,20 +1835,17 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
           .bg-high {
             background: linear-gradient(90deg, #10b981, #059669);
-            box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
           }
           .bg-med {
             background: linear-gradient(90deg, #f59e0b, #d97706);
-            box-shadow: 0 0 8px rgba(245, 158, 11, 0.3);
           }
           .bg-low {
             background: linear-gradient(90deg, #ef4444, #dc2626);
-            box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
           }
           
-          .bg-high-text { color: #10b981; font-weight: 600; text-shadow: 0 0 8px rgba(16, 185, 129, 0.2); }
-          .bg-med-text { color: #f59e0b; font-weight: 600; text-shadow: 0 0 8px rgba(245, 158, 11, 0.2); }
-          .bg-low-text { color: #ef4444; font-weight: 600; text-shadow: 0 0 8px rgba(239, 68, 68, 0.2); }
+          .bg-high-text { color: var(--success-color); font-weight: 600; }
+          .bg-med-text { color: var(--warning-color); font-weight: 600; }
+          .bg-low-text { color: var(--danger-color); font-weight: 600; }
 
           .model-percentage {
             font-size: 0.72rem;
@@ -1745,61 +1857,62 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             font-size: 0.78rem;
             color: var(--text-secondary);
             text-align: center;
-            padding: 12px;
+            padding: 10px;
           }
 
           .btn {
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 0.82rem;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 0.8rem;
             cursor: pointer;
-            font-weight: 600;
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-            border: none;
-            color: white;
+            font-weight: 500;
+            transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+            border: 1px solid transparent;
+            color: var(--vscode-button-foreground, #ffffff);
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
+            gap: 5px;
           }
           .btn:active {
-            transform: scale(0.97);
+            transform: scale(0.98);
           }
 
           .btn-primary {
-            background: var(--primary-gradient);
-            box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);
+            background: var(--primary-color);
+            color: var(--vscode-button-foreground, #ffffff);
           }
           .btn-primary:hover { 
-            background: var(--primary-gradient-hover); 
-            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.35);
+            background: var(--primary-dark); 
           }
 
           .btn-danger {
             background: rgba(239, 68, 68, 0.08);
-            color: #ef4444;
-            border: 1px solid rgba(239, 68, 68, 0.15);
+            color: var(--danger-color);
+            border: 1px solid rgba(239, 68, 68, 0.2);
           }
           .btn-danger:hover {
             background: #ef4444;
             color: white;
             border-color: transparent;
-            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.25);
           }
 
           .btn-warning {
-            background: var(--warning-gradient);
-            color: white;
-            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.25);
+            background: rgba(245, 158, 11, 0.12);
+            color: var(--warning-color);
+            border: 1px solid rgba(245, 158, 11, 0.25);
           }
           .btn-warning:hover {
-            filter: brightness(1.1);
-            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.35);
+            background: #f59e0b;
+            color: #000;
+            border-color: transparent;
+            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.25);
           }
 
           .account-card.expired {
             border: 1px dashed var(--warning-color);
-            opacity: 0.9;
+            opacity: 0.92;
           }
           .account-card.expired:hover {
             border-color: var(--warning-color);
@@ -1814,46 +1927,46 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           .avatar-expired {
-            opacity: 0.4;
+            opacity: 0.5;
             filter: grayscale(80%);
           }
 
           .avatar-ineligible {
-            opacity: 0.4;
+            opacity: 0.5;
             filter: grayscale(100%);
           }
 
           .expired-badge {
-            background: rgba(245, 158, 11, 0.1);
+            background: rgba(245, 158, 11, 0.12);
             color: var(--warning-color);
-            border: 1px solid rgba(245, 158, 11, 0.2);
+            border: 1px solid rgba(245, 158, 11, 0.25);
             white-space: nowrap;
           }
 
           .ineligible-badge {
-            background: rgba(239, 68, 68, 0.1);
+            background: rgba(239, 68, 68, 0.12);
             color: var(--danger-color);
-            border: 1px solid rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.25);
             white-space: nowrap;
           }
 
           .expired-banner {
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 10px 12px;
-            margin-bottom: 14px;
-            background: rgba(245, 158, 11, 0.05);
-            border: 1px solid rgba(245, 158, 11, 0.15);
-            border-radius: 8px;
+            gap: 8px;
+            padding: 8px 10px;
+            margin-bottom: 12px;
+            background: rgba(245, 158, 11, 0.06);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            border-radius: 6px;
             animation: subtlePulse 3s ease-in-out infinite;
           }
           .expired-banner-icon {
-            font-size: 1.25rem;
+            font-size: 1.1rem;
             flex-shrink: 0;
           }
           .expired-banner-text {
-            font-size: 0.78rem;
+            font-size: 0.76rem;
             color: var(--warning-color);
             line-height: 1.4;
             font-weight: 500;
@@ -1862,45 +1975,45 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .ineligible-banner {
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 10px 12px;
-            margin-bottom: 14px;
-            background: rgba(239, 68, 68, 0.05);
-            border: 1px solid rgba(239, 68, 68, 0.15);
-            border-radius: 8px;
+            gap: 8px;
+            padding: 8px 10px;
+            margin-bottom: 12px;
+            background: rgba(239, 68, 68, 0.06);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: 6px;
             animation: redSubtlePulse 3s ease-in-out infinite;
           }
           .ineligible-banner-icon {
-            font-size: 1.25rem;
+            font-size: 1.1rem;
             flex-shrink: 0;
           }
           .ineligible-banner-text {
-            font-size: 0.78rem;
+            font-size: 0.76rem;
             color: var(--danger-color);
             line-height: 1.4;
             font-weight: 500;
           }
 
           @keyframes subtlePulse {
-            0%, 100% { border-color: rgba(245, 158, 11, 0.15); }
-            50% { border-color: rgba(245, 158, 11, 0.4); }
+            0%, 100% { border-color: rgba(245, 158, 11, 0.2); }
+            50% { border-color: rgba(245, 158, 11, 0.45); }
           }
 
           @keyframes redSubtlePulse {
-            0%, 100% { border-color: rgba(239, 68, 68, 0.15); }
-            50% { border-color: rgba(239, 68, 68, 0.4); }
+            0%, 100% { border-color: rgba(239, 68, 68, 0.2); }
+            50% { border-color: rgba(239, 68, 68, 0.45); }
           }
 
           .empty-state {
             text-align: center;
-            padding: 40px 20px;
+            padding: 36px 16px;
             color: var(--text-secondary);
             background: var(--surface-color);
-            border-radius: 12px;
+            border-radius: 10px;
             border: 1px dashed var(--border-color);
           }
-          .empty-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.7; }
-          .main-btn { margin-top: 16px; padding: 10px 24px; font-size: 0.95rem; width: 100%;}
+          .empty-icon { font-size: 2.8rem; margin-bottom: 12px; opacity: 0.6; }
+          .main-btn { margin-top: 14px; padding: 8px 20px; font-size: 0.9rem; width: 100%;}
 
           /* ── Responsive: Container Queries for narrow sidebar ── */
           @container (max-width: 340px) {
@@ -1914,62 +2027,61 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           @container (max-width: 280px) {
-            body { padding: 10px; }
-            .account-card { padding: 12px; }
+            body { padding: 8px; }
+            .account-card { padding: 10px; }
             .card-header { gap: 8px; }
-            .avatar { width: 34px; height: 34px; font-size: 1rem; }
+            .avatar { width: 32px; height: 32px; font-size: 0.95rem; }
             .user-info h4 { font-size: 0.85rem; }
             .user-info p { font-size: 0.7rem; }
             .collapse-header { padding: 6px 8px; }
-            .collapse-title { font-size: 0.78rem; }
-            .pref-badge { gap: 4px; padding: 3px 5px; font-size: 0.7rem; }
+            .collapse-title { font-size: 0.76rem; }
+            .pref-badge { gap: 4px; padding: 2px 5px; font-size: 0.68rem; }
             .pref-badge-bar { display: none; }
-            .model-card { padding: 8px; }
-            .model-name { font-size: 0.78rem; }
+            .model-card { padding: 6px 8px; }
+            .model-name { font-size: 0.76rem; }
             .model-reset { font-size: 0.65rem; }
-            .model-percentage { font-size: 0.7rem; }
-            .btn { padding: 6px 10px; font-size: 0.75rem; }
-            .header-actions h2 { font-size: 0.95rem; }
-            .btn-icon { padding: 6px 8px; font-size: 0.8rem; }
+            .model-percentage { font-size: 0.68rem; }
+            .btn { padding: 5px 8px; font-size: 0.74rem; }
+            .header-actions h2 { font-size: 0.92rem; }
+            .btn-icon { padding: 5px 7px; font-size: 0.78rem; }
           }
 
           @container (max-width: 220px) {
-            .pref-badge-name { max-width: 40px; }
-            .collapse-title { font-size: 0.72rem; }
-            .avatar { width: 28px; height: 28px; font-size: 0.85rem; border-radius: 7px; }
+            .pref-badge-name { max-width: 38px; }
+            .collapse-title { font-size: 0.7rem; }
+            .avatar { width: 26px; height: 26px; font-size: 0.8rem; border-radius: 6px; }
             .card-header { gap: 6px; }
-            .badge { font-size: 0.6rem; padding: 3px 6px; }
+            .badge { font-size: 0.58rem; padding: 2px 5px; }
           }
 
           /* ── Search ── */
           .search-container {
             position: relative;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
           }
           .search-input {
             width: 100%;
-            padding: 9px 34px 9px 12px;
-            background: rgba(255, 255, 255, 0.01);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            color: var(--text-primary);
+            padding: 7px 30px 7px 10px;
+            background: var(--vscode-input-background, rgba(128, 128, 128, 0.08));
+            border: 1px solid var(--vscode-input-border, var(--border-color));
+            border-radius: 6px;
+            color: var(--vscode-input-foreground, var(--text-primary));
             font-size: 0.82rem;
             font-family: inherit;
             outline: none;
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
             box-sizing: border-box;
           }
           [dir="rtl"] .search-input {
-            padding: 9px 12px 9px 34px;
+            padding: 7px 10px 7px 30px;
           }
           .search-input:focus {
             border-color: var(--focus-border);
-            background: var(--surface-color);
-            box-shadow: 0 0 8px rgba(124, 58, 237, 0.15);
+            box-shadow: 0 0 6px rgba(0, 0, 0, 0.15);
           }
           .search-input::placeholder {
-            color: var(--text-secondary);
-            opacity: 0.6;
+            color: var(--vscode-input-placeholderForeground, var(--text-secondary));
+            opacity: 0.75;
           }
           .search-input:disabled {
             opacity: 0.4;
@@ -1978,14 +2090,14 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .search-clear-btn {
             position: absolute;
             top: 50%;
-            right: 8px;
+            right: 6px;
             transform: translateY(-50%);
             background: none;
             border: none;
             color: var(--text-secondary);
             cursor: pointer;
-            font-size: 0.85rem;
-            padding: 2px 6px;
+            font-size: 0.82rem;
+            padding: 2px 5px;
             border-radius: 4px;
             transition: all 0.15s;
             line-height: 1;
@@ -1993,7 +2105,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
           [dir="rtl"] .search-clear-btn {
             right: auto;
-            left: 8px;
+            left: 6px;
           }
           .search-clear-btn:hover {
             color: var(--text-primary);
@@ -2001,17 +2113,17 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
           .search-no-results {
             text-align: center;
-            padding: 30px 20px;
+            padding: 28px 16px;
             color: var(--text-secondary);
             display: none;
           }
           .search-no-results-icon {
-            font-size: 2rem;
-            margin-bottom: 10px;
-            opacity: 0.5;
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+            opacity: 0.45;
           }
           .search-no-results p {
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             margin: 0;
           }
 
@@ -2023,13 +2135,13 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .refresh-progress-banner {
             display: none;
             flex-direction: column;
-            gap: 8px;
-            padding: 12px 14px;
-            margin-bottom: 16px;
-            background: rgba(124, 58, 237, 0.05);
-            border: 1px solid rgba(124, 58, 237, 0.3);
-            border-radius: 10px;
-            animation: fadeIn 0.25s ease;
+            gap: 6px;
+            padding: 10px 12px;
+            margin-bottom: 14px;
+            background: var(--surface-subtle);
+            border: 1px solid var(--focus-border);
+            border-radius: 8px;
+            animation: fadeIn 0.2s ease;
             position: relative;
           }
           .refresh-progress-banner.visible {
@@ -2039,27 +2151,27 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             min-width: 0;
           }
           .refresh-progress-stats {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
             flex-shrink: 0;
           }
           .refresh-progress-count {
             font-size: 0.72rem;
             color: var(--text-secondary);
             font-weight: 600;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 2px 8px;
-            border-radius: 6px;
-            border: 1px solid var(--glass-border);
+            background: var(--surface-color);
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
             white-space: nowrap;
           }
           .refresh-progress-email {
-            font-size: 0.82rem;
+            font-size: 0.8rem;
             color: var(--primary-light);
             font-weight: 500;
             white-space: nowrap;
@@ -2073,39 +2185,39 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             font-weight: 400;
           }
           .refresh-progress-percent {
-            font-size: 0.82rem;
+            font-size: 0.8rem;
             font-weight: 700;
             color: var(--primary-light);
             flex-shrink: 0;
           }
           .refresh-progress-bar-track {
             width: 100%;
-            height: 6px;
-            background: rgba(255,255,255,0.06);
+            height: 5px;
+            background: rgba(128, 128, 128, 0.15);
             border-radius: 3px;
             overflow: hidden;
           }
           .refresh-progress-bar-fill {
             height: 100%;
             border-radius: 3px;
-            background: var(--primary-gradient);
-            transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            background: var(--primary-color);
+            transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
             width: 0%;
           }
 
           /* Toast notification */
           .refresh-toast {
             display: none;
-            padding: 10px 14px;
-            margin-bottom: 16px;
-            background: rgba(16, 185, 129, 0.08);
+            padding: 8px 12px;
+            margin-bottom: 12px;
+            background: rgba(16, 185, 129, 0.1);
             border: 1px solid var(--success-color);
-            border-radius: 10px;
-            font-size: 0.82rem;
+            border-radius: 8px;
+            font-size: 0.8rem;
             color: var(--success-color);
             font-weight: 600;
             text-align: center;
-            animation: fadeIn 0.25s ease;
+            animation: fadeIn 0.2s ease;
           }
           .refresh-toast.visible {
             display: block;
@@ -2114,19 +2226,19 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
           /* ── Cancel / Loading bar in header ── */
           .btn-cancel-refresh {
-            background: rgba(239, 68, 68, 0.15);
-            color: #ef4444;
+            background: rgba(239, 68, 68, 0.12);
+            color: var(--danger-color);
             border: 1px solid rgba(239, 68, 68, 0.25);
             cursor: pointer;
-            padding: 6px 12px;
-            border-radius: 8px;
-            font-size: 0.78rem;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 0.76rem;
             font-weight: 600;
             display: none;
             align-items: center;
             gap: 4px;
             animation: fadeIn 0.15s ease;
-            transition: all 0.2s;
+            transition: all 0.15s;
           }
           .btn-cancel-refresh:hover { background: #ef4444; color: white; border-color: transparent; }
 
@@ -2134,33 +2246,33 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .cancel-confirm-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0,0,0,0.6);
+            background: rgba(0,0,0,0.5);
             z-index: 1100;
             display: none;
             align-items: center;
             justify-content: center;
             animation: fadeIn 0.15s ease;
-            backdrop-filter: blur(8px);
+            backdrop-filter: blur(6px);
           }
           .cancel-confirm-box {
             background: var(--vscode-editor-background);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 20px 24px;
+            border: 1px solid var(--vscode-widget-border, var(--border-color));
+            border-radius: 10px;
+            padding: 18px 20px;
             min-width: 240px;
             max-width: 320px;
-            box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+            box-shadow: 0 8px 24px var(--shadow-color);
             text-align: center;
           }
           .cancel-confirm-box h4 {
-            margin: 0 0 8px 0;
-            font-size: 0.98rem;
+            margin: 0 0 6px 0;
+            font-size: 0.95rem;
             font-weight: 700;
             color: var(--text-primary);
           }
           .cancel-confirm-box p {
-            margin: 0 0 18px 0;
-            font-size: 0.82rem;
+            margin: 0 0 16px 0;
+            font-size: 0.8rem;
             color: var(--text-secondary);
             line-height: 1.4;
           }
@@ -2169,7 +2281,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             gap: 8px;
             justify-content: center;
           }
-          .cancel-confirm-actions .btn { min-width: 80px; }
+          .cancel-confirm-actions .btn { min-width: 75px; }
 
           /* Disabled state for all action buttons during refresh */
           .actions-disabled .btn,
@@ -2179,36 +2291,35 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             pointer-events: none;
             cursor: not-allowed;
           }
-          /* Keep cancel confirmation dialog buttons active during refresh */
           .actions-disabled .cancel-confirm-actions .btn {
             opacity: 1;
             pointer-events: auto;
             cursor: pointer;
           }
 
-          /* Loading overlay for export/import only */
+          /* Loading overlay for export/import */
           .loading-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0,0,0,0.6);
+            background: rgba(0,0,0,0.5);
             z-index: 1000;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 16px;
-            backdrop-filter: blur(8px);
+            gap: 14px;
+            backdrop-filter: blur(6px);
           }
           .loading-spinner {
-            width: 36px; height: 36px;
-            border: 3.5px solid rgba(255, 255, 255, 0.1);
+            width: 32px; height: 32px;
+            border: 3px solid rgba(128, 128, 128, 0.2);
             border-top-color: var(--primary-color);
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
           }
           .loading-text {
             color: var(--text-secondary);
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             font-weight: 600;
           }
 
@@ -2219,31 +2330,30 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             position: absolute;
             top: calc(100% + 6px);
             right: 0;
-            min-width: 180px;
-            background: var(--vscode-dropdown-background, var(--surface-color));
-            border: 1px solid var(--vscode-dropdown-border, var(--border-color));
-            border-radius: 8px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            min-width: 175px;
+            background: var(--vscode-dropdown-background, var(--vscode-menu-background, var(--vscode-editor-background)));
+            border: 1px solid var(--vscode-dropdown-border, var(--vscode-menu-border, var(--border-color)));
+            border-radius: 6px;
+            box-shadow: 0 6px 20px var(--shadow-color);
             z-index: 100;
             overflow: hidden;
             animation: fadeIn 0.15s ease;
-            backdrop-filter: blur(10px);
           }
           .dropdown-menu.show { display: block; }
           @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
           .dropdown-item {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
             width: 100%;
-            padding: 10px 14px;
+            padding: 8px 12px;
             background: none;
             border: none;
-            color: var(--vscode-dropdown-foreground, var(--text-primary));
-            font-size: 0.82rem;
+            color: var(--vscode-dropdown-foreground, var(--vscode-menu-foreground, var(--text-primary)));
+            font-size: 0.8rem;
             cursor: pointer;
             text-align: start;
-            transition: background 0.15s;
+            transition: background 0.12s;
             font-weight: 500;
           }
           .dropdown-item:hover { background: var(--vscode-list-hoverBackground, var(--surface-light)); }
@@ -2252,7 +2362,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             cursor: not-allowed;
           }
           .dropdown-item:disabled:hover { background: none; }
-          .dropdown-icon { font-size: 1rem; display: inline-flex; align-items: center; justify-content: center; }
+          .dropdown-icon { font-size: 0.95rem; display: inline-flex; align-items: center; justify-content: center; }
         </style>
       </head>
       <body>
@@ -2374,13 +2484,23 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         </div>
 
         <!-- Settings Modal -->
-        <div id="settingsModal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
-          <div class="modal-content" style="background:var(--vscode-editor-background); border:1px solid var(--vscode-widget-border); border-radius:8px; width:90%; max-width:400px; padding:20px; box-shadow:0 4px 12px rgba(0,0,0,0.2); max-height:90vh; overflow-y:auto;">
-            <h3 style="margin-top:0; margin-bottom:16px;">${i18n.t('accounts.settings')}</h3>
+        <div id="settingsModal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:1000; align-items:center; justify-content:center; backdrop-filter:blur(4px);">
+          <div class="modal-content" style="background:var(--surface-color); border:1px solid var(--border-color); color:var(--text-primary); border-radius:10px; width:90%; max-width:400px; padding:20px; box-shadow:0 8px 24px var(--shadow-color); max-height:90vh; overflow-y:auto;">
+            <h3 style="margin-top:0; margin-bottom:16px; color:var(--text-primary);">${i18n.t('accounts.settings')}</h3>
             
             <div style="margin-bottom: 16px;">
-              <label for="languageSelect" style="display:block; margin-bottom:8px; font-weight:bold;">${i18n.t('webview.language')}</label>
-              <select id="languageSelect" style="width:100%; padding:8px; background:var(--vscode-dropdown-background); color:var(--vscode-dropdown-foreground); border:1px solid var(--vscode-dropdown-border); border-radius:4px;">
+              <label for="themeSelect" style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-primary);">${i18n.t('webview.theme')}</label>
+              <select id="themeSelect" onchange="applyLiveTheme(this.value)" style="width:100%; padding:8px; background:var(--vscode-dropdown-background, var(--surface-subtle)); color:var(--vscode-dropdown-foreground, var(--text-primary)); border:1px solid var(--vscode-dropdown-border, var(--border-color)); border-radius:6px;">
+                <option value="dark-purple" ${configTheme === 'dark-purple' ? 'selected' : ''}>${i18n.t('webview.themeDarkPurple')}</option>
+                <option value="vscode" ${configTheme === 'vscode' ? 'selected' : ''}>${i18n.t('webview.themeVsCode')}</option>
+                <option value="midnight" ${configTheme === 'midnight' ? 'selected' : ''}>${i18n.t('webview.themeMidnight')}</option>
+                <option value="deep-blue" ${configTheme === 'deep-blue' ? 'selected' : ''}>${i18n.t('webview.themeDeepBlue')}</option>
+              </select>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+              <label for="languageSelect" style="display:block; margin-bottom:8px; font-weight:bold; color:var(--text-primary);">${i18n.t('webview.language')}</label>
+              <select id="languageSelect" style="width:100%; padding:8px; background:var(--vscode-dropdown-background, var(--surface-subtle)); color:var(--vscode-dropdown-foreground, var(--text-primary)); border:1px solid var(--vscode-dropdown-border, var(--border-color)); border-radius:6px;">
                 <option value="auto" ${configLanguage === 'auto' ? 'selected' : ''}>${i18n.t('webview.languageAuto')}</option>
                 <option value="en" ${configLanguage === 'en' ? 'selected' : ''}>English</option>
                 <option value="es" ${configLanguage === 'es' ? 'selected' : ''}>Español</option>
@@ -2532,6 +2652,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         <script>
           const availableModelKeys = ${JSON.stringify(availableModelKeys)};
           const currentPreferredModel = ${JSON.stringify(effectivePreferred)};
+          const currentTheme = ${JSON.stringify(configTheme)};
+          const currentLanguage = ${JSON.stringify(configLanguage)};
           const hasAccounts = ${accounts.length > 0};
           const currentAutoRefresh = ${configAutoRefresh};
           const currentAutoRotate = ${configAutoRotate};
@@ -2546,6 +2668,13 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           let state = vscode.getState() || { activeModels: {} };
           if (!state) state = { activeModels: {} };
           if (!state.activeModels) state.activeModels = {};
+
+          function applyLiveTheme(theme) {
+            if (!theme) return;
+            document.documentElement.setAttribute('data-theme', theme);
+            document.body.setAttribute('data-theme', theme);
+            document.body.className = 'theme-' + theme;
+          }
 
           function toggleModels(headerElement, wrapperId) {
             const wrapper = document.getElementById(wrapperId);
@@ -3032,6 +3161,16 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               const select = document.getElementById('preferredModelSelect');
               const helpText = document.getElementById('settingsHelpText');
               
+              // Sync theme and language dropdowns
+              const themeSelect = document.getElementById('themeSelect');
+              if (themeSelect) {
+                themeSelect.value = currentTheme;
+              }
+              const langSelect = document.getElementById('languageSelect');
+              if (langSelect) {
+                langSelect.value = currentLanguage;
+              }
+
               // Populate preferred model options
               select.innerHTML = '<option value="">${i18n.t('webview.noSelectionDefault')}</option>';
             
@@ -3097,13 +3236,25 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             }
           }
 
-          function closeSettings() {
+          function closeSettingsModalOnly() {
             document.getElementById('settingsModal').style.display = 'none';
-            // Also close the immediate confirm overlay if open
             document.getElementById('immediateConfirmOverlay').style.display = 'none';
           }
 
+          function closeSettings() {
+            closeSettingsModalOnly();
+            // Revert live preview back to current active theme if user cancelled
+            applyLiveTheme(currentTheme);
+            const themeSelect = document.getElementById('themeSelect');
+            if (themeSelect) themeSelect.value = currentTheme;
+          }
+
           function saveSettings() {
+            const themeSelect = document.getElementById('themeSelect');
+            const selectedTheme = themeSelect ? themeSelect.value : 'dark-purple';
+            currentTheme = selectedTheme; // Update in-memory reference immediately!
+            applyLiveTheme(selectedTheme);
+
             const select = document.getElementById('preferredModelSelect');
             const selectedModel = select.value;
             const langSelect = document.getElementById('languageSelect');
@@ -3122,8 +3273,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             const cacheDurationSelect = document.getElementById('cacheDurationSelect');
             const selectedCacheDuration = cacheDurationSelect ? parseInt(cacheDurationSelect.value) : 7;
 
+            closeSettingsModalOnly();
+
             vscode.postMessage({
               command: 'saveSettings',
+              theme: selectedTheme,
               language: selectedLang,
               preferredModel: selectedModel,
               autoRefreshEnabled: autoRefreshEnabled,
@@ -3133,9 +3287,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               sortBy: selectedSortBy,
               cacheDurationDays: selectedCacheDuration
             });
-            closeSettings();
-            // Show loading overlay briefly since the webview will be re-rendered
-            vscode.postMessage({ command: 'showLoading' });
           }
           
           // Modify sendMessage to handle additional payload if needed
@@ -3889,19 +4040,26 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     // Move preferred model to top of the list if set
     let preferredModelData: { key: string, value: number, resetTime?: string } | null = null;
     if (effectivePreferred) {
-      const prefIdx = processedModels.findIndex(m =>
+      const normalizedPref = normalizeModelKey(effectivePreferred).toLowerCase();
+      let prefIdx = processedModels.findIndex(m =>
+        m.key.toLowerCase() === normalizedPref ||
         m.key.toLowerCase() === effectivePreferred.toLowerCase()
       );
+      if (prefIdx === -1) {
+        prefIdx = processedModels.findIndex(m => {
+          const k = m.key.toLowerCase();
+          return k.includes(normalizedPref) || normalizedPref.includes(k) ||
+                 k.replace(/\s+/g, '') === normalizedPref.replace(/\s+/g, '');
+        });
+      }
       if (prefIdx > -1) {
         const [prefModel] = processedModels.splice(prefIdx, 1);
         preferredModelData = prefModel;
-      } else {
-        preferredModelData = {
-          key: effectivePreferred,
-          value: 0,
-          resetTime: undefined
-        };
+      } else if (processedModels.length > 0) {
+        preferredModelData = processedModels[0];
       }
+    } else if (processedModels.length > 0) {
+      preferredModelData = processedModels[0];
     }
 
     // Generate Credits HTML

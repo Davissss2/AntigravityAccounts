@@ -2,7 +2,7 @@
   "name": "antigravity-account",
   "displayName": "Antigravity Account",
   "description": "Manage multiple Antigravity accounts seamlessly - switch, monitor credits, and auto-rotate with one click.",
-  "version": "0.2.6",
+  "version": "0.3.0",
   "publisher": "Davissss2",
   "repository": {
     "type": "git",
@@ -114,6 +114,23 @@
     "configuration": {
       "title": "Antigravity Account",
       "properties": {
+        "antigravityAccount.theme": {
+          "type": "string",
+          "default": "dark-purple",
+          "enum": [
+            "dark-purple",
+            "vscode",
+            "midnight",
+            "deep-blue"
+          ],
+          "enumDescriptions": [
+            "Dark Purple (Original Theme)",
+            "VS Code Theme (Adaptive to Editor)",
+            "Midnight Black (Pure OLED Dark)",
+            "Deep Ocean Blue"
+          ],
+          "description": "Visual theme for the extension panel"
+        },
         "antigravityAccount.language": {
           "type": "string",
           "default": "auto",

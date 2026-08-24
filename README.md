@@ -1,11 +1,11 @@
 # 🌌 Antigravity Account
 
 <p align="center">
-  <img src="resources/icons/logo_with_title_bordered.png" alt="Antigravity Account Logo" width="220" style="border-radius: 14px;" />
+  <img src="resources/icons/logo_with_title_bordered.png" alt="Antigravity Account Logo" width="280" style="border-radius: 18px;" />
 </p>
 
 <p align="center">
-  <b>Seamless multi-account management for Antigravity IDE — switch sessions, track live model quotas, and auto-rotate with one click.</b>
+  <b>The definitive multi-account manager for Antigravity IDE — switch sessions, track live model quotas, and auto-rotate with one click.</b>
 </p>
 
 <p align="center">
@@ -17,19 +17,20 @@
 
 ---
 
-**Antigravity Account** is the definitive multi-account manager built exclusively for **Antigravity IDE** (and Antigravity 2.0). It provides seamless, one-click session switching, live quota tracking across all Google AI & Claude models, intelligent renewal-aware sorting, and automated rotation when quotas run low.
+**Antigravity Account** is the definitive multi-account manager built exclusively for **Antigravity IDE** (and Antigravity 2.0). It provides seamless, one-click session switching, live quota tracking across all Google AI & Claude models, intelligent renewal-aware sorting, customizable themes, and automated rotation when quotas run low.
 
 ---
 
 ## ✨ Key Features
 
+- 🎨 **Multi-Theme Visual System:** Choose between **Dark Purple (Original)**, **Midnight Black (OLED Pure)**, **Deep Ocean Blue**, or **VS Code Adaptive Theme** directly in settings.
 - 👤 **Seamless Multi-Account Switching:** Connect multiple Google / Antigravity accounts and switch active sessions in one click without manually logging out or re-authenticating.
 - ⏱️ **Intelligent Renewal Sorting:** Accounts are organized intelligently:
   1. Active pinned account at the top.
   2. Accounts with available quota (> 0%) ordered by highest remaining quota first.
-  3. Depleted accounts (0%) ordered by **closest renewal countdown** (the accounts that recharge soonest appear first).
+  3. Depleted accounts (0%) ordered by **closest renewal countdown** (accounts that recharge soonest appear first).
   4. Inactive/expired accounts cleanly organized at the bottom.
-- 📊 **Real-Time Model Quotas & Available Counter:** Live monitor credits and model limits for Gemini 3.7 Flash, Gemini 3.5 Flash, Gemini 3.1 Pro, Claude Sonnet 4.6, Claude Opus, and GPT-OSS 120B, with a discreet header counter displaying accounts with remaining balance (e.g., `15/68`).
+- 📊 **Real-Time Model Quotas & Next-Gen AI Models:** Live monitor credits and model limits for **Gemini 3.7 Flash**, **Claude Sonnet 4.6**, **Claude Opus 4.6**, **Gemini 3.5 Flash**, **Gemini 3.1 Pro**, and **GPT-OSS 120B**, with a discreet header counter displaying accounts with remaining balance (e.g., `50/78`).
 - ⚡ **Targeted Segment Scanning:** Scan all accounts, only accounts with available quota, or only accounts needing renewal. Live progress bar persists seamlessly across view changes.
 - 🔄 **Smart Auto-Rotation:** Automatically cycle to the next account with available quota when your current session runs out of balance.
 - 🔔 **Desktop Balance Alerts:** Receive native desktop notifications when model balances fall below your configured threshold.

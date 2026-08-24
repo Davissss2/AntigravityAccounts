@@ -5,6 +5,41 @@
  * Filters out deprecated/unsupported models to keep the UI clean.
  */
 
+export function normalizeModelKey(key: string): string {
+  if (!key) return '';
+  const lower = key.toLowerCase().trim();
+
+  // Explicit mappings for all known aliases and legacy strings
+  if (lower === 'gemini-3.7-flash' || lower === 'gemini-3.7-flash-tiered' || lower === 'gemini 3.7 flash' || lower === 'gemini 3.7 flash tiered' || lower === 'gemini 3.7 flash (tiered)' || lower === '3.7 flash' || lower === '3.7-flash') {
+    return '3.7 Flash';
+  }
+  if (lower === 'gemini-3.5-flash-extra-low' || lower === 'gemini 3.5 flash (low)' || lower === '3.5 flash (med)') {
+    return '3.5 Flash (Med)';
+  }
+  if (lower === 'gemini-3.5-flash-low' || lower === 'gemini-3.5-flash-medium' || lower === 'gemini-3.5-flash-high' || lower === 'gemini-3.5-flash' || lower === 'gemini 3.5 flash' || lower === 'gemini 3.5 flash (high)' || lower === 'gemini 3.5 flash (medium)' || lower === '3.5 flash (high)') {
+    return '3.5 Flash (High)';
+  }
+  if (lower === 'gemini-3.1-pro-low' || lower === 'gemini 3.1 pro (low)' || lower === '3.1 pro (low)') {
+    return '3.1 Pro (Low)';
+  }
+  if (lower === 'gemini-3.1-pro-high' || lower === 'gemini 3.1 pro (high)' || lower === '3.1 pro (high)') {
+    return '3.1 Pro (High)';
+  }
+  if (lower === 'gpt-oss-120b-medium' || lower === 'gpt-oss 120b' || lower === 'gpt-oss 120b (medium)') {
+    return 'GPT-OSS 120B';
+  }
+  if (lower === 'claude-sonnet-4-6' || lower === 'claude sonnet 4.6 (thinking)' || lower === 'sonnet 4.6' || lower === 'claude sonnet 4.6') {
+    return 'Sonnet 4.6';
+  }
+  if (lower === 'claude-opus-4-6' || lower === 'claude-opus-4-6-thinking' || lower === 'claude opus 4.6 (thinking)' || lower === 'opus 4.6' || lower === 'claude opus 4.6') {
+    return 'Opus 4.6';
+  }
+
+  const friendly = getFriendlyModelName(key);
+  if (friendly) return friendly;
+  return key.trim();
+}
+
 export function getFriendlyModelName(key: string): string | null {
   const lower = key.toLowerCase();
   
@@ -22,6 +57,7 @@ export function getFriendlyModelName(key: string): string | null {
   }
   
   // Precise mapping of current active IDE models
+  if (lower === 'gemini-3.7-flash' || lower === 'gemini-3.7-flash-tiered' || lower === 'gemini 3.7 flash' || lower === 'gemini 3.7 flash tiered') return '3.7 Flash';
   if (lower === 'gemini-3.5-flash-extra-low') return '3.5 Flash (Med)';
   if (lower === 'gemini-3.5-flash-low') return '3.5 Flash (High)';
   if (lower === 'gemini-3.5-flash-medium') return '3.5 Flash (High)';
@@ -55,13 +91,23 @@ export function getFriendlyModelName(key: string): string | null {
 }
 
 export function getModelBalanceValue(balances: Record<string, any> | undefined, targetKey: string): number {
-  if (!balances) return -1;
+  if (!balances || !targetKey) return -1;
+  const normalizedTarget = normalizeModelKey(targetKey).toLowerCase();
   const lowerTarget = targetKey.toLowerCase();
   
   for (const [k, v] of Object.entries(balances)) {
     if (!k) continue;
     const friendlyName = getFriendlyModelName(k);
-    if (friendlyName && friendlyName.toLowerCase() === lowerTarget) {
+    const normalizedK = normalizeModelKey(k);
+
+    if (
+      (friendlyName && friendlyName.toLowerCase() === normalizedTarget) ||
+      (friendlyName && friendlyName.toLowerCase() === lowerTarget) ||
+      normalizedK.toLowerCase() === normalizedTarget ||
+      k.toLowerCase() === lowerTarget ||
+      k.toLowerCase().includes(normalizedTarget) ||
+      normalizedTarget.includes(k.toLowerCase())
+    ) {
       if (typeof v === 'object' && v !== null && 'value' in v) {
         return v.value;
       }

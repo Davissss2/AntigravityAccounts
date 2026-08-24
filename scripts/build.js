@@ -35,6 +35,20 @@ function syncToIDE() {
       return;
     }
 
+    function copyRecursive(src, dest) {
+      if (!fs.existsSync(src)) return;
+      const stat = fs.statSync(src);
+      if (stat.isDirectory()) {
+        fs.mkdirSync(dest, { recursive: true });
+        for (const child of fs.readdirSync(src)) {
+          copyRecursive(path.join(src, child), path.join(dest, child));
+        }
+      } else {
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.copyFileSync(src, dest);
+      }
+    }
+
     for (const dir of targetDirs) {
       const targetBaseDir = path.join(extensionsDir, dir);
       const targetDistDir = path.join(targetBaseDir, 'dist');
@@ -47,7 +61,16 @@ function syncToIDE() {
       fs.copyFileSync('dist/presentation/theme/global.css', path.join(targetThemeDir, 'global.css'));
 
       fs.copyFileSync(pkgPath, path.join(targetBaseDir, 'package.json'));
-      console.log(`Synced built files to IDE extensions folder: ${targetBaseDir}`);
+
+      // Sync README, CHANGELOG, and Logo assets
+      if (fs.existsSync('README.md')) fs.copyFileSync('README.md', path.join(targetBaseDir, 'README.md'));
+      if (fs.existsSync('CHANGELOG.md')) fs.copyFileSync('CHANGELOG.md', path.join(targetBaseDir, 'CHANGELOG.md'));
+      if (fs.existsSync('AntigravityAccountLogo.png')) fs.copyFileSync('AntigravityAccountLogo.png', path.join(targetBaseDir, 'AntigravityAccountLogo.png'));
+
+      copyRecursive('resources', path.join(targetBaseDir, 'resources'));
+      copyRecursive('images', path.join(targetBaseDir, 'images'));
+
+      console.log(`Synced built files & assets to IDE extensions folder: ${targetBaseDir}`);
     }
   } catch (err) {
     console.error('Failed to sync to IDE extension folder:', err.message);

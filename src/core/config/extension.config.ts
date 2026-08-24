@@ -86,6 +86,13 @@ export class ExtensionConfig {
   }
 
   /**
+   * Get the visual theme ('dark-purple', 'vscode', 'midnight', 'deep-blue')
+   */
+  getTheme(): string {
+    return this.getConfig().get<string>('theme', 'dark-purple');
+  }
+
+  /**
    * Get the extension context (for services that need it)
    */
   getContext(): vscode.ExtensionContext {
