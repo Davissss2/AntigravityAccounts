@@ -1,7 +1,7 @@
 # 🌌 Antigravity Account
 
 <p align="center">
-  <img src="./images/logo_with_title.png" alt="Antigravity Account" width="280" />
+  <img src="https://raw.githubusercontent.com/Davissss2/AntigravityAccounts/main/images/logo_with_title.png" alt="Antigravity Account Logo" width="280" />
 </p>
 
 <p align="center">
