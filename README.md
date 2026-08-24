@@ -1,7 +1,7 @@
 # 🌌 Antigravity Account
 
 <p align="center">
-  <img src="resources/icons/logo_with_title_bordered.png" alt="Antigravity Account Logo" width="280" style="border-radius: 18px;" />
+  <img src="./images/logo_with_title.png" alt="Antigravity Account" width="280" />
 </p>
 
 <p align="center">
