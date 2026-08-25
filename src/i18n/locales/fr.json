@@ -155,6 +155,7 @@
   },
   "settings": {
     "title": "Paramètres",
+    "saved": "Paramètres enregistrés avec succès",
     "refreshInterval": {
       "label": "Intervalle d'actualisation",
       "description": "Fréquence d'actualisation des soldes (en minutes)"

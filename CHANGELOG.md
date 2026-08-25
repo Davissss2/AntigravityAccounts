@@ -5,6 +5,16 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-08-25
+
+### 🛠️ Fixed Settings Persistence & Cross-Platform Stability
+- **Cross-Platform Settings Save Fix (Linux & Windows)**: Resolved a critical issue where clicking the "Save" button in the Settings modal failed to persist changes or re-render properly across Ubuntu Linux and Windows environments.
+- **Configuration Schema Constraints**: Updated `antigravityAccount.refreshIntervalMinutes` schema in `package.json` to allow `minimum: 0` (for Immediate on launch mode) and `maximum: 1440` (for 1 Day interval), eliminating VS Code schema validation rejections.
+- **Sequential Configuration Writes**: Replaced parallel `Promise.all` configuration updates with robust sequential execution, preventing write collisions and lockouts on VS Code's global `settings.json`.
+- **Instant Language Switching**: Synchronously updated the internal internationalization engine (`I18nService`) locale during settings save, ensuring immediate panel re-rendering in the newly selected language.
+- **Enhanced Error Handling & Feedback**: Added comprehensive `try/catch` error handling with detailed logging and native notification toasts (`vscode.window.showInformationMessage`) upon successful settings updates.
+- **Internationalization Updates**: Added localized `"settings.saved"` confirmation messages across all 10 supported languages (English, Español, 中文, Português, Français, Deutsch, 日本語, Русский, 한국어, العربية).
+
 ## [0.3.0] - 2026-08-24
 
 ### 🌌 Brand Identity & Visual Evolution

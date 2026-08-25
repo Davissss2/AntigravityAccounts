@@ -155,6 +155,7 @@
   },
   "settings": {
     "title": "Einstellungen",
+    "saved": "Einstellungen erfolgreich gespeichert",
     "refreshInterval": {
       "label": "Aktualisierungsintervall",
       "description": "Wie oft Guthabendaten aktualisiert werden (in Minuten)"

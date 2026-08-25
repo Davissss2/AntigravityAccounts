@@ -155,6 +155,7 @@
   },
   "settings": {
     "title": "Settings",
+    "saved": "Settings saved successfully",
     "refreshInterval": {
       "label": "Refresh Interval",
       "description": "How often to refresh balance data (in minutes)"

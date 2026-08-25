@@ -2,15 +2,17 @@
   "name": "antigravity-account",
   "displayName": "Antigravity Account",
   "description": "Manage multiple Antigravity accounts seamlessly - switch, monitor credits, and auto-rotate with one click.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "Davissss2",
+  "homepage": "https://github.com/Davissss2/AntigravityAccounts#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Davissss2/AntigravityAccounts"
+    "url": "https://github.com/Davissss2/AntigravityAccounts.git"
   },
   "bugs": {
     "url": "https://github.com/Davissss2/AntigravityAccounts/issues"
   },
+  "qna": "https://github.com/Davissss2/AntigravityAccounts/discussions",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
     "vscode": "^1.85.0"
@@ -164,15 +166,15 @@
         },
         "antigravityAccount.autoRefreshEnabled": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Enable automatic balance refresh when opening the extension panel"
         },
         "antigravityAccount.refreshIntervalMinutes": {
           "type": "number",
-          "default": 30,
-          "minimum": 1,
-          "maximum": 120,
-          "description": "Interval in minutes for automatic balance refresh"
+          "default": 15,
+          "minimum": 0,
+          "maximum": 1440,
+          "description": "Interval in minutes for automatic balance refresh (0 = Immediate on launch)"
         },
         "antigravityAccount.lowCreditThreshold": {
           "type": "number",

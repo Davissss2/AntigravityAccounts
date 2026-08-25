@@ -207,42 +207,72 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           await this.handleImport();
           break;
         case 'saveSettings': {
-          const config = vscode.workspace.getConfiguration('antigravityAccount');
-          const updates: Promise<any>[] = [];
+          try {
+            const config = vscode.workspace.getConfiguration('antigravityAccount');
 
-          if (message.preferredModel !== undefined) {
-            updates.push(this.accountRepo.setPreferredModel(message.preferredModel));
-          }
-          if (message.theme !== undefined && config.get<string>('theme') !== message.theme) {
-            updates.push(Promise.resolve(config.update('theme', message.theme, vscode.ConfigurationTarget.Global)));
-          }
-          if (message.sortBy !== undefined && config.get<string>('sortBy') !== message.sortBy) {
-            updates.push(Promise.resolve(config.update('sortBy', message.sortBy, vscode.ConfigurationTarget.Global)));
-          }
-          if (message.cacheDurationDays !== undefined && config.get<number>('cacheDurationDays') !== message.cacheDurationDays) {
-            updates.push(Promise.resolve(config.update('cacheDurationDays', message.cacheDurationDays, vscode.ConfigurationTarget.Global)));
-          }
-          if (message.autoRefreshEnabled !== undefined && config.get<boolean>('autoRefreshEnabled') !== message.autoRefreshEnabled) {
-            updates.push(Promise.resolve(config.update('autoRefreshEnabled', message.autoRefreshEnabled, vscode.ConfigurationTarget.Global)));
-          }
-          if (message.autoRotateEnabled !== undefined && config.get<boolean>('autoRotateEnabled') !== message.autoRotateEnabled) {
-            updates.push(Promise.resolve(config.update('autoRotateEnabled', message.autoRotateEnabled, vscode.ConfigurationTarget.Global)));
-          }
-          if (message.lowCreditNotificationsEnabled !== undefined && config.get<boolean>('lowCreditNotificationsEnabled') !== message.lowCreditNotificationsEnabled) {
-            updates.push(Promise.resolve(config.update('lowCreditNotificationsEnabled', message.lowCreditNotificationsEnabled, vscode.ConfigurationTarget.Global)));
-          }
-          if (message.refreshIntervalMinutes !== undefined && config.get<number>('refreshIntervalMinutes') !== message.refreshIntervalMinutes) {
-            updates.push(Promise.resolve(config.update('refreshIntervalMinutes', message.refreshIntervalMinutes, vscode.ConfigurationTarget.Global)));
-          }
-          if (message.language !== undefined && config.get<string>('language') !== message.language) {
-            updates.push(Promise.resolve(config.update('language', message.language, vscode.ConfigurationTarget.Global)));
-          }
+            if (message.preferredModel !== undefined) {
+              await this.accountRepo.setPreferredModel(message.preferredModel);
+            }
 
-          if (updates.length > 0) {
-            await Promise.all(updates);
+            if (message.language !== undefined) {
+              await config.update('language', message.language, vscode.ConfigurationTarget.Global);
+              // Update i18n instance immediately so refresh renders with the selected language
+              const i18nService = I18nService.getInstance();
+              let lang = message.language;
+              if (lang === 'auto') {
+                const fullLang = (vscode.env.language || '').toLowerCase();
+                const editorLang = fullLang.split('-')[0];
+                if (fullLang.startsWith('zh')) {
+                  lang = 'zh-CN';
+                } else if (fullLang.startsWith('pt')) {
+                  lang = 'pt-BR';
+                } else if (['ar', 'es', 'fr', 'de', 'ja', 'ru', 'ko'].includes(editorLang)) {
+                  lang = editorLang;
+                } else {
+                  lang = 'en';
+                }
+              }
+              i18nService.setLocale(lang);
+            }
+
+            if (message.theme !== undefined) {
+              await config.update('theme', message.theme, vscode.ConfigurationTarget.Global);
+            }
+            if (message.sortBy !== undefined) {
+              await config.update('sortBy', message.sortBy, vscode.ConfigurationTarget.Global);
+            }
+            if (message.cacheDurationDays !== undefined) {
+              await config.update('cacheDurationDays', message.cacheDurationDays, vscode.ConfigurationTarget.Global);
+            }
+            if (message.autoRefreshEnabled !== undefined) {
+              await config.update('autoRefreshEnabled', message.autoRefreshEnabled, vscode.ConfigurationTarget.Global);
+            }
+            if (message.autoRotateEnabled !== undefined) {
+              await config.update('autoRotateEnabled', message.autoRotateEnabled, vscode.ConfigurationTarget.Global);
+            }
+            if (message.lowCreditNotificationsEnabled !== undefined) {
+              await config.update('lowCreditNotificationsEnabled', message.lowCreditNotificationsEnabled, vscode.ConfigurationTarget.Global);
+            }
+            if (message.refreshIntervalMinutes !== undefined) {
+              await config.update('refreshIntervalMinutes', message.refreshIntervalMinutes, vscode.ConfigurationTarget.Global);
+            }
+
+            Logger.getInstance().info('Settings saved successfully.');
+            this.accountService.emitAccountsChanged();
+
+            // Only show toast if user saved from the settings modal (message has multiple fields), avoid popping up toast on toolbar sort dropdown change
+            if (message.theme !== undefined || message.language !== undefined || message.preferredModel !== undefined) {
+              const currentI18n = I18nService.getInstance();
+              vscode.window.showInformationMessage(currentI18n.t('settings.saved'));
+            }
+          } catch (err: any) {
+            Logger.getInstance().error('Failed to save settings', err);
+            vscode.window.showErrorMessage(`Failed to save settings: ${err?.message || err}`);
+          } finally {
+            await this.refresh();
+            this._view?.webview.postMessage({ command: 'hideLoading' });
+            this._view?.webview.postMessage({ command: 'settingsSavedToast' });
           }
-          await this.refresh();
-          this._view?.webview.postMessage({ command: 'hideLoading' });
           break;
         }
       }
@@ -878,6 +908,22 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     const configLanguage = vscode.workspace.getConfiguration('antigravityAccount').get<string>('language', 'auto');
+    let effectiveLang = configLanguage;
+    if (effectiveLang === 'auto') {
+      const fullLang = (vscode.env.language || '').toLowerCase();
+      const editorLang = fullLang.split('-')[0];
+      if (fullLang.startsWith('zh')) {
+        effectiveLang = 'zh-CN';
+      } else if (fullLang.startsWith('pt')) {
+        effectiveLang = 'pt-BR';
+      } else if (['ar', 'es', 'fr', 'de', 'ja', 'ru', 'ko'].includes(editorLang)) {
+        effectiveLang = editorLang;
+      } else {
+        effectiveLang = 'en';
+      }
+    }
+    i18n.setLocale(effectiveLang);
+
     const configTheme = vscode.workspace.getConfiguration('antigravityAccount').get<string>('theme', 'dark-purple');
     const configAutoRefresh = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('autoRefreshEnabled', true);
     const configAutoRotate = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('autoRotateEnabled', false);
@@ -3250,43 +3296,49 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           function saveSettings() {
-            const themeSelect = document.getElementById('themeSelect');
-            const selectedTheme = themeSelect ? themeSelect.value : 'dark-purple';
-            currentTheme = selectedTheme; // Update in-memory reference immediately!
-            applyLiveTheme(selectedTheme);
+            try {
+              const themeSelect = document.getElementById('themeSelect');
+              const selectedTheme = themeSelect ? themeSelect.value : 'dark-purple';
+              currentTheme = selectedTheme; // Update in-memory reference immediately!
+              applyLiveTheme(selectedTheme);
 
-            const select = document.getElementById('preferredModelSelect');
-            const selectedModel = select.value;
-            const langSelect = document.getElementById('languageSelect');
-            const selectedLang = langSelect ? langSelect.value : 'auto';
-            const autoRefreshToggle = document.getElementById('autoRefreshToggle');
-            const autoRefreshEnabled = autoRefreshToggle ? autoRefreshToggle.checked : true;
-            const autoRotateToggle = document.getElementById('autoRotateToggle');
-            const autoRotateEnabled = autoRotateToggle ? autoRotateToggle.checked : false;
-            const lowCreditNotificationsToggle = document.getElementById('lowCreditNotificationsToggle');
-            const lowCreditNotificationsEnabled = lowCreditNotificationsToggle ? lowCreditNotificationsToggle.checked : true;
-            const intervalSelect = document.getElementById('refreshIntervalSelect');
-            const refreshInterval = intervalSelect ? parseInt(intervalSelect.value) : 15;
-            
-            const sortBySettingsSelect = document.getElementById('sortBySettingsSelect');
-            const selectedSortBy = sortBySettingsSelect ? sortBySettingsSelect.value : 'default';
-            const cacheDurationSelect = document.getElementById('cacheDurationSelect');
-            const selectedCacheDuration = cacheDurationSelect ? parseInt(cacheDurationSelect.value) : 7;
+              const select = document.getElementById('preferredModelSelect');
+              const selectedModel = select ? select.value : '';
+              const langSelect = document.getElementById('languageSelect');
+              const selectedLang = langSelect ? langSelect.value : 'auto';
+              const autoRefreshToggle = document.getElementById('autoRefreshToggle');
+              const autoRefreshEnabled = autoRefreshToggle ? autoRefreshToggle.checked : true;
+              const autoRotateToggle = document.getElementById('autoRotateToggle');
+              const autoRotateEnabled = autoRotateToggle ? autoRotateToggle.checked : false;
+              const lowCreditNotificationsToggle = document.getElementById('lowCreditNotificationsToggle');
+              const lowCreditNotificationsEnabled = lowCreditNotificationsToggle ? lowCreditNotificationsToggle.checked : true;
+              const intervalSelect = document.getElementById('refreshIntervalSelect');
+              const refreshInterval = intervalSelect ? (parseInt(intervalSelect.value, 10) || 0) : 15;
+              
+              const sortBySettingsSelect = document.getElementById('sortBySettingsSelect');
+              const selectedSortBy = sortBySettingsSelect ? sortBySettingsSelect.value : 'default';
+              const cacheDurationSelect = document.getElementById('cacheDurationSelect');
+              const selectedCacheDuration = cacheDurationSelect ? (parseInt(cacheDurationSelect.value, 10) || 7) : 7;
 
-            closeSettingsModalOnly();
+              closeSettingsModalOnly();
+              vscode.postMessage({ command: 'showLoading' });
 
-            vscode.postMessage({
-              command: 'saveSettings',
-              theme: selectedTheme,
-              language: selectedLang,
-              preferredModel: selectedModel,
-              autoRefreshEnabled: autoRefreshEnabled,
-              autoRotateEnabled: autoRotateEnabled,
-              lowCreditNotificationsEnabled: lowCreditNotificationsEnabled,
-              refreshIntervalMinutes: refreshInterval,
-              sortBy: selectedSortBy,
-              cacheDurationDays: selectedCacheDuration
-            });
+              vscode.postMessage({
+                command: 'saveSettings',
+                theme: selectedTheme,
+                language: selectedLang,
+                preferredModel: selectedModel,
+                autoRefreshEnabled: autoRefreshEnabled,
+                autoRotateEnabled: autoRotateEnabled,
+                lowCreditNotificationsEnabled: lowCreditNotificationsEnabled,
+                refreshIntervalMinutes: refreshInterval,
+                sortBy: selectedSortBy,
+                cacheDurationDays: selectedCacheDuration
+              });
+            } catch (err) {
+              console.error('Error in saveSettings:', err);
+              vscode.postMessage({ command: 'logError', message: 'Error in saveSettings: ' + err.message, stack: err.stack });
+            }
           }
           
           // Modify sendMessage to handle additional payload if needed
@@ -3523,6 +3575,18 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             } else if (msg.command === 'hideLoading') {
               const overlay = document.getElementById('loadingOverlay');
               if (overlay) overlay.style.display = 'none';
+
+            } else if (msg.command === 'settingsSavedToast') {
+              const toast = document.getElementById('refreshToast');
+              if (toast) {
+                toast.textContent = '${i18n.t('settings.saved')}';
+                toast.classList.add('visible');
+                if (refreshToastTimeout) { clearTimeout(refreshToastTimeout); }
+                refreshToastTimeout = setTimeout(() => {
+                  toast.classList.remove('visible');
+                  refreshToastTimeout = null;
+                }, 4000);
+              }
             }
           });
         </script>

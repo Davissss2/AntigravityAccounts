@@ -155,6 +155,7 @@
   },
   "settings": {
     "title": "Configurações",
+    "saved": "Configurações salvas com sucesso",
     "refreshInterval": {
       "label": "Intervalo de Atualização",
       "description": "Frequência de atualização dos dados de saldo (em minutos)"
