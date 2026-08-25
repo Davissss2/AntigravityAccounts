@@ -4,6 +4,11 @@
   "description": "Manage multiple Antigravity accounts seamlessly - switch, monitor credits, and auto-rotate with one click.",
   "version": "0.3.1",
   "publisher": "Davissss2",
+  "author": {
+    "name": "Davissss2",
+    "url": "https://github.com/Davissss2"
+  },
+  "license": "MIT",
   "homepage": "https://github.com/Davissss2/AntigravityAccounts#readme",
   "repository": {
     "type": "git",
@@ -13,7 +18,6 @@
     "url": "https://github.com/Davissss2/AntigravityAccounts/issues"
   },
   "qna": "https://github.com/Davissss2/AntigravityAccounts/discussions",
-  "license": "SEE LICENSE IN LICENSE",
   "engines": {
     "vscode": "^1.85.0"
   },
