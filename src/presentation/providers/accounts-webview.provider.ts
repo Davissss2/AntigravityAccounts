@@ -2697,16 +2697,16 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         </script>
         <script>
           const availableModelKeys = ${JSON.stringify(availableModelKeys)};
-          const currentPreferredModel = ${JSON.stringify(effectivePreferred)};
-          const currentTheme = ${JSON.stringify(configTheme)};
-          const currentLanguage = ${JSON.stringify(configLanguage)};
-          const hasAccounts = ${accounts.length > 0};
-          const currentAutoRefresh = ${configAutoRefresh};
-          const currentAutoRotate = ${configAutoRotate};
-          const currentLowCreditNotifications = ${configLowCreditNotifications};
-          const currentRefreshInterval = ${configRefreshInterval};
-          const currentSortBy = ${JSON.stringify(configSortBy)};
-          const currentCacheDurationDays = ${configCacheDurationDays};
+          let currentPreferredModel = ${JSON.stringify(effectivePreferred)};
+          let currentTheme = ${JSON.stringify(configTheme)};
+          let currentLanguage = ${JSON.stringify(configLanguage)};
+          let hasAccounts = ${accounts.length > 0};
+          let currentAutoRefresh = ${configAutoRefresh};
+          let currentAutoRotate = ${configAutoRotate};
+          let currentLowCreditNotifications = ${configLowCreditNotifications};
+          let currentRefreshInterval = ${configRefreshInterval};
+          let currentSortBy = ${JSON.stringify(configSortBy)};
+          let currentCacheDurationDays = ${configCacheDurationDays};
           const isRtlDir = ${isRtl};
           const savedSearchQuery = ${JSON.stringify(this._searchQuery)};
           
@@ -3299,7 +3299,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             try {
               const themeSelect = document.getElementById('themeSelect');
               const selectedTheme = themeSelect ? themeSelect.value : 'dark-purple';
-              currentTheme = selectedTheme; // Update in-memory reference immediately!
+              currentTheme = selectedTheme;
               applyLiveTheme(selectedTheme);
 
               const select = document.getElementById('preferredModelSelect');
@@ -3319,6 +3319,15 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               const selectedSortBy = sortBySettingsSelect ? sortBySettingsSelect.value : 'default';
               const cacheDurationSelect = document.getElementById('cacheDurationSelect');
               const selectedCacheDuration = cacheDurationSelect ? (parseInt(cacheDurationSelect.value, 10) || 7) : 7;
+
+              currentLanguage = selectedLang;
+              currentPreferredModel = selectedModel;
+              currentAutoRefresh = autoRefreshEnabled;
+              currentAutoRotate = autoRotateEnabled;
+              currentLowCreditNotifications = lowCreditNotificationsEnabled;
+              currentRefreshInterval = refreshInterval;
+              currentSortBy = selectedSortBy;
+              currentCacheDurationDays = selectedCacheDuration;
 
               closeSettingsModalOnly();
               vscode.postMessage({ command: 'showLoading' });
