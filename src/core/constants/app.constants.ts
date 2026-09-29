@@ -50,6 +50,7 @@ export const STORAGE_KEYS = {
   SETTINGS: 'antigravity.settings',
   PREFERRED_MODEL: 'antigravity.settings.preferredModel',
   BALANCES_LAST_REFRESHED: 'antigravity.balances.lastRefreshedAt',
+  PENDING_REFRESH_EMAILS: 'antigravity.accounts.pendingRefreshEmails',
 } as const;
 
 // ── Secret Storage Key Prefixes ──

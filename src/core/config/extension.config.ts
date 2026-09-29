@@ -40,14 +40,14 @@ export class ExtensionConfig {
    * Whether automatic balance refresh on panel open is enabled
    */
   isAutoRefreshEnabled(): boolean {
-    return this.getConfig().get<boolean>('autoRefreshEnabled', true);
+    return this.getConfig().get<boolean>('autoRefreshEnabled', false);
   }
 
   /**
-   * Get the refresh interval in minutes
+   * Get the refresh interval in minutes (0 = disabled)
    */
   getRefreshIntervalMinutes(): number {
-    return this.getConfig().get<number>('refreshIntervalMinutes', 15);
+    return this.getConfig().get<number>('refreshIntervalMinutes', 0);
   }
 
   /**

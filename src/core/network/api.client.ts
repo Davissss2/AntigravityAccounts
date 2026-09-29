@@ -7,6 +7,7 @@
 
 import { API } from '../constants/app.constants';
 import { Logger } from '../utils/logger';
+import { getAntigravityVersion } from '../utils/version.utils';
 
 export class ApiError extends Error {
   constructor(public status: number, public statusText: string, message?: string) {
@@ -23,16 +24,32 @@ interface ApiRequestOptions {
 }
 
 export class ApiClient {
+  private static cachedUserAgent: string | null = null;
+
   /**
-   * Constructs the required Antigravity User-Agent based on OS.
+   * Constructs the required Antigravity User-Agent based on installed version and OS.
    */
   private static getUserAgent(): string {
-    const version = API.DEFAULT_VERSION;
+    if (this.cachedUserAgent) {
+      return this.cachedUserAgent;
+    }
+
+    let version: string = API.DEFAULT_VERSION;
+    try {
+      const detected = getAntigravityVersion();
+      if (detected?.short) {
+        version = detected.short;
+      }
+    } catch {
+      // Fallback to default version
+    }
+
     const platform = process.platform === 'win32' ? 'windows' : 
                      process.platform === 'darwin' ? 'darwin' : 'linux';
     const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
     
-    return `antigravity/${version} ${platform}/${arch}`;
+    this.cachedUserAgent = `antigravity/${version} ${platform}/${arch}`;
+    return this.cachedUserAgent;
   }
 
   /**

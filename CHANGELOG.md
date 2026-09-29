@@ -5,6 +5,28 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-09-29
+
+### 🛡️ Enhanced Anti-Ban Protection & Safe Defaults
+- **Auto-Refresh Disabled by Default**: `antigravityAccount.autoRefreshEnabled` is now set to `false` by default. Accounts and cached quota data load instantly from local storage on webview open without firing unexpected network requests.
+- **Background Periodic Refresh Off by Default**: `antigravityAccount.refreshIntervalMinutes` is now set to `0` (disabled) by default. When enabled by user, it strictly respects `isAutoRefreshEnabled()` and preserves cached balances (`force: false`).
+- **Eliminated Aggressive 30-Second Polling**: Removed unconditional 30-second active account polling from the background event loop. Quota depletion checks now only run if `autoRotateEnabled` is explicitly enabled, with a safe 10-minute interval.
+- **Account Switch Cooldown**: Added a 5-minute cooldown before requesting balance updates for newly activated accounts to avoid duplicate requests.
+- **Dynamic User-Agent**: Replaced static version string in HTTP headers with real-time detection of the installed Antigravity IDE version (`getAntigravityVersion()`).
+
+### ⏳ High-Entropy Randomized Delays & Human-Like Breaks
+- **Extended Random Delays**: Increased random delays between account queries from `3s–7s` to **`12s–28s`**.
+- **Natural Human Breaks**: Introduced a randomized pause of **15s–35s** every 3 to 6 accounts processed, breaking automated linear patterns and evading Google's bot heuristic detectors.
+
+### ⚡ Non-Blocking Account Switching During Scan & Auto-Resume
+- **Interactive Switching During Scan**: The "Activar" (Switch Account) buttons and search bar remain fully clickable and interactive even while an account scan is running in the background.
+- **Pending Queue Persistence**: If an account switch is triggered while accounts are being refreshed, the remaining un-scanned account queue is automatically saved to persistent storage.
+- **Automatic Resume on Relaunch**: After Antigravity IDE reloads with the new active account, the extension automatically detects the saved queue and seamlessly resumes refreshing from where it left off.
+
+### 🛑 HTTP 429 Safety Brake & Single-Card Debounce
+- **Emergency Stop on Rate Limit**: If Google APIs return HTTP 429 (Too Many Requests), the entire scan sequence halts immediately with a native warning, protecting all remaining accounts in the pool from cascaded bans.
+- **Single-Card Debounce**: Added a 30-second cooldown per card to prevent button spamming.
+
 ## [0.3.1] - 2026-08-25
 
 ### 🛠️ Fixed Settings Persistence & Cross-Platform Stability

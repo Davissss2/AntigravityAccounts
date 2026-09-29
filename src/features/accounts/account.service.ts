@@ -38,8 +38,8 @@ export class AccountService {
 
   /** Timestamp of the last successful refresh start (ms) */
   private _lastRefreshTime: number = 0;
-  /** Minimum interval between refreshes in milliseconds (30 seconds) */
-  private static readonly REFRESH_COOLDOWN_MS = 30_000;
+  /** Minimum interval between global refreshes in milliseconds (60 seconds) */
+  private static readonly REFRESH_COOLDOWN_MS = 60_000;
   /** Whether a refresh is currently in progress */
   private _isRefreshing: boolean = false;
   /** Timeout for automatic queued refresh */
@@ -414,10 +414,22 @@ export class AccountService {
         }
       }
 
-      // ── Anti-Ban: Random delay between accounts (3s to 7s) to prevent rate limiting ──
+      // ── Anti-Ban: High-entropy randomized delay between accounts with natural human pauses ──
       if (accountsProcessed > 0) {
-        const delay = Math.floor(Math.random() * (7000 - 3000 + 1)) + 3000;
-        Logger.getInstance().debug(`Anti-ban: Sleeping for ${delay}ms before refreshing ${account.email}`);
+        // Base delay: random between 12,000ms (12s) and 28,000ms (28s)
+        const minDelay = 12000;
+        const maxDelay = 28000;
+        let delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+
+        // Human-like natural break: Every 3 to 6 accounts, add an extra random pause (15s to 35s)
+        // to break automated linear polling patterns and deceive Google's heuristic detectors
+        if (accountsProcessed % (Math.floor(Math.random() * 4) + 3) === 0) {
+          const extraPause = Math.floor(Math.random() * (35000 - 15000 + 1)) + 15000;
+          Logger.getInstance().info(`Anti-ban: Adding natural human break of ${Math.round(extraPause / 1000)}s after processing ${accountsProcessed} accounts.`);
+          delay += extraPause;
+        }
+
+        Logger.getInstance().info(`Anti-ban: Waiting ${Math.round(delay / 1000)}s before querying ${account.email}...`);
         
         await new Promise(resolve => {
           const timer = setTimeout(resolve, delay);
@@ -476,6 +488,14 @@ export class AccountService {
       // Fetch Balance
       const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken);
       
+      // Safety Guard: Detect Google API rate limit (429) and abort workflow immediately to protect all accounts
+      if (balanceInfo.isRateLimited) {
+        Logger.getInstance().warn(`Rate limit (429) detected while refreshing ${account.email}. Aborting scan to protect remaining accounts!`);
+        vscode.window.showWarningMessage('Google API rate limit detected. Refresh stopped immediately to protect accounts from being blocked.');
+        options?.onAccountDone?.(account.email, account.balances, account.status);
+        break;
+      }
+
       const preferredModel = await this.accountRepo.getPreferredModel();
       const status = await this.determineAccountStatus(balanceInfo, preferredModel);
       
@@ -557,10 +577,23 @@ export class AccountService {
     callbacks?: {
       onStart?: (email: string) => void;
       onDone?: (email: string, balances?: Record<string, any>, status?: AccountStatus) => void;
+    },
+    options?: {
+      force?: boolean;
     }
   ): Promise<void> {
     const account = await this.accountRepo.getAccount(email);
     if (!account) return;
+
+    // Safety Guard: Per-account debounce cooldown (30 seconds) unless explicitly forced
+    if (!options?.force && account.lastRefreshedAt) {
+      const elapsed = Date.now() - new Date(account.lastRefreshedAt).getTime();
+      if (elapsed < 30_000) {
+        Logger.getInstance().info(`Skipping single account refresh for ${email}: refreshed ${Math.round(elapsed / 1000)}s ago (cooldown 30s).`);
+        callbacks?.onDone?.(email, account.balances, account.status);
+        return;
+      }
+    }
 
     callbacks?.onStart?.(email);
 
@@ -595,6 +628,14 @@ export class AccountService {
 
     const config = ExtensionConfig.getInstance();
     const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken);
+
+    // Safety Guard: Detect Google API rate limit (429)
+    if (balanceInfo.isRateLimited) {
+      Logger.getInstance().warn(`Rate limit (429) hit while refreshing single account ${email}.`);
+      vscode.window.showWarningMessage('Google API rate limit detected for this account. Please wait before retrying.');
+      callbacks?.onDone?.(email, account.balances, account.status);
+      return;
+    }
 
     const preferredModel = await this.accountRepo.getPreferredModel();
     const status = await this.determineAccountStatus(balanceInfo, preferredModel);

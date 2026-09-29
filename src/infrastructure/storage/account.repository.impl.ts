@@ -196,4 +196,14 @@ export class AccountRepositoryImpl implements IAccountRepository {
   async setBalancesLastRefreshed(timestampMs: number): Promise<void> {
     await this.context.globalState.update(STORAGE_KEYS.BALANCES_LAST_REFRESHED, timestampMs);
   }
+
+  // ── Pending Refresh Accounts (Resume on Relaunch) ───────────────────────────
+
+  async getPendingRefreshEmails(): Promise<string[]> {
+    return this.context.globalState.get<string[]>(STORAGE_KEYS.PENDING_REFRESH_EMAILS, []);
+  }
+
+  async setPendingRefreshEmails(emails: string[]): Promise<void> {
+    await this.context.globalState.update(STORAGE_KEYS.PENDING_REFRESH_EMAILS, emails);
+  }
 }

@@ -17,6 +17,7 @@ export interface BalanceResult {
   plan: AccountPlan;
   projectId?: string;
   hasError: boolean;
+  isRateLimited?: boolean;
   status?: AccountStatus;
 }
 
@@ -29,7 +30,8 @@ export class BalanceService {
     const result: BalanceResult = {
       balances: {},
       plan: AccountPlan.UNKNOWN,
-      hasError: false
+      hasError: false,
+      isRateLimited: false
     };
 
     try {
@@ -38,6 +40,11 @@ export class BalanceService {
       const codeAssist = await this.tryLoadCodeAssist(accessToken);
       
       if (codeAssist) {
+        if (codeAssist.isRateLimited) {
+          result.isRateLimited = true;
+          result.hasError = true;
+          return result;
+        }
         if (codeAssist.ineligible) {
           result.status = AccountStatus.INELIGIBLE;
           result.hasError = true;
@@ -56,6 +63,11 @@ export class BalanceService {
         Logger.getInstance().debug('Attempting fallback daily loadCodeAssist...');
         const fallbackCodeAssist = await this.tryFallbackLoadCodeAssist(accessToken);
         if (fallbackCodeAssist) {
+          if (fallbackCodeAssist.isRateLimited) {
+            result.isRateLimited = true;
+            result.hasError = true;
+            return result;
+          }
           if (fallbackCodeAssist.ineligible) {
             result.status = AccountStatus.INELIGIBLE;
             result.hasError = true;
@@ -76,6 +88,11 @@ export class BalanceService {
       // Strategy 4: Fetch Available Models (Model percentages)
       Logger.getInstance().debug('Attempting to fetch available models...');
       const modelBalances = await this.tryFetchAvailableModels(accessToken, result.projectId);
+      if (modelBalances && (modelBalances as any).__isRateLimited) {
+        result.isRateLimited = true;
+        result.hasError = true;
+        delete (modelBalances as any).__isRateLimited;
+      }
       if (Object.keys(modelBalances).length > 0) {
         result.balances = { ...result.balances, ...modelBalances };
       }
@@ -98,7 +115,7 @@ export class BalanceService {
 
   // ─── Internal Strategies & Parsers ──────────────────────────────────────────
 
-  private async tryLoadCodeAssist(accessToken: string): Promise<{ balances?: Record<string, number>, planName?: string, projectId?: string, ineligible?: boolean } | null> {
+  private async tryLoadCodeAssist(accessToken: string): Promise<{ balances?: Record<string, number>, planName?: string, projectId?: string, ineligible?: boolean, isRateLimited?: boolean } | null> {
     try {
       const data = await ApiClient.request<any>(API.LOAD_CODE_ASSIST, {
         method: 'POST',
@@ -116,6 +133,10 @@ export class BalanceService {
       
       return parsedData;
     } catch (e: any) {
+      if (e instanceof ApiError && e.status === 429) {
+        Logger.getInstance().warn('Primary loadCodeAssist hit rate limit (429)!');
+        return { isRateLimited: true };
+      }
       if (e instanceof ApiError && (e.status === 403 || e.status === 400)) {
         Logger.getInstance().warn(`Primary loadCodeAssist failed with status ${e.status} (ineligible account)`);
         return { ineligible: true };
@@ -126,7 +147,7 @@ export class BalanceService {
   }
 
 
-  private async tryFallbackLoadCodeAssist(accessToken: string): Promise<{ balances?: Record<string, number>, planName?: string, projectId?: string, ineligible?: boolean } | null> {
+  private async tryFallbackLoadCodeAssist(accessToken: string): Promise<{ balances?: Record<string, number>, planName?: string, projectId?: string, ineligible?: boolean, isRateLimited?: boolean } | null> {
     try {
       // Note the difference in body payload structure for the daily API
       const data = await ApiClient.request<any>(API.DAILY_LOAD_CODE_ASSIST, {
@@ -142,6 +163,10 @@ export class BalanceService {
       });
       return this.parseCodeAssistData(data);
     } catch (e: any) {
+      if (e instanceof ApiError && e.status === 429) {
+        Logger.getInstance().warn('Fallback loadCodeAssist hit rate limit (429)!');
+        return { isRateLimited: true };
+      }
       if (e instanceof ApiError && (e.status === 403 || e.status === 400)) {
         Logger.getInstance().warn(`Fallback loadCodeAssist failed with status ${e.status} (ineligible account)`);
         return { ineligible: true };
@@ -179,7 +204,11 @@ export class BalanceService {
              return balances;
           }
         }
-      } catch (e) {
+      } catch (e: any) {
+        if (e instanceof ApiError && e.status === 429) {
+          Logger.getInstance().warn(`fetchAvailableModels hit rate limit (429) at ${url}`);
+          return { __isRateLimited: true };
+        }
         Logger.getInstance().debug(`Failed to fetch models from ${url}`);
       }
     }

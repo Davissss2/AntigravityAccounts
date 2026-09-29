@@ -134,10 +134,19 @@ function registerCommands(
         lastActiveEmail = currentActive;
         accountService.emitAccountsChanged();
         if (currentActive) {
-          logger.info(`Immediately refreshing new active account balance: ${currentActive}`);
-          accountService.refreshSingleAccountBalance(currentActive).catch((err: any) => {
-            logger.error(`Failed to refresh active account balance on change for ${currentActive}`, err);
-          });
+          // Check if account was refreshed recently before querying API to avoid duplicate hits
+          accountRepo.getAccount(currentActive).then((account) => {
+            const lastRefreshed = account?.lastRefreshedAt ? new Date(account.lastRefreshedAt).getTime() : 0;
+            const cooldownMs = 5 * 60 * 1000; // 5 minute cooldown
+            if (Date.now() - lastRefreshed > cooldownMs) {
+              logger.info(`Refreshing newly active account balance: ${currentActive}`);
+              accountService.refreshSingleAccountBalance(currentActive).catch((err: any) => {
+                logger.error(`Failed to refresh active account balance on change for ${currentActive}`, err);
+              });
+            } else {
+              logger.info(`Skipping balance refresh for newly switched ${currentActive}, already refreshed within 5m.`);
+            }
+          }).catch(() => {});
         }
       }
 
@@ -152,8 +161,9 @@ function registerCommands(
         }
       }
 
-      // Background check for active account balance depletion to trigger auto-rotation / updates
-      if (currentActive) {
+      // Background check for active account balance depletion to trigger auto-rotation
+      // ONLY runs if autoRotateEnabled is explicitly enabled by the user!
+      if (currentActive && config.isAutoRotateEnabled()) {
         try {
           const account = await accountRepo.getAccount(currentActive);
           if (account) {
@@ -164,10 +174,11 @@ function registerCommands(
             // Skip checks for accounts already known to be unusable
             if (!isDepleted && !isExpired && !isIneligible) {
               const now = Date.now();
-              if (now - lastActiveBalanceCheckTime >= 30000) {
+              // Check at most every 10 minutes (600,000 ms) instead of 30 seconds
+              const activeCheckCooldownMs = 10 * 60 * 1000;
+              if (now - lastActiveBalanceCheckTime >= activeCheckCooldownMs) {
                 lastActiveBalanceCheckTime = now;
-                logger.info(`Background active account balance check running for ${currentActive}...`);
-                // Run in the background without blocking the main interval loop
+                logger.info(`Background active account balance check running for ${currentActive} (auto-rotate enabled)...`);
                 accountService.refreshSingleAccountBalance(currentActive).catch((err: any) => {
                   logger.error(`Failed to refresh active account balance in background for ${currentActive}`, err);
                 });
@@ -183,9 +194,12 @@ function registerCommands(
     }
   }, 5000); // Check every 5 seconds for responsive updates
 
-  // ── Periodic Background Balance Refresh (runs every minute to check if interval elapsed) ──
+  // ── Periodic Background Balance Refresh ──
   const periodicRefreshInterval = setInterval(async () => {
     try {
+      // Must respect autoRefreshEnabled setting
+      if (!config.isAutoRefreshEnabled()) return;
+
       const refreshIntervalMinutes = config.getRefreshIntervalMinutes();
       if (refreshIntervalMinutes <= 0) return; // Disabled
 
@@ -196,8 +210,8 @@ function registerCommands(
 
       if (elapsedMs >= intervalMs) {
         logger.info(`Periodic background balance refresh starting (elapsed: ${Math.round(elapsedMs / 1000 / 60)}m, interval: ${refreshIntervalMinutes}m)...`);
-        // Run full silent progressive refresh bypassing the cache (force = true)
-        accountService.refreshBalancesWorkflow(false, { force: true }).catch((err: any) => {
+        // Run progressive refresh respecting cache (force = false)
+        accountService.refreshBalancesWorkflow(false, { force: false }).catch((err: any) => {
           logger.error('Failed to execute periodic background balance refresh', err);
         });
       }
@@ -285,6 +299,13 @@ function registerCommands(
       });
 
       if (picked) {
+        if (accountsProvider.isRefreshing()) {
+          const remaining = accountsProvider.getPendingQueueEmails();
+          if (remaining.length > 0) {
+            await accountRepo.setPendingRefreshEmails(remaining);
+            accountsProvider.cancelRefresh();
+          }
+        }
         await accountService.switchAccountWorkflow(picked.email);
       }
     })

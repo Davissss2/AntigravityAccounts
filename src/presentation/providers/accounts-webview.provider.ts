@@ -95,6 +95,21 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
   /** AbortController for the current refresh cycle (null = not refreshing) */
   private _refreshAbortController: AbortController | null = null;
 
+  /** Queue of pending account emails remaining in the active refresh cycle */
+  private _pendingQueueEmails: string[] = [];
+
+  public isRefreshing(): boolean {
+    return this._isRefreshingProgress.isRefreshing;
+  }
+
+  public getPendingQueueEmails(): string[] {
+    return [...this._pendingQueueEmails];
+  }
+
+  public cancelRefresh(): void {
+    this._refreshAbortController?.abort();
+  }
+
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
     context: vscode.WebviewViewResolveContext,
@@ -135,6 +150,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           break;
         case 'switchAccount':
           if (message.email) {
+            // If a refresh is running, save remaining pending emails to repository so we resume on relaunch!
+            if (this._isRefreshingProgress.isRefreshing && this._pendingQueueEmails.length > 0) {
+              Logger.getInstance().info(`Account switch requested during refresh. Saving ${this._pendingQueueEmails.length} pending accounts to resume upon reload.`);
+              await this.accountRepo.setPendingRefreshEmails(this._pendingQueueEmails);
+              this._refreshAbortController?.abort();
+            }
             const confirm = await vscode.window.showWarningMessage(
               i18n.t('accounts.confirmSwitch', { email: message.email }),
               { modal: true },
@@ -144,12 +165,15 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               try {
                 const result = await this.accountService.switchAccountWorkflow(message.email);
                 if (result !== 'success') {
+                  await this.accountRepo.setPendingRefreshEmails([]);
                   this._view?.webview.postMessage({ command: 'accountSwitchCancelled', email: message.email });
                 }
               } catch (err) {
+                await this.accountRepo.setPendingRefreshEmails([]);
                 this._view?.webview.postMessage({ command: 'accountSwitchCancelled', email: message.email });
               }
             } else {
+              await this.accountRepo.setPendingRefreshEmails([]);
               this._view?.webview.postMessage({ command: 'accountSwitchCancelled', email: message.email });
             }
           }
@@ -291,12 +315,26 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       const accounts = await this.accountRepo.getAllAccounts();
       if (accounts.length === 0) return;
 
+      // Resume pending refresh if saved before an account switch
+      const pendingToResume = await this.accountRepo.getPendingRefreshEmails();
+      if (pendingToResume && pendingToResume.length > 0) {
+        Logger.getInstance().info(`Found ${pendingToResume.length} pending accounts to resume refresh after account switch.`);
+        await this.accountRepo.setPendingRefreshEmails([]);
+        setTimeout(() => {
+          vscode.window.showInformationMessage(
+            `Reanudando la actualización de ${pendingToResume.length} cuentas pendientes tras el cambio de cuenta...`
+          );
+          this.handleProgressiveRefresh(false, pendingToResume);
+        }, 1500);
+        return;
+      }
+
       const config = ExtensionConfig.getInstance();
 
       if (config.isAutoRefreshEnabled()) {
         // Auto-refresh ENABLED:
-        // 1. Refresh the active account if it hasn't been refreshed in the last 10 seconds
-        await this.handleActiveAccountRefresh(10 * 1000);
+        // 1. Refresh the active account if it hasn't been refreshed in the last 5 minutes (300 seconds)
+        await this.handleActiveAccountRefresh(5 * 60 * 1000);
 
         // 2. Identify inactive accounts that have never been refreshed or have no balance data
         const accounts = await this.accountRepo.getAllAccounts();
@@ -427,6 +465,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       currentIndex: 0,
       currentEmail: orderedEmails[0] || '',
     };
+    this._pendingQueueEmails = [...orderedEmails];
 
     // Create abort controller for this refresh cycle
     this._refreshAbortController = new AbortController();
@@ -449,6 +488,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           this._view?.webview.postMessage({ command: 'accountRefreshStart', email, currentIndex, totalAccounts });
         },
         onAccountDone: async (email: string, updatedBalances?: Record<string, any>, updatedStatus?: string) => {
+          const doneEmailLower = email.toLowerCase();
+          const qIdx = this._pendingQueueEmails.findIndex(e => e.toLowerCase() === doneEmailLower);
+          if (qIdx !== -1) {
+            this._pendingQueueEmails.splice(qIdx, 1);
+          }
           const account = await this.accountRepo.getAccount(email);
           let cardHtml = '';
           if (account) {
@@ -471,6 +515,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         currentIndex: 0,
         currentEmail: '',
       };
+      this._pendingQueueEmails = [];
       this._refreshAbortController = null;
       const wasCancelled = !!signal.aborted || !didRun;
       this._view?.webview.postMessage({ command: 'refreshFinished', wasCancelled });
@@ -925,10 +970,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     i18n.setLocale(effectiveLang);
 
     const configTheme = vscode.workspace.getConfiguration('antigravityAccount').get<string>('theme', 'dark-purple');
-    const configAutoRefresh = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('autoRefreshEnabled', true);
+    const configAutoRefresh = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('autoRefreshEnabled', false);
     const configAutoRotate = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('autoRotateEnabled', false);
     const configLowCreditNotifications = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('lowCreditNotificationsEnabled', true);
-    const configRefreshInterval = vscode.workspace.getConfiguration('antigravityAccount').get<number>('refreshIntervalMinutes', 15);
+    const configRefreshInterval = vscode.workspace.getConfiguration('antigravityAccount').get<number>('refreshIntervalMinutes', 0);
     const configSortBy = vscode.workspace.getConfiguration('antigravityAccount').get<string>('sortBy', 'default');
     const getSortByLabel = (val: string) => {
       switch(val) {
@@ -2342,6 +2387,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             pointer-events: auto;
             cursor: pointer;
           }
+          .actions-disabled .btn-activate {
+            opacity: 1 !important;
+            pointer-events: auto !important;
+            cursor: pointer !important;
+          }
 
           /* Loading overlay for export/import */
           .loading-overlay {
@@ -2937,10 +2987,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           function setSearchDisabled(disabled) {
+            // Keep search input available during refresh so users can search and switch accounts freely
             const input = document.getElementById('searchInput');
-            const clearBtn = document.getElementById('searchClearBtn');
-            if (input) input.disabled = disabled;
-            if (clearBtn && disabled) clearBtn.style.display = 'none';
+            if (input) input.disabled = false;
           }
 
           // Attach search listener and restore state
@@ -4279,7 +4328,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       `;
     } else {
       actionsHtml = `
-        ${!acc.isActive ? `<button class="btn btn-primary" onclick="handleSwitchAccount(this, '${acc.email}')">${i18n.t('accounts.activate')}</button>` : ''}
+        ${!acc.isActive ? `<button class="btn btn-primary btn-activate" onclick="handleSwitchAccount(this, '${acc.email}')">${i18n.t('accounts.activate')}</button>` : ''}
         <button class="btn btn-danger" onclick="sendMessage('deleteAccount', '${acc.email}')">${i18n.t('accounts.remove')}</button>
       `;
     }

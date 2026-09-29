@@ -2,7 +2,7 @@
   "name": "antigravity-account",
   "displayName": "Antigravity Account",
   "description": "Manage multiple Antigravity accounts seamlessly - switch, monitor credits, and auto-rotate with one click.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "Davissss2",
   "author": {
     "name": "Davissss2",
@@ -170,15 +170,15 @@
         },
         "antigravityAccount.autoRefreshEnabled": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Enable automatic balance refresh when opening the extension panel"
         },
         "antigravityAccount.refreshIntervalMinutes": {
           "type": "number",
-          "default": 15,
+          "default": 0,
           "minimum": 0,
           "maximum": 1440,
-          "description": "Interval in minutes for automatic balance refresh (0 = Immediate on launch)"
+          "description": "Interval in minutes for automatic background balance refresh when auto-refresh is enabled (0 = Disabled)"
         },
         "antigravityAccount.lowCreditThreshold": {
           "type": "number",

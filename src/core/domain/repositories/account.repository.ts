@@ -57,4 +57,10 @@ export interface IAccountRepository {
 
   /** Set the timestamp (ms) of when balances were last globally refreshed */
   setBalancesLastRefreshed(timestampMs: number): Promise<void>;
+
+  /** Get pending refresh account emails across window reloads / account switches */
+  getPendingRefreshEmails(): Promise<string[]>;
+
+  /** Set pending refresh account emails to resume after account switch */
+  setPendingRefreshEmails(emails: string[]): Promise<void>;
 }

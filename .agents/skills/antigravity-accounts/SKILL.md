@@ -82,7 +82,15 @@ Antigravity mantiene la base de datos `state.vscdb` en memoria y sobreescribe el
   - Si el usuario cambia de pestaña o cierra el panel, al reabrirse se inicializa con el progreso actual sin perderse ni bloquear la interfaz.
 - **Insignia de Cuentas con Cuota**:
   - Muestra en la cabecera un contador en tiempo real (`● X/Y con cuota`).
-- **Anti-Ban**: Delay aleatorio entre cuentas (3s a 7s) durante el escaneo para evitar rate-limiting de Google APIs.
+- **Anti-Ban Reforzado**: 
+  - Delay aleatorio entre cuentas ampliado a **6s–15s** con jitter durante el escaneo para evitar rate-limiting de Google APIs.
+  - Interrupción inmediata (Safety Break) del ciclo de escaneo si se detecta un código **HTTP 429 (Too Many Requests)**, protegiendo todas las cuentas restantes del pool contra bloqueos en cascada.
+- **Protección contra Sobre-Refresco (Defaults Seguros)**:
+  - `autoRefreshEnabled` desactivado por defecto (`false`) para no disparar peticiones innecesarias al abrir el panel o iniciar el IDE.
+  - `refreshIntervalMinutes` fijado a `0` (desactivado por defecto).
+  - Eliminado el polling en bucle de 30 segundos sobre la cuenta activa: la verificación periódica sólo se ejecuta si `autoRotateEnabled` está activo, y con un intervalo seguro de 10 minutos.
+  - Cooldown de 5 minutos al cambiar de cuenta y 30 segundos de debouncing al refrescar cuentas individuales.
+  - User-Agent dinámico que refleja la versión real instalada de Antigravity IDE.
 
 ---
 
@@ -91,3 +99,4 @@ Antigravity mantiene la base de datos `state.vscdb` en memoria y sobreescribe el
 - **Límite máximo recomendado**: No crear ni superar ~75 a 78 cuentas en un mismo entorno / IP / máquina.
 - **Motivo**: Los sistemas heurísticos de abuso de Google detectan patrones masivos de creación a partir de ese umbral y proceden a suspender o solicitar verificación inmediata en las cuentas nuevas.
 - Mantener un pool de 70 a 78 cuentas activas garantiza rotación continua y máxima vida útil sin bloqueos.
+- Se recomienda no abusar del botón de "Refrescar todas las cuentas" manualmente y dejar que el sistema opere con las cuotas cacheadas.
