@@ -8,6 +8,7 @@
 
 import { Account, AccountCreationData, AccountTokens, AccountSummary } from '../models/account.model';
 import { DeviceProfile } from '../models/device-profile.model';
+import { Workflow } from '../models/workflow.model';
 
 export interface IAccountRepository {
   /** Get all stored accounts (without tokens) */
@@ -63,4 +64,22 @@ export interface IAccountRepository {
 
   /** Set pending refresh account emails to resume after account switch */
   setPendingRefreshEmails(emails: string[]): Promise<void>;
+
+  /** Get all defined workflows */
+  getWorkflows(): Promise<Workflow[]>;
+
+  /** Save or update a workflow */
+  saveWorkflow(workflow: Workflow): Promise<void>;
+
+  /** Delete a workflow (unassigns accounts from this workflow without deleting the accounts) */
+  deleteWorkflow(workflowId: string): Promise<void>;
+
+  /** Rename a workflow */
+  renameWorkflow(workflowId: string, newName: string): Promise<void>;
+
+  /** Get currently active workflow filter (null = all accounts) */
+  getActiveWorkflowId(): Promise<string | null>;
+
+  /** Set currently active workflow filter (null = all accounts) */
+  setActiveWorkflowId(workflowId: string | null): Promise<void>;
 }

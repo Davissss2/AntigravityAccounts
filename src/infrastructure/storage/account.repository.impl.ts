@@ -10,6 +10,7 @@ import * as vscode from 'vscode';
 import { IAccountRepository } from '../../core/domain/repositories/account.repository';
 import { Account, AccountCreationData, AccountTokens, AccountSummary } from '../../core/domain/models/account.model';
 import { DeviceProfile } from '../../core/domain/models/device-profile.model';
+import { Workflow } from '../../core/domain/models/workflow.model';
 import { STORAGE_KEYS, SECRET_KEYS } from '../../core/constants/app.constants';
 import { Logger } from '../../core/utils/logger';
 
@@ -44,11 +45,17 @@ export class AccountRepositoryImpl implements IAccountRepository {
       addedAt: new Date().toISOString(),
       isActive: false,
       hasDeviceProfile: false,
+      workflow: data.workflow,
     };
 
     if (existingIndex >= 0) {
       // Keep existing data (like alias), update core info
-      accounts[existingIndex] = { ...accounts[existingIndex], ...newAccount, addedAt: accounts[existingIndex].addedAt };
+      accounts[existingIndex] = {
+        ...accounts[existingIndex],
+        ...newAccount,
+        workflow: data.workflow !== undefined ? data.workflow : accounts[existingIndex].workflow,
+        addedAt: accounts[existingIndex].addedAt
+      };
     } else {
       accounts.push(newAccount);
     }
@@ -145,7 +152,8 @@ export class AccountRepositoryImpl implements IAccountRepository {
       avatarUrl: a.avatarUrl,
       balances: a.balances,
       status: a.status,
-      isActive: a.isActive
+      isActive: a.isActive,
+      workflow: a.workflow,
     }));
   }
 
@@ -205,5 +213,69 @@ export class AccountRepositoryImpl implements IAccountRepository {
 
   async setPendingRefreshEmails(emails: string[]): Promise<void> {
     await this.context.globalState.update(STORAGE_KEYS.PENDING_REFRESH_EMAILS, emails);
+  }
+
+  // ── Workflow Management ───────────────────────────────────────────────────
+
+  async getWorkflows(): Promise<Workflow[]> {
+    return this.context.globalState.get<Workflow[]>(STORAGE_KEYS.WORKFLOWS, []);
+  }
+
+  async saveWorkflow(workflow: Workflow): Promise<void> {
+    const workflows = await this.getWorkflows();
+    const index = workflows.findIndex(w => w.id === workflow.id);
+    if (index >= 0) {
+      workflows[index] = { ...workflows[index], ...workflow };
+    } else {
+      workflows.push(workflow);
+    }
+    await this.context.globalState.update(STORAGE_KEYS.WORKFLOWS, workflows);
+    Logger.getInstance().info(`Workflow saved: ${workflow.name} (${workflow.id})`);
+  }
+
+  async deleteWorkflow(workflowId: string): Promise<void> {
+    const workflows = await this.getWorkflows();
+    const filtered = workflows.filter(w => w.id !== workflowId);
+    await this.context.globalState.update(STORAGE_KEYS.WORKFLOWS, filtered);
+
+    // Unassign accounts that belonged to this workflow (do not delete the accounts!)
+    const accounts = await this.getAllAccounts();
+    let accountsUpdated = false;
+    for (const acc of accounts) {
+      if (acc.workflow === workflowId) {
+        acc.workflow = undefined;
+        accountsUpdated = true;
+      }
+    }
+    if (accountsUpdated) {
+      await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, accounts);
+    }
+
+    // Reset active workflow if it was the deleted one
+    const activeWf = await this.getActiveWorkflowId();
+    if (activeWf === workflowId) {
+      await this.setActiveWorkflowId(null);
+    }
+
+    Logger.getInstance().info(`Workflow deleted: ${workflowId}`);
+  }
+
+  async renameWorkflow(workflowId: string, newName: string): Promise<void> {
+    const workflows = await this.getWorkflows();
+    const target = workflows.find(w => w.id === workflowId);
+    if (target) {
+      target.name = newName.trim();
+      await this.context.globalState.update(STORAGE_KEYS.WORKFLOWS, workflows);
+      Logger.getInstance().info(`Workflow ${workflowId} renamed to: ${newName}`);
+    }
+  }
+
+  async getActiveWorkflowId(): Promise<string | null> {
+    return this.context.globalState.get<string | null>(STORAGE_KEYS.ACTIVE_WORKFLOW, null);
+  }
+
+  async setActiveWorkflowId(workflowId: string | null): Promise<void> {
+    await this.context.globalState.update(STORAGE_KEYS.ACTIVE_WORKFLOW, workflowId);
+    Logger.getInstance().info(`Active workflow set to: ${workflowId || '(all)'}`);
   }
 }

@@ -63,6 +63,9 @@ export interface Account {
 
   /** Whether a device profile has been generated for this account */
   hasDeviceProfile: boolean;
+
+  /** Workflow / category ID this account belongs to (optional) */
+  workflow?: string;
 }
 
 /** Minimal data needed to create a new account after OAuth */
@@ -76,6 +79,8 @@ export interface AccountCreationData {
   expiresAt: number; // Unix timestamp in seconds
   /** GCP Terms of Service acceptance flag (auto-corrected based on email domain) */
   isGcpTos?: boolean;
+  /** Workflow ID this account belongs to (optional) */
+  workflow?: string;
 }
 
 /** Token pair stored in SecretStorage */
@@ -94,4 +99,5 @@ export interface AccountSummary {
   balances?: Record<string, any>;
   status: AccountStatus;
   isActive: boolean;
+  workflow?: string;
 }

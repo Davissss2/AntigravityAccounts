@@ -15,6 +15,7 @@ import { I18nService } from '../../i18n/i18n.service';
 import { Logger } from '../../core/utils/logger';
 import { Account, AccountTokens, AccountStatus } from '../../core/domain/models/account.model';
 import { DeviceProfile } from '../../core/domain/models/device-profile.model';
+import { Workflow } from '../../core/domain/models/workflow.model';
 import { CryptoUtils } from '../../core/utils/crypto.utils';
 import { ExtensionConfig } from '../../core/config/extension.config';
 import { getFriendlyModelName, normalizeModelKey } from '../../core/utils/model.utils';
@@ -54,6 +55,9 @@ interface LegacyExportPayload {
 export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'antigravity-account.accountsView';
   private _view?: vscode.WebviewView;
+
+  /** Cached list of workflows */
+  private _workflows: Workflow[] = [];
 
   /**
    * Cached email of the account pinned by detectAndPinActiveAccount().
@@ -230,6 +234,178 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         case 'importAccounts':
           await this.handleImport();
           break;
+        case 'createWorkflow': {
+          let name = message.name;
+          if (!name) {
+            name = await vscode.window.showInputBox({
+              prompt: i18n.t('workflows.createPrompt'),
+              placeHolder: i18n.t('workflows.createPlaceholder'),
+              validateInput: (val) => {
+                if (!val || !val.trim()) return i18n.t('workflows.createPlaceholder');
+                return undefined;
+              }
+            });
+          }
+          if (name && name.trim()) {
+            const workflowId = 'wf_' + Date.now();
+            await this.accountRepo.saveWorkflow({
+              id: workflowId,
+              name: name.trim(),
+              createdAt: new Date().toISOString(),
+            });
+            await this.accountRepo.setActiveWorkflowId(workflowId);
+            await this.refresh();
+          }
+          break;
+        }
+        case 'deleteWorkflow': {
+          if (message.workflowId) {
+            const workflows = await this.accountRepo.getWorkflows();
+            const target = workflows.find(w => w.id === message.workflowId);
+            const wfName = target ? target.name : message.workflowId;
+            const confirm = await vscode.window.showWarningMessage(
+              i18n.t('workflows.confirmDelete', { name: wfName }),
+              { modal: true },
+              i18n.t('workflows.delete')
+            );
+            if (confirm === i18n.t('workflows.delete')) {
+              await this.accountRepo.deleteWorkflow(message.workflowId);
+              await this.refresh();
+            }
+          }
+          break;
+        }
+        case 'renameWorkflow': {
+          if (message.workflowId) {
+            const workflows = await this.accountRepo.getWorkflows();
+            const target = workflows.find(w => w.id === message.workflowId);
+            const currentName = target ? target.name : '';
+            const newName = await vscode.window.showInputBox({
+              prompt: i18n.t('workflows.renamePrompt', { name: currentName }),
+              value: currentName,
+              validateInput: (val) => {
+                if (!val || !val.trim()) return i18n.t('workflows.createPlaceholder');
+                return undefined;
+              }
+            });
+            if (newName && newName.trim() && newName.trim() !== currentName) {
+              await this.accountRepo.renameWorkflow(message.workflowId, newName.trim());
+              await this.refresh();
+            }
+          }
+          break;
+        }
+        case 'workflowOptions': {
+          if (message.workflowId) {
+            const workflows = await this.accountRepo.getWorkflows();
+            const target = workflows.find(w => w.id === message.workflowId);
+            const wfName = target ? target.name : (message.workflowName || message.workflowId);
+
+            const picked = await vscode.window.showQuickPick([
+              {
+                label: `$(edit) ${i18n.t('workflows.rename')}`,
+                action: 'rename',
+              },
+              {
+                label: `$(trash) ${i18n.t('workflows.delete')}`,
+                action: 'delete',
+              }
+            ], {
+              placeHolder: `Workflow: ${wfName}`,
+            });
+
+            if (picked) {
+              if (picked.action === 'rename') {
+                const newName = await vscode.window.showInputBox({
+                  prompt: i18n.t('workflows.renamePrompt', { name: wfName }),
+                  value: wfName,
+                  validateInput: (val) => {
+                    if (!val || !val.trim()) return i18n.t('workflows.createPlaceholder');
+                    return undefined;
+                  }
+                });
+                if (newName && newName.trim() && newName.trim() !== wfName) {
+                  await this.accountRepo.renameWorkflow(message.workflowId, newName.trim());
+                  await this.refresh();
+                }
+              } else if (picked.action === 'delete') {
+                const confirm = await vscode.window.showWarningMessage(
+                  i18n.t('workflows.confirmDelete', { name: wfName }),
+                  { modal: true },
+                  i18n.t('workflows.delete')
+                );
+                if (confirm === i18n.t('workflows.delete')) {
+                  await this.accountRepo.deleteWorkflow(message.workflowId);
+                  await this.refresh();
+                }
+              }
+            }
+          }
+          break;
+        }
+        case 'setActiveWorkflow': {
+          await this.accountRepo.setActiveWorkflowId(message.workflowId || null);
+          break;
+        }
+        case 'assignAccountWorkflow': {
+          if (message.email) {
+            const workflows = await this.accountRepo.getWorkflows();
+            const currentAcc = await this.accountRepo.getAccount(message.email);
+            
+            interface AssignItem extends vscode.QuickPickItem {
+              workflowId?: string | null;
+              isCreate?: boolean;
+            }
+
+            const items: AssignItem[] = [
+              {
+                label: `$(close) ${i18n.t('workflows.unassign')}`,
+                description: !currentAcc?.workflow ? '✓' : '',
+                workflowId: null,
+              },
+              ...workflows.map(w => ({
+                label: `$(folder) ${w.name}`,
+                description: currentAcc?.workflow === w.id ? '✓' : '',
+                workflowId: w.id,
+              })),
+              {
+                label: `$(plus) ${i18n.t('workflows.newWorkflow')}`,
+                isCreate: true,
+              }
+            ];
+
+            const picked = await vscode.window.showQuickPick(items, {
+              placeHolder: i18n.t('workflows.assignPrompt', { email: message.email }),
+            });
+
+            if (picked) {
+              if (picked.isCreate) {
+                const name = await vscode.window.showInputBox({
+                  prompt: i18n.t('workflows.createPrompt'),
+                  placeHolder: i18n.t('workflows.createPlaceholder'),
+                  validateInput: (val) => {
+                    if (!val || !val.trim()) return i18n.t('workflows.createPlaceholder');
+                    return undefined;
+                  }
+                });
+                if (name && name.trim()) {
+                  const newWfId = 'wf_' + Date.now();
+                  await this.accountRepo.saveWorkflow({
+                    id: newWfId,
+                    name: name.trim(),
+                    createdAt: new Date().toISOString(),
+                  });
+                  await this.accountRepo.updateAccount(message.email, { workflow: newWfId });
+                  await this.refresh();
+                }
+              } else {
+                await this.accountRepo.updateAccount(message.email, { workflow: picked.workflowId || undefined });
+                await this.refresh();
+              }
+            }
+          }
+          break;
+        }
         case 'saveSettings': {
           try {
             const config = vscode.workspace.getConfiguration('antigravityAccount');
@@ -629,7 +805,85 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         return;
       }
 
-      // ── Step 1: Ask user for an encryption password ──
+      // ── Step 1: Select workflow filter if workflows exist ──
+      const workflows = await this.accountRepo.getWorkflows();
+      const activeWorkflowId = await this.accountRepo.getActiveWorkflowId();
+      let accountsToExport = accounts;
+
+      if (workflows.length > 0) {
+        interface ExportOption extends vscode.QuickPickItem {
+          targetWorkflowId?: string | null;
+        }
+
+        const options: ExportOption[] = [
+          {
+            label: `$(archive) ${i18n.t('workflows.exportAll', { count: accounts.length })}`,
+            targetWorkflowId: null,
+          }
+        ];
+
+        // Active workflow if any
+        if (activeWorkflowId && activeWorkflowId !== 'all') {
+          if (activeWorkflowId === 'uncategorized') {
+            const count = accounts.filter(a => !a.workflow).length;
+            options.push({
+              label: `$(file) ${i18n.t('workflows.exportUncategorized', { count })}`,
+              description: i18n.t('webview.active') || 'Activo',
+              targetWorkflowId: 'uncategorized',
+            });
+          } else {
+            const activeWf = workflows.find(w => w.id === activeWorkflowId);
+            if (activeWf) {
+              const count = accounts.filter(a => a.workflow === activeWorkflowId).length;
+              options.push({
+                label: `$(folder-active) ${i18n.t('workflows.exportWorkflow', { name: activeWf.name, count })}`,
+                description: i18n.t('webview.active') || 'Activo',
+                targetWorkflowId: activeWorkflowId,
+              });
+            }
+          }
+        }
+
+        // Other workflows
+        for (const wf of workflows) {
+          if (wf.id === activeWorkflowId) continue;
+          const count = accounts.filter(a => a.workflow === wf.id).length;
+          options.push({
+            label: `$(folder) ${i18n.t('workflows.exportWorkflow', { name: wf.name, count })}`,
+            targetWorkflowId: wf.id,
+          });
+        }
+
+        // Uncategorized if not already added
+        if (activeWorkflowId !== 'uncategorized') {
+          const uncategorizedCount = accounts.filter(a => !a.workflow).length;
+          if (uncategorizedCount > 0) {
+            options.push({
+              label: `$(file) ${i18n.t('workflows.exportUncategorized', { count: uncategorizedCount })}`,
+              targetWorkflowId: 'uncategorized',
+            });
+          }
+        }
+
+        const picked = await vscode.window.showQuickPick(options, {
+          placeHolder: i18n.t('workflows.exportTitle'),
+        });
+
+        if (!picked) return; // User cancelled
+
+        if (picked.targetWorkflowId === 'uncategorized') {
+          accountsToExport = accounts.filter(a => !a.workflow);
+        } else if (picked.targetWorkflowId) {
+          accountsToExport = accounts.filter(a => a.workflow === picked.targetWorkflowId);
+        }
+      }
+
+      if (accountsToExport.length === 0) {
+        vscode.window.showWarningMessage(i18n.t('accounts.noValidExportData'));
+        return;
+      }
+
+      // ── Step 2: Ask user for an encryption password ──
       const password = await vscode.window.showInputBox({
         prompt: i18n.t('accounts.exportPasswordPrompt'),
         password: true,
@@ -644,7 +898,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
       if (!password) return; // User cancelled
 
-      // ── Step 2: Confirm password ──
+      // ── Step 3: Confirm password ──
       const confirmPassword = await vscode.window.showInputBox({
         prompt: i18n.t('accounts.exportPasswordConfirm'),
         password: true,
@@ -658,9 +912,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
       this._view?.webview.postMessage({ command: 'showLoading', text: i18n.t('accounts.preparingExport') });
 
-      // ── Step 3: Collect account data ──
+      // ── Step 4: Collect account data ──
       const exportedAccounts: ExportedAccount[] = [];
-      for (const acc of accounts) {
+      for (const acc of accountsToExport) {
         const tokens = await this.accountRepo.getTokens(acc.email);
         const deviceProfile = await this.accountRepo.getDeviceProfile(acc.email);
         if (!tokens) {
@@ -829,6 +1083,71 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         }
       }
 
+      this._view?.webview.postMessage({ command: 'hideLoading' });
+
+      // ── Step: Ask user where to import these accounts ──
+      const existingWorkflows = await this.accountRepo.getWorkflows();
+      let targetWorkflowId: string | undefined | null = null; // null = preserve / default, undefined = uncategorized, string = specific wf
+
+      interface ImportOption extends vscode.QuickPickItem {
+        action: 'keep' | 'workflow' | 'create';
+        workflowId?: string;
+      }
+
+      const importOptions: ImportOption[] = [
+        {
+          label: `$(archive) ${i18n.t('workflows.importKeep')}`,
+          description: i18n.t('webview.sortDefault') || 'Original',
+          action: 'keep',
+        },
+      ];
+
+      for (const wf of existingWorkflows) {
+        importOptions.push({
+          label: `$(folder) ${i18n.t('workflows.importToWorkflow', { name: wf.name })}`,
+          action: 'workflow',
+          workflowId: wf.id,
+        });
+      }
+
+      importOptions.push({
+        label: `$(plus) ${i18n.t('workflows.importCreateNew')}`,
+        action: 'create',
+      });
+
+      const selectedImportOption = await vscode.window.showQuickPick(importOptions, {
+        placeHolder: i18n.t('workflows.importTitle'),
+      });
+
+      if (!selectedImportOption) {
+        return; // User cancelled import
+      }
+
+      if (selectedImportOption.action === 'create') {
+        const newWfName = await vscode.window.showInputBox({
+          prompt: i18n.t('workflows.createPrompt'),
+          placeHolder: i18n.t('workflows.createPlaceholder'),
+          validateInput: (val) => {
+            if (!val || !val.trim()) return i18n.t('workflows.createPlaceholder');
+            return undefined;
+          }
+        });
+        if (!newWfName) {
+          return; // User cancelled
+        }
+        const newWfId = 'wf_' + Date.now();
+        await this.accountRepo.saveWorkflow({
+          id: newWfId,
+          name: newWfName.trim(),
+          createdAt: new Date().toISOString(),
+        });
+        targetWorkflowId = newWfId;
+      } else if (selectedImportOption.action === 'workflow') {
+        targetWorkflowId = selectedImportOption.workflowId;
+      } else {
+        targetWorkflowId = null; // keep
+      }
+
       this._view?.webview.postMessage({ command: 'showLoading', text: i18n.t('accounts.importingAccounts') });
 
       // Get existing accounts to check for duplicates
@@ -845,6 +1164,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           continue;
         }
 
+        const finalWorkflow = (targetWorkflowId === null)
+          ? entry.account.workflow
+          : targetWorkflowId;
+
         // Save the account
         await this.accountRepo.saveAccount({
           email: entry.account.email,
@@ -854,6 +1177,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           accessToken: entry.tokens.accessToken,
           refreshToken: entry.tokens.refreshToken,
           expiresAt: entry.tokens.expiresAt,
+          workflow: finalWorkflow,
         });
 
         // Restore balances and other metadata
@@ -863,6 +1187,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           status: entry.account.status,
           alias: entry.account.alias,
           hasDeviceProfile: !!entry.deviceProfile,
+          workflow: finalWorkflow,
         });
 
         // Restore device profile if available
@@ -872,6 +1197,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
         importedCount++;
         logger.info(`Import: Added ${entry.email}.`);
+      }
+
+      if (targetWorkflowId) {
+        await this.accountRepo.setActiveWorkflowId(targetWorkflowId);
       }
 
       this._view?.webview.postMessage({ command: 'hideLoading' });
@@ -990,6 +1319,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     };
     const configCacheDurationDays = vscode.workspace.getConfiguration('antigravityAccount').get<number>('cacheDurationDays', 7);
     const accounts = await this.accountRepo.getAccountSummaries();
+    this._workflows = await this.accountRepo.getWorkflows();
+    const activeWorkflowId = await this.accountRepo.getActiveWorkflowId();
 
     // ── Preferred Model Resolution ──
     // Extract available model keys from all accounts with balances (after filtering)
@@ -1102,6 +1433,55 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         </div>
         <p>${i18n.t('accounts.noAccountsRegistered')}</p>
         <button class="btn btn-primary main-btn" onclick="sendMessage('addAccount')">${i18n.t('accounts.addNewAccount')}</button>
+      </div>
+    `;
+
+    // Generate Workflows Navigation Bar HTML
+    const totalAccounts = accounts.length;
+    const uncategorizedCount = accounts.filter(a => !a.workflow).length;
+
+    let workflowChipsHtml = `
+      <button class="workflow-chip ${!activeWorkflowId || activeWorkflowId === 'all' ? 'active' : ''}" data-workflow-id="all" onclick="selectWorkflowFilter('all')">
+        <span>${i18n.t('workflows.all')}</span>
+        <span class="workflow-chip-count">${totalAccounts}</span>
+      </button>
+    `;
+
+    for (const wf of this._workflows) {
+      const count = accounts.filter(a => a.workflow === wf.id).length;
+      const isActive = activeWorkflowId === wf.id;
+      workflowChipsHtml += `
+        <div class="workflow-chip ${isActive ? 'active' : ''}" data-workflow-id="${wf.id}" onclick="selectWorkflowFilter('${wf.id}')">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <span>${wf.name}</span>
+          <span class="workflow-chip-count">${count}</span>
+          <span class="workflow-chip-btn" onclick="showWorkflowActions(event, '${wf.id}', '${wf.name.replace(/'/g, "\\'")}')" title="${i18n.t('accounts.more')}">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+          </span>
+        </div>
+      `;
+    }
+
+    if (uncategorizedCount > 0 && this._workflows.length > 0) {
+      const isActive = activeWorkflowId === 'uncategorized';
+      workflowChipsHtml += `
+        <button class="workflow-chip ${isActive ? 'active' : ''}" data-workflow-id="uncategorized" onclick="selectWorkflowFilter('uncategorized')">
+          <span>${i18n.t('workflows.uncategorized')}</span>
+          <span class="workflow-chip-count">${uncategorizedCount}</span>
+        </button>
+      `;
+    }
+
+    workflowChipsHtml += `
+      <button class="btn-new-workflow" onclick="handleCreateWorkflow()" title="${i18n.t('workflows.newWorkflow')}">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span>${i18n.t('workflows.newWorkflow')}</span>
+      </button>
+    `;
+
+    const workflowBarHtml = `
+      <div class="workflow-bar" id="workflowBar">
+        ${workflowChipsHtml}
       </div>
     `;
 
@@ -2459,6 +2839,143 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
           .dropdown-item:disabled:hover { background: none; }
           .dropdown-icon { font-size: 0.95rem; display: inline-flex; align-items: center; justify-content: center; }
+
+          /* ── Workflows Bar ── */
+          .workflow-bar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 2px 8px 2px;
+            margin-bottom: 6px;
+            overflow-x: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-color) transparent;
+          }
+          .workflow-bar::-webkit-scrollbar {
+            height: 3px;
+          }
+          .workflow-bar::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+          }
+          .workflow-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.74rem;
+            font-weight: 500;
+            background: var(--surface-light);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.15s ease;
+            user-select: none;
+            outline: none;
+          }
+          .workflow-chip:hover {
+            background: var(--hover-bg);
+            color: var(--text-primary);
+            border-color: var(--focus-border);
+          }
+          .workflow-chip.active {
+            background: var(--primary-gradient);
+            color: #fff;
+            border-color: transparent;
+            box-shadow: 0 2px 8px rgba(124, 58, 237, 0.35);
+            font-weight: 600;
+          }
+          .workflow-chip-count {
+            font-size: 0.68rem;
+            opacity: 0.85;
+            background: rgba(255, 255, 255, 0.12);
+            padding: 1px 5px;
+            border-radius: 8px;
+            margin-inline-start: 2px;
+          }
+          .workflow-chip.active .workflow-chip-count {
+            background: rgba(0, 0, 0, 0.25);
+            color: #fff;
+          }
+          .workflow-chip-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px;
+            margin-inline-start: 2px;
+            border-radius: 4px;
+            opacity: 0.65;
+            transition: opacity 0.12s, background 0.12s;
+            cursor: pointer;
+          }
+          .workflow-chip-btn:hover {
+            opacity: 1;
+            background: rgba(255, 255, 255, 0.15);
+          }
+          .btn-new-workflow {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.74rem;
+            font-weight: 500;
+            background: transparent;
+            color: var(--primary-light, #a78bfa);
+            border: 1px dashed var(--focus-border);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.15s ease;
+            outline: none;
+          }
+          .btn-new-workflow:hover {
+            background: rgba(124, 58, 237, 0.12);
+            color: #fff;
+            border-style: solid;
+          }
+
+          /* ── Card Workflow Badge ── */
+          .card-workflow-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 7px;
+            border-radius: 10px;
+            font-size: 0.69rem;
+            font-weight: 500;
+            background: rgba(124, 58, 237, 0.12);
+            color: var(--primary-light, #a78bfa);
+            border: 1px solid rgba(124, 58, 237, 0.25);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            max-width: 140px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            user-select: none;
+          }
+          .card-workflow-badge:hover {
+            background: rgba(124, 58, 237, 0.25);
+            border-color: var(--focus-border);
+            color: #fff;
+          }
+          .card-workflow-badge.unassigned {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px dashed rgba(156, 163, 175, 0.35);
+            opacity: 0.75;
+          }
+          .card-workflow-badge.unassigned:hover {
+            background: var(--surface-light);
+            color: var(--text-secondary);
+            opacity: 1;
+            border-style: solid;
+          }
+          .workflow-hidden {
+            display: none !important;
+          }
         </style>
       </head>
       <body>
@@ -2540,6 +3057,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             </select>
           </label>
         </div>` : ''}
+
+        ${accounts.length > 0 || this._workflows.length > 0 ? workflowBarHtml : ''}
 
         <div id="accounts-list">
           <!-- Refresh Progress Banner -->
@@ -2824,9 +3343,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                 searchDebounceTimer = null;
               }
               applySearchFilter(query);
-              // Now collect visible (filtered) account emails
-              const visibleCards = document.querySelectorAll('.account-card:not(.search-hidden)');
-              if (visibleCards.length === 0) return; // No results, do nothing
+            }
+
+            // If a specific workflow is active (or search query is active), refresh only visible accounts!
+            if (currentWorkflowFilter !== 'all' || query) {
+              const visibleCards = document.querySelectorAll('.account-card:not(.workflow-hidden):not(.search-hidden)');
+              if (visibleCards.length === 0) return; // No visible results, do nothing
               const filteredEmails = Array.from(visibleCards).map(c => c.dataset.email);
               vscode.postMessage({ command: 'refreshAccounts', filteredEmails });
             } else {
@@ -2859,7 +3381,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             select.value = '';
 
             let targetEmails = [];
-            const cards = document.querySelectorAll('.account-card');
+            // Target only cards currently visible in the active workflow
+            const cards = document.querySelectorAll('.account-card:not(.workflow-hidden)');
 
             const getCheckModel = (card) => {
               const email = card.dataset.email;
@@ -2942,30 +3465,28 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             const cards = document.querySelectorAll('.account-card');
             const noResults = document.getElementById('searchNoResults');
             const clearBtn = document.getElementById('searchClearBtn');
-            const q = query.toLowerCase().trim();
+            const q = (query || '').toLowerCase().trim();
 
             if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
-
-            if (!q) {
-              // Show all cards, hide no-results
-              cards.forEach(c => c.classList.remove('search-hidden'));
-              if (noResults) noResults.style.display = 'none';
-              return;
-            }
 
             let visibleCount = 0;
             cards.forEach(card => {
               const email = (card.dataset.email || '').toLowerCase();
               const name = (card.dataset.name || '').toLowerCase();
-              if (email.includes(q) || name.includes(q)) {
+              const alias = (card.dataset.alias || '').toLowerCase();
+              const textMatches = !q || email.includes(q) || name.includes(q) || alias.includes(q);
+
+              if (textMatches) {
                 card.classList.remove('search-hidden');
-                visibleCount++;
+                if (!card.classList.contains('workflow-hidden')) {
+                  visibleCount++;
+                }
               } else {
                 card.classList.add('search-hidden');
               }
             });
 
-            if (noResults) noResults.style.display = visibleCount === 0 ? 'block' : 'none';
+            if (noResults) noResults.style.display = (visibleCount === 0 && cards.length > 0) ? 'block' : 'none';
           }
 
           function onSearchInput(e) {
@@ -2990,6 +3511,71 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             // Keep search input available during refresh so users can search and switch accounts freely
             const input = document.getElementById('searchInput');
             if (input) input.disabled = false;
+          }
+
+          // ── Workflows ──
+          let currentWorkflowFilter = ${JSON.stringify(activeWorkflowId || 'all')};
+
+          function selectWorkflowFilter(workflowId) {
+            currentWorkflowFilter = workflowId;
+            document.querySelectorAll('#workflowBar .workflow-chip').forEach(chip => {
+              chip.classList.toggle('active', chip.dataset.workflowId === workflowId);
+            });
+            applyWorkflowFilter(workflowId);
+            vscode.postMessage({
+              command: 'setActiveWorkflow',
+              workflowId: workflowId === 'all' ? null : workflowId
+            });
+          }
+
+          function applyWorkflowFilter(workflowId) {
+            const cards = document.querySelectorAll('.account-card');
+            const noResults = document.getElementById('searchNoResults');
+            let visibleCount = 0;
+            cards.forEach(card => {
+              const cardWf = card.dataset.workflow || '';
+              let match = false;
+              if (workflowId === 'all') {
+                match = true;
+              } else if (workflowId === 'uncategorized') {
+                match = !cardWf;
+              } else {
+                match = (cardWf === workflowId);
+              }
+
+              if (match) {
+                card.classList.remove('workflow-hidden');
+                if (!card.classList.contains('search-hidden')) {
+                  visibleCount++;
+                }
+              } else {
+                card.classList.add('workflow-hidden');
+              }
+            });
+
+            if (noResults) noResults.style.display = (visibleCount === 0 && cards.length > 0) ? 'block' : 'none';
+          }
+
+          function handleAssignWorkflow(email) {
+            vscode.postMessage({
+              command: 'assignAccountWorkflow',
+              email: email
+            });
+          }
+
+          function handleCreateWorkflow() {
+            vscode.postMessage({
+              command: 'createWorkflow'
+            });
+          }
+
+          function showWorkflowActions(e, wfId, wfName) {
+            e.stopPropagation();
+            vscode.postMessage({
+              command: 'workflowOptions',
+              workflowId: wfId,
+              workflowName: wfName
+            });
           }
 
           // Attach search listener and restore state
@@ -3020,6 +3606,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                 input.focus();
               }
             }
+            // Apply initial workflow filter
+            applyWorkflowFilter(currentWorkflowFilter);
           })();
 
           // ── Cancel confirmation ──
@@ -3608,6 +4196,13 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                     } else if (preferredHeader && preferredHeader.dataset.modelKey === activeModelKey) {
                        preferredHeader.classList.add('active-model');
                     }
+                  }
+
+                  // Re-apply workflow and search filters to preserve active view
+                  applyWorkflowFilter(currentWorkflowFilter);
+                  const sInput = document.getElementById('searchInput');
+                  if (sInput && sInput.value.trim()) {
+                    applySearchFilter(sInput.value);
                   }
                 }
               }
@@ -4347,8 +4942,21 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     }
     const modelBalancesStr = JSON.stringify(modelBalancesMap).replace(/'/g, '&apos;');
 
+    const currentWf = acc.workflow ? this._workflows.find(w => w.id === acc.workflow) : undefined;
+    const currentWfName = currentWf ? currentWf.name : (acc.workflow || '');
+
+    const workflowBadgeHtml = currentWfName
+      ? `<span class="card-workflow-badge" onclick="event.stopPropagation(); handleAssignWorkflow('${acc.email}')" title="${i18n.t('workflows.badgeTooltip')}">
+           <svg class="icon-svg" style="width:11px; height:11px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+           <span>${currentWfName}</span>
+         </span>`
+      : `<span class="card-workflow-badge unassigned" onclick="event.stopPropagation(); handleAssignWorkflow('${acc.email}')" title="${i18n.t('workflows.badgeTooltip')}">
+           <svg class="icon-svg" style="width:10px; height:10px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+           <span>${i18n.t('workflows.uncategorized')}</span>
+         </span>`;
+
     return `
-      <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''} ${isIneligible ? 'ineligible' : ''} ${acc.status === AccountStatus.DEPLETED ? 'depleted' : ''}" data-email="${acc.email}" data-name="${displayName}" data-alias="${acc.alias || ''}" data-status="${acc.status}" data-model-balances='${modelBalancesStr}'>
+      <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''} ${isIneligible ? 'ineligible' : ''} ${acc.status === AccountStatus.DEPLETED ? 'depleted' : ''}" data-email="${acc.email}" data-name="${displayName}" data-alias="${acc.alias || ''}" data-status="${acc.status}" data-workflow="${acc.workflow || ''}" data-model-balances='${modelBalancesStr}'>
         <div class="card-header">
           ${acc.avatarUrl ? `<img class="avatar ${avatarClass}" src="${acc.avatarUrl}" alt="${displayName}" />` : `<div class="avatar ${avatarClass}">${displayName.charAt(0).toUpperCase()}</div>`}
           <div class="user-info">
@@ -4363,7 +4971,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               </button>
             </div>
             <p>${acc.email}</p>
-            ${nextResetHtml}
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:3px;">
+              ${workflowBadgeHtml}
+              ${nextResetHtml}
+            </div>
           </div>
           ${activeBadge}
         </div>

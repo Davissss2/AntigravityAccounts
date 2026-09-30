@@ -13,6 +13,7 @@ export {
   AccountTokens,
   AccountSummary,
 } from './models/account.model';
+export { Workflow } from './models/workflow.model';
 
 // Repository Interfaces
 export { IAccountRepository } from './repositories/account.repository';

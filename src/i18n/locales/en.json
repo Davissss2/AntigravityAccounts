@@ -291,5 +291,30 @@
   "theme": {
     "darkMode": "Dark Mode",
     "lightMode": "Light Mode"
+  },
+  "workflows": {
+    "title": "Workflows",
+    "all": "All",
+    "uncategorized": "Uncategorized",
+    "newWorkflow": "New Workflow",
+    "createPrompt": "New Workflow name (e.g. Home, Work, Clients):",
+    "createPlaceholder": "Workflow name",
+    "rename": "Rename",
+    "renamePrompt": "New name for workflow '{{name}}':",
+    "delete": "Delete",
+    "confirmDelete": "Are you sure you want to delete workflow '{{name}}'? Assigned accounts will not be deleted, only uncategorized.",
+    "assignPrompt": "Select workflow for {{email}}:",
+    "unassign": "Remove from workflow (Uncategorized)",
+    "exportTitle": "Which accounts would you like to export?",
+    "exportAll": "📦 All accounts ({{count}})",
+    "exportWorkflow": "📁 Only workflow '{{name}}' ({{count}} accounts)",
+    "exportUncategorized": "📄 Only uncategorized accounts ({{count}} accounts)",
+    "importTitle": "Which workflow would you like to import these accounts into?",
+    "importKeep": "📁 Keep workflow from backup / Uncategorized",
+    "importToWorkflow": "📁 Import into workflow '{{name}}'",
+    "importCreateNew": "➕ Create a new Workflow for this import...",
+    "badgeTooltip": "Click to change or assign workflow",
+    "filterTooltip": "Filter by this workflow",
+    "emptyWorkflow": "No accounts registered in this workflow."
   }
 }

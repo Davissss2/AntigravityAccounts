@@ -5,6 +5,30 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-09-30
+
+### 📁 Workflows & Account Categorization System
+- **Custom Workflows / Categorization**: Users can now organize and categorize their Google Antigravity accounts into custom Workflows (e.g., *"Casa"*, *"Trabajo"*, *"Clientes"*, *"Testing"*).
+- **Interactive Workflow Navigation Bar**:
+  - Horizontal chip/pill bar displayed above account cards: `[Todos (N)] [📁 Casa (X)] [📁 Trabajo (Y)] [Sin categoría (Z)] [+ Nuevo]`.
+  - Instant client-side filtering by workflow with smooth animations.
+  - Active workflow state is persistently saved across sessions and IDE reloads.
+  - Context menu on workflow chips to easily rename or delete workflows (deleting a workflow unlinks accounts safely without deleting the accounts themselves).
+- **Account Card Workflow Badges & Assignment**:
+  - Each account card now displays an interactive workflow badge (`📁 Casa` or `+ Sin categoría`).
+  - Clicking the badge opens a quick picker to reassign the account, unlink it, or create a brand new workflow on the fly.
+  - Automatically associates newly logged-in OAuth accounts with the currently active workflow.
+
+### 🛡️ Targeted Workflow-Only Quota Refresh & Safe Scans
+- **Workflow-Scoped Refresh**: When a specific workflow is selected, clicking the global Refresh button (`⚡`) only refreshes and scans accounts belonging to that workflow, dramatically reducing API requests and further minimizing any risk of hitting Google rate limits or heuristic triggers.
+- **Segment Scans Respect Workflows**: Toolbar segment scans (*"Escanear con cuota"*, *"Escanear sin cuota"*) now exclusively target accounts within the active workflow.
+
+### 📦 Workflow-Aware Encrypted Backup & Import
+- **Selective Encrypted Export**: When exporting accounts, users can choose between exporting **all accounts**, exporting only accounts from the **currently active workflow**, or exporting accounts from any individual workflow.
+- **Targeted Workflow Import**:
+  - During backup import, users are prompted to choose whether to keep original workflows, assign all imported accounts to an existing workflow, or create a new workflow specifically for the import.
+  - Backup files store and restore workflow assignments seamlessly across devices with AES-256-GCM encryption.
+
 ## [0.3.2] - 2026-09-29
 
 ### 🛡️ Enhanced Anti-Ban Protection & Safe Defaults

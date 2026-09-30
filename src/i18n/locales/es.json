@@ -291,5 +291,30 @@
   "theme": {
     "darkMode": "Modo oscuro",
     "lightMode": "Modo claro"
+  },
+  "workflows": {
+    "title": "Workflows",
+    "all": "Todos",
+    "uncategorized": "Sin categoría",
+    "newWorkflow": "Nuevo Workflow",
+    "createPrompt": "Nombre del nuevo Workflow (ej. Casa, Trabajo, Clientes):",
+    "createPlaceholder": "Nombre del workflow",
+    "rename": "Renombrar",
+    "renamePrompt": "Nuevo nombre para el workflow '{{name}}':",
+    "delete": "Eliminar",
+    "confirmDelete": "¿Estás seguro de eliminar el workflow '{{name}}'? Las cuentas asociadas no se eliminarán, solo quedarán sin categoría.",
+    "assignPrompt": "Selecciona el workflow para {{email}}:",
+    "unassign": "Quitar del workflow (Sin categoría)",
+    "exportTitle": "¿Qué cuentas deseas exportar?",
+    "exportAll": "📦 Todas las cuentas ({{count}})",
+    "exportWorkflow": "📁 Solo workflow '{{name}}' ({{count}} cuentas)",
+    "exportUncategorized": "📄 Solo cuentas sin categoría ({{count}} cuentas)",
+    "importTitle": "¿A qué workflow deseas importar estas cuentas?",
+    "importKeep": "📁 Mantener workflow del backup / Sin categoría",
+    "importToWorkflow": "📁 Importar al workflow '{{name}}'",
+    "importCreateNew": "➕ Crear un nuevo Workflow para esta importación...",
+    "badgeTooltip": "Hacer clic para cambiar o asignar workflow",
+    "filterTooltip": "Filtrar por este workflow",
+    "emptyWorkflow": "No hay cuentas registradas en este workflow."
   }
 }
