@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 📤 Direct Workflow Export (.json)
 - Added direct **"Export workflow accounts (.json)"** option to each workflow chip's menu, automatically filtering and generating an encrypted backup named `antigravity-backup-[workflow].json`.
 
+### ⚡ Balanced & Safe Refresh Pacing ("Medio Medio")
+- **Calibrated Anti-Ban Delay**: Tuned base delay between accounts to a balanced **4.0s–8.0s** with natural random jitter, and brief 6s–10s micro-pauses every 8–12 accounts. Refreshes are significantly faster while keeping requests well within safe, natural human patterns.
+
 ## [0.3.3] - 2026-09-30
 
 ### 📁 Workflows & Account Categorization System

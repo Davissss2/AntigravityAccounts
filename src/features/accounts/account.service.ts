@@ -414,22 +414,21 @@ export class AccountService {
         }
       }
 
-      // ── Anti-Ban: High-entropy randomized delay between accounts with natural human pauses ──
+      // ── Anti-Ban: Dynamic randomized delay ("medio medio": 4s a 8s) ──
       if (accountsProcessed > 0) {
-        // Base delay: random between 12,000ms (12s) and 28,000ms (28s)
-        const minDelay = 12000;
-        const maxDelay = 28000;
+        // Base delay: random entre 4,000ms (4s) y 8,000ms (8s)
+        const minDelay = 4000;
+        const maxDelay = 8000;
         let delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
 
-        // Human-like natural break: Every 3 to 6 accounts, add an extra random pause (15s to 35s)
-        // to break automated linear polling patterns and deceive Google's heuristic detectors
-        if (accountsProcessed % (Math.floor(Math.random() * 4) + 3) === 0) {
-          const extraPause = Math.floor(Math.random() * (35000 - 15000 + 1)) + 15000;
-          Logger.getInstance().info(`Anti-ban: Adding natural human break of ${Math.round(extraPause / 1000)}s after processing ${accountsProcessed} accounts.`);
+        // Pequeña pausa natural cada 8 a 12 cuentas (6s a 10s) para romper patrones lineales
+        if (accountsProcessed % (Math.floor(Math.random() * 5) + 8) === 0) {
+          const extraPause = Math.floor(Math.random() * (10000 - 6000 + 1)) + 6000;
+          Logger.getInstance().info(`Anti-ban: Pausa natural de ${Math.round(extraPause / 1000)}s tras procesar ${accountsProcessed} cuentas.`);
           delay += extraPause;
         }
 
-        Logger.getInstance().info(`Anti-ban: Waiting ${Math.round(delay / 1000)}s before querying ${account.email}...`);
+        Logger.getInstance().info(`Anti-ban: Esperando ${(delay / 1000).toFixed(1)}s antes de consultar ${account.email}...`);
         
         await new Promise(resolve => {
           const timer = setTimeout(resolve, delay);
