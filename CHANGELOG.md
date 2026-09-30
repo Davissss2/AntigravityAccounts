@@ -5,6 +5,27 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] - 2026-09-30
+
+### 🎨 Slim & Ultra-Compact Card Redesign
+- **Zero-Height Workflow Badge**: Workflow tags are now placed inline right next to the email address on the exact same line, restoring the original slim card height and eliminating unnecessary vertical bulk.
+- **Discreet Unassigned Action**: Accounts without a workflow no longer show bulky dashed buttons; instead, a minimal and subtle `+📁` icon button sits quietly beside the email and highlights on hover.
+- **Consistent Proportions**: Preserved original 3-line user information layout (Name + Alias/Refresh, Email + Workflow Pill, Quota Countdown).
+
+### ⚡ Bulk Account Management & Multi-Select System
+- **Checkbox-Based Workflow Account Manager**: Clicking `⋮` on any workflow chip now provides a *"Manage accounts with checkboxes"* option that opens a VS Code multi-select dialog listing all accounts (pre-checked if already belonging to the workflow) with real-time fuzzy search.
+- **Batch Move & Clear Actions**:
+  - *"Move ALL accounts to this workflow"*: Assigns all registered accounts to the workflow in a single click.
+  - *"Move uncategorized accounts to this workflow"*: Batch-assigns all orphaned accounts at once.
+  - *"Clear accounts from this workflow"*: Unassigns all accounts in bulk without deleting them.
+- **In-Webview Bulk Select Mode**:
+  - New **"Select"** toggle button in the top control bar.
+  - Checkboxes appear on each account card with click-to-select support.
+  - Floating bottom action bar displays selected count, *"All"*, *"None"*, *"Move to Workflow..."*, and *"Export Selection"*.
+
+### 📤 Direct Workflow Export (.json)
+- Added direct **"Export workflow accounts (.json)"** option to each workflow chip's menu, automatically filtering and generating an encrypted backup named `antigravity-backup-[workflow].json`.
+
 ## [0.3.3] - 2026-09-30
 
 ### 📁 Workflows & Account Categorization System

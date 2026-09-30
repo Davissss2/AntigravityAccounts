@@ -8,6 +8,7 @@
 
 import * as http from 'http';
 import * as url from 'url';
+import * as vscode from 'vscode';
 import { Logger } from '../../core/utils/logger';
 import { OAUTH } from '../../core/constants/app.constants';
 import { I18nService } from '../../i18n/i18n.service';
@@ -127,6 +128,10 @@ export class OAuthServer {
     const isRtl = locale === 'ar';
     const lang = locale || 'en';
     const dir = isRtl ? 'rtl' : 'ltr';
+    const uriScheme = vscode.env?.uriScheme || 'vscode';
+    const buttonText = isSuccess
+      ? '🚀 ' + (I18nService.getInstance().t('oauth.returnToIde') || 'Volver a Antigravity')
+      : I18nService.getInstance().t('oauth.closeWindow');
     
     return `
       <!DOCTYPE html>
@@ -179,16 +184,22 @@ export class OAuthServer {
             background-color: #6b21a8;
             color: white;
             border: none;
-            padding: 10px 24px;
-            border-radius: 6px;
-            font-size: 1rem;
+            padding: 12px 28px;
+            border-radius: 8px;
+            font-size: 1.05rem;
+            font-weight: 600;
             cursor: pointer;
-            transition: background-color 0.2s;
+            transition: all 0.2s ease;
             text-decoration: none;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(107, 33, 168, 0.4);
           }
           .btn:hover {
             background-color: #9333ea;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(147, 51, 234, 0.5);
           }
           @keyframes popIn {
             0% { transform: scale(0); opacity: 0; }
@@ -201,54 +212,31 @@ export class OAuthServer {
           <div class="icon">${icon}</div>
           <h1>${title}</h1>
           <p>${message}</p>
-          <button class="btn" onclick="closeWindow()">${I18nService.getInstance().t('oauth.closeWindow')}</button>
-          <div id="close-helper" style="margin-top: 18px; font-size: 0.92rem; color: #a78bfa; display: none; line-height: 1.5; padding: 10px; border-radius: 6px; background: rgba(167, 139, 250, 0.08); border: 1px dashed rgba(167, 139, 250, 0.3);"></div>
+          <button class="btn" id="actionBtn" onclick="closeAndReturn()">${buttonText}</button>
         </div>
         <script>
-          function closeWindow() {
+          function closeAndReturn() {
+            // Attempt standard closing techniques
+            try { window.close(); } catch (e) {}
+            try { window.open('', '_self').close(); } catch (e) {}
+            try { window.top.close(); } catch (e) {}
+
+            // Return focus to Antigravity IDE immediately via protocol handler
             try {
-              window.open('', '_self', '');
-              window.close();
-            } catch (e) {
-              console.error(e);
-            }
-            // Fallback if the browser blocks closing
+              window.location.href = "${uriScheme}://";
+            } catch (e) {}
+
+            // Try closing again
             setTimeout(() => {
-              const btn = document.querySelector('.btn');
-              const helper = document.getElementById('close-helper');
-              if (btn) {
-                // Set text based on language if possible, fallback to Spanish/English
-                const isEs = document.documentElement.lang === 'es';
-                const isAr = document.documentElement.lang === 'ar';
-                if (isEs) {
-                  btn.innerText = 'Cerrar pestaña';
-                  if (helper) {
-                    helper.innerText = '⚠️ Por seguridad de tu navegador, debes cerrar esta pestaña manualmente haciendo clic en la "X" de arriba.';
-                    helper.style.display = 'block';
-                  }
-                } else if (isAr) {
-                  btn.innerText = 'إغلاق الصفحة';
-                  if (helper) {
-                    helper.innerText = '⚠️ من أجل أمان متصفحك، يرجى إغلاق هذه الصفحة يدوياً بالضغط على زر الإغلاق في الأعلى.';
-                    helper.style.display = 'block';
-                  }
-                } else {
-                  btn.innerText = 'Close Tab';
-                  if (helper) {
-                    helper.innerText = '⚠️ Due to browser security restrictions, please close this tab manually by clicking the "X" on the tab.';
-                    helper.style.display = 'block';
-                  }
-                }
-                btn.style.backgroundColor = '#475569';
-              }
+              try { window.close(); } catch (e) {}
             }, 300);
           }
 
-          // Attempt to auto-close the window after 3 seconds on success
+          // On success, automatically return focus to the IDE after 1.8 seconds
           if (${isSuccess}) {
             setTimeout(() => {
-              closeWindow();
-            }, 3000);
+              closeAndReturn();
+            }, 1800);
           }
         </script>
       </body>

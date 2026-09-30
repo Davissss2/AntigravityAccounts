@@ -300,8 +300,41 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             const workflows = await this.accountRepo.getWorkflows();
             const target = workflows.find(w => w.id === message.workflowId);
             const wfName = target ? target.name : (message.workflowName || message.workflowId);
+            const allAccounts = await this.accountRepo.getAllAccounts();
+            const wfAccounts = allAccounts.filter(a => a.workflow === message.workflowId);
+            const uncategorizedAccounts = allAccounts.filter(a => !a.workflow);
 
             const picked = await vscode.window.showQuickPick([
+              {
+                label: `$(check-all) ${i18n.t('workflows.manageAccounts')}`,
+                description: `(${wfAccounts.length} / ${allAccounts.length})`,
+                detail: i18n.t('workflows.manageAccountsDetail'),
+                action: 'manage',
+              },
+              {
+                label: `$(add) ${i18n.t('workflows.addAllAccounts')}`,
+                description: `(${allAccounts.length})`,
+                detail: i18n.t('workflows.addAllAccountsDetail', { count: allAccounts.length, name: wfName }),
+                action: 'addAll',
+              },
+              {
+                label: `$(diff-added) ${i18n.t('workflows.addUncategorized')}`,
+                description: `(${uncategorizedAccounts.length})`,
+                detail: i18n.t('workflows.addUncategorizedDetail', { count: uncategorizedAccounts.length, name: wfName }),
+                action: 'addUncategorized',
+              },
+              {
+                label: `$(export) ${i18n.t('workflows.exportThisWorkflow')}`,
+                description: `(${wfAccounts.length})`,
+                detail: i18n.t('workflows.exportThisWorkflowDetail', { count: wfAccounts.length, name: wfName }),
+                action: 'export',
+              },
+              {
+                label: `$(clear-all) ${i18n.t('workflows.clearAccounts')}`,
+                description: `(${wfAccounts.length})`,
+                detail: i18n.t('workflows.clearAccountsDetail', { count: wfAccounts.length, name: wfName }),
+                action: 'clear',
+              },
               {
                 label: `$(edit) ${i18n.t('workflows.rename')}`,
                 action: 'rename',
@@ -315,7 +348,77 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             });
 
             if (picked) {
-              if (picked.action === 'rename') {
+              if (picked.action === 'manage') {
+                interface AccountPickItem extends vscode.QuickPickItem {
+                  email: string;
+                }
+                const pickItems: AccountPickItem[] = allAccounts.map(acc => {
+                  const displayName = acc.alias ? `${acc.alias} (${acc.email})` : acc.email;
+                  return {
+                    label: displayName,
+                    description: acc.workflow && acc.workflow !== message.workflowId
+                      ? `[${workflows.find(w => w.id === acc.workflow)?.name || acc.workflow}]`
+                      : '',
+                    email: acc.email,
+                    picked: acc.workflow === message.workflowId,
+                  };
+                });
+
+                const selected = await vscode.window.showQuickPick(pickItems, {
+                  canPickMany: true,
+                  placeHolder: i18n.t('workflows.selectAccountsPrompt', { name: wfName }),
+                  title: `Workflow: ${wfName}`,
+                });
+
+                if (selected !== undefined) {
+                  const selectedSet = new Set(selected.map(s => s.email.toLowerCase()));
+                  const toAssign: string[] = [];
+                  const toUnassign: string[] = [];
+                  for (const acc of allAccounts) {
+                    if (selectedSet.has(acc.email.toLowerCase())) {
+                      if (acc.workflow !== message.workflowId) {
+                        toAssign.push(acc.email);
+                      }
+                    } else if (acc.workflow === message.workflowId) {
+                      toUnassign.push(acc.email);
+                    }
+                  }
+                  if (toAssign.length > 0) {
+                    await this.accountRepo.assignAccountsToWorkflow(toAssign, message.workflowId);
+                  }
+                  if (toUnassign.length > 0) {
+                    await this.accountRepo.assignAccountsToWorkflow(toUnassign, undefined);
+                  }
+                  await this.refresh();
+                  vscode.window.showInformationMessage(i18n.t('workflows.manageSuccess', { name: wfName }));
+                }
+              } else if (picked.action === 'addAll') {
+                await this.accountRepo.assignAccountsToWorkflow(allAccounts.map(a => a.email), message.workflowId);
+                await this.refresh();
+                vscode.window.showInformationMessage(i18n.t('workflows.addAllSuccess', { count: allAccounts.length, name: wfName }));
+              } else if (picked.action === 'addUncategorized') {
+                if (uncategorizedAccounts.length === 0) {
+                  vscode.window.showInformationMessage(i18n.t('workflows.noUncategorized'));
+                } else {
+                  await this.accountRepo.assignAccountsToWorkflow(uncategorizedAccounts.map(a => a.email), message.workflowId);
+                  await this.refresh();
+                  vscode.window.showInformationMessage(i18n.t('workflows.addUncategorizedSuccess', { count: uncategorizedAccounts.length, name: wfName }));
+                }
+              } else if (picked.action === 'clear') {
+                if (wfAccounts.length === 0) {
+                  vscode.window.showInformationMessage(i18n.t('workflows.emptyWorkflow'));
+                } else {
+                  await this.accountRepo.assignAccountsToWorkflow(wfAccounts.map(a => a.email), undefined);
+                  await this.refresh();
+                  vscode.window.showInformationMessage(i18n.t('workflows.clearSuccess', { name: wfName }));
+                }
+              } else if (picked.action === 'export') {
+                if (wfAccounts.length === 0) {
+                  vscode.window.showWarningMessage(i18n.t('workflows.exportEmpty', { name: wfName }));
+                } else {
+                  await this.handleExport(message.workflowId);
+                }
+              } else if (picked.action === 'rename') {
                 const newName = await vscode.window.showInputBox({
                   prompt: i18n.t('workflows.renamePrompt', { name: wfName }),
                   value: wfName,
@@ -403,6 +506,74 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                 await this.refresh();
               }
             }
+          }
+          break;
+        }
+        case 'bulkAssignWorkflow': {
+          if (message.emails && Array.isArray(message.emails) && message.emails.length > 0) {
+            const workflows = await this.accountRepo.getWorkflows();
+            interface BulkAssignItem extends vscode.QuickPickItem {
+              workflowId?: string | null;
+              isCreate?: boolean;
+            }
+
+            const items: BulkAssignItem[] = [
+              {
+                label: `$(close) ${i18n.t('workflows.unassign')}`,
+                workflowId: null,
+              },
+              ...workflows.map(w => ({
+                label: `$(folder) ${w.name}`,
+                workflowId: w.id,
+              })),
+              {
+                label: `$(plus) ${i18n.t('workflows.newWorkflow')}`,
+                isCreate: true,
+              }
+            ];
+
+            const picked = await vscode.window.showQuickPick(items, {
+              placeHolder: i18n.t('workflows.bulkAssignPrompt', { count: message.emails.length }),
+            });
+
+            if (picked) {
+              let targetWfId = picked.workflowId;
+              let targetWfName = '';
+              if (picked.isCreate) {
+                const name = await vscode.window.showInputBox({
+                  prompt: i18n.t('workflows.createPrompt'),
+                  placeHolder: i18n.t('workflows.createPlaceholder'),
+                  validateInput: (val) => {
+                    if (!val || !val.trim()) return i18n.t('workflows.createPlaceholder');
+                    return undefined;
+                  }
+                });
+                if (name && name.trim()) {
+                  targetWfId = 'wf_' + Date.now();
+                  targetWfName = name.trim();
+                  await this.accountRepo.saveWorkflow({
+                    id: targetWfId,
+                    name: targetWfName,
+                    createdAt: new Date().toISOString(),
+                  });
+                } else {
+                  break;
+                }
+              } else if (picked.workflowId) {
+                const found = workflows.find(w => w.id === picked.workflowId);
+                targetWfName = found ? found.name : picked.workflowId;
+              }
+
+              await this.accountRepo.assignAccountsToWorkflow(message.emails, targetWfId || undefined);
+              await this.refresh();
+              vscode.window.showInformationMessage(i18n.t('workflows.bulkSuccess', { count: message.emails.length, name: targetWfName || i18n.t('workflows.uncategorized') }));
+            }
+          }
+          break;
+        }
+        case 'bulkExportAccounts': {
+          if (message.emails && Array.isArray(message.emails) && message.emails.length > 0) {
+            await this.handleExport(undefined, message.emails);
           }
           break;
         }
@@ -795,7 +966,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
   // ─── Export Handler ──────────────────────────────────────────────────────
 
-  private async handleExport(): Promise<void> {
+  private async handleExport(targetWorkflowId?: string | null, customEmails?: string[]): Promise<void> {
     const logger = Logger.getInstance();
     const i18n = I18nService.getInstance();
     try {
@@ -810,7 +981,18 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       const activeWorkflowId = await this.accountRepo.getActiveWorkflowId();
       let accountsToExport = accounts;
 
-      if (workflows.length > 0) {
+      if (customEmails && customEmails.length > 0) {
+        const emailSet = new Set(customEmails.map(e => e.toLowerCase()));
+        accountsToExport = accounts.filter(a => emailSet.has(a.email.toLowerCase()));
+      } else if (targetWorkflowId !== undefined) {
+        if (targetWorkflowId === null) {
+          accountsToExport = accounts;
+        } else if (targetWorkflowId === 'uncategorized') {
+          accountsToExport = accounts.filter(a => !a.workflow);
+        } else {
+          accountsToExport = accounts.filter(a => a.workflow === targetWorkflowId);
+        }
+      } else if (workflows.length > 0) {
         interface ExportOption extends vscode.QuickPickItem {
           targetWorkflowId?: string | null;
         }
@@ -953,10 +1135,19 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       };
 
       // ── Step 5: Save to file ──
+      let backupFileName = 'antigravity-backup.json';
+      if (targetWorkflowId && targetWorkflowId !== 'uncategorized') {
+        const wf = workflows.find(w => w.id === targetWorkflowId);
+        if (wf) {
+          backupFileName = `antigravity-backup-${wf.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.json`;
+        }
+      } else if (customEmails && customEmails.length > 0) {
+        backupFileName = `antigravity-backup-selected-${customEmails.length}.json`;
+      }
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
       const defaultUri = workspaceFolder
-        ? vscode.Uri.joinPath(workspaceFolder, 'antigravity-backup.json')
-        : vscode.Uri.file(path.join(os.homedir(), 'Desktop', 'antigravity-backup.json'));
+        ? vscode.Uri.joinPath(workspaceFolder, backupFileName)
+        : vscode.Uri.file(path.join(os.homedir(), 'Desktop', backupFileName));
 
       const saveUri = await vscode.window.showSaveDialog({
         defaultUri,
@@ -2936,42 +3127,151 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             border-style: solid;
           }
 
-          /* ── Card Workflow Badge ── */
-          .card-workflow-badge {
+          /* ── Card Workflow Badge & Bulk Selection ── */
+          .card-wf-tag {
             display: inline-flex;
             align-items: center;
-            gap: 4px;
-            padding: 2px 7px;
-            border-radius: 10px;
-            font-size: 0.69rem;
+            gap: 3px;
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-size: 0.65rem;
             font-weight: 500;
-            background: rgba(124, 58, 237, 0.12);
-            color: var(--primary-light, #a78bfa);
-            border: 1px solid rgba(124, 58, 237, 0.25);
+            line-height: 1.2;
+            background: rgba(124, 58, 237, 0.15);
+            color: #c4b5fd;
+            border: 1px solid rgba(124, 58, 237, 0.35);
             cursor: pointer;
-            transition: all 0.15s ease;
-            max-width: 140px;
+            max-width: 95px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
             user-select: none;
+            transition: all 0.15s ease;
+            flex-shrink: 0;
           }
-          .card-workflow-badge:hover {
-            background: rgba(124, 58, 237, 0.25);
+          .card-wf-tag:hover {
+            background: rgba(124, 58, 237, 0.3);
             border-color: var(--focus-border);
             color: #fff;
           }
-          .card-workflow-badge.unassigned {
+          .card-wf-add-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             background: transparent;
+            border: none;
+            padding: 1px 3px;
+            cursor: pointer;
             color: var(--text-muted);
-            border: 1px dashed rgba(156, 163, 175, 0.35);
-            opacity: 0.75;
+            opacity: 0.45;
+            transition: opacity 0.15s ease, color 0.15s ease;
+            flex-shrink: 0;
           }
-          .card-workflow-badge.unassigned:hover {
+          .card-wf-add-btn:hover {
+            opacity: 1;
+            color: var(--primary-light);
+          }
+          .account-card:hover .card-wf-add-btn {
+            opacity: 0.85;
+          }
+          .card-bulk-check {
+            display: none;
+            width: 15px;
+            height: 15px;
+            cursor: pointer;
+            accent-color: var(--primary-color);
+            align-self: center;
+            flex-shrink: 0;
+            margin-inline-end: 6px;
+          }
+          body.bulk-mode .card-bulk-check {
+            display: block;
+          }
+          body.bulk-mode .account-card {
+            cursor: pointer;
+          }
+          body.bulk-mode .account-card.selected-for-bulk {
+            border-color: var(--primary-light) !important;
+            background: rgba(124, 58, 237, 0.08) !important;
+          }
+          .toolbar-bulk-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            font-size: 0.74rem;
+            font-weight: 500;
             background: var(--surface-light);
             color: var(--text-secondary);
-            opacity: 1;
-            border-style: solid;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+          }
+          .toolbar-bulk-btn:hover, body.bulk-mode .toolbar-bulk-btn {
+            background: var(--primary-color);
+            color: #fff;
+            border-color: var(--primary-color);
+          }
+          .bulk-action-bar {
+            position: sticky;
+            bottom: 10px;
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: var(--surface-color);
+            border: 1px solid var(--focus-border);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            z-index: 999;
+            backdrop-filter: blur(8px);
+            animation: slideUp 0.2s ease-out;
+          }
+          @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+          }
+          .bulk-info {
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-primary);
+          }
+          .bulk-buttons {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          }
+          .btn-bulk-action {
+            padding: 3px 8px;
+            font-size: 0.72rem;
+            font-weight: 500;
+            background: var(--surface-light);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            cursor: pointer;
+          }
+          .btn-bulk-action:hover {
+            background: var(--surface-color);
+            border-color: var(--text-secondary);
+          }
+          .btn-bulk-primary {
+            background: var(--primary-color) !important;
+            color: #fff !important;
+            border-color: var(--primary-color) !important;
+          }
+          .btn-bulk-primary:hover {
+            background: var(--primary-light) !important;
+          }
+          .btn-bulk-export {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 3px 7px;
           }
           .workflow-hidden {
             display: none !important;
@@ -3056,6 +3356,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               <option value="without-quota">${i18n.t('webview.scanWithoutQuota')}</option>
             </select>
           </label>
+          <button type="button" class="toolbar-bulk-btn" id="btnToggleBulk" onclick="toggleBulkSelectMode()" title="${i18n.t('workflows.bulkSelect')}">
+            <svg class="icon-svg" style="width:12px; height:12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            <span class="bulk-btn-text">${i18n.t('workflows.bulkSelect')}</span>
+          </button>
         </div>` : ''}
 
         ${accounts.length > 0 || this._workflows.length > 0 ? workflowBarHtml : ''}
@@ -3083,6 +3387,20 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:48px; height:48px; opacity:0.4; color:var(--text-secondary); margin-bottom: 8px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             </div>
             <p>${i18n.t('accounts.noSearchResults')}</p>
+        </div>
+
+        <!-- Bulk Action Bar -->
+        <div id="bulkActionBar" class="bulk-action-bar" style="display:none;">
+          <div class="bulk-info">
+            <span id="bulkSelectedText">0 ${i18n.t('workflows.bulkSelected')}</span>
+          </div>
+          <div class="bulk-buttons">
+            <button type="button" class="btn-bulk-action" onclick="selectAllBulk(true)">${i18n.t('workflows.all')}</button>
+            <button type="button" class="btn-bulk-action" onclick="selectAllBulk(false)">✕</button>
+            <button type="button" class="btn-bulk-action btn-bulk-primary" onclick="bulkAssignWorkflow()">${i18n.t('workflows.bulkAssign')}</button>
+            <button type="button" class="btn-bulk-action btn-bulk-export" onclick="bulkExportSelected()" title="${i18n.t('workflows.bulkExport')}">
+              <svg style="width:12px; height:12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
           </div>
         </div>
 
@@ -3577,6 +3895,92 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               workflowName: wfName
             });
           }
+
+          let isBulkMode = false;
+          const selectedBulkEmails = new Set();
+
+          function toggleBulkSelectMode() {
+            isBulkMode = !isBulkMode;
+            document.body.classList.toggle('bulk-mode', isBulkMode);
+            const bar = document.getElementById('bulkActionBar');
+            if (bar) bar.style.display = isBulkMode ? 'flex' : 'none';
+            if (!isBulkMode) {
+              selectedBulkEmails.clear();
+            }
+            updateBulkUI();
+          }
+
+          function handleCardCheck(checkbox, email) {
+            if (checkbox.checked) {
+              selectedBulkEmails.add(email);
+            } else {
+              selectedBulkEmails.delete(email);
+            }
+            updateBulkUI();
+          }
+
+          function updateBulkUI() {
+            const countEl = document.getElementById('bulkSelectedText');
+            if (countEl) {
+              countEl.textContent = selectedBulkEmails.size + ' ${i18n.t('workflows.bulkSelected')}';
+            }
+            document.querySelectorAll('.account-card').forEach(card => {
+              const email = card.dataset.email;
+              const chk = card.querySelector('.card-bulk-check');
+              if (selectedBulkEmails.has(email)) {
+                card.classList.add('selected-for-bulk');
+                if (chk) chk.checked = true;
+              } else {
+                card.classList.remove('selected-for-bulk');
+                if (chk) chk.checked = false;
+              }
+            });
+          }
+
+          function selectAllBulk(select) {
+            const cards = document.querySelectorAll('.account-card:not(.workflow-hidden):not(.search-hidden)');
+            cards.forEach(card => {
+              const email = card.dataset.email;
+              if (select) {
+                selectedBulkEmails.add(email);
+              } else {
+                selectedBulkEmails.delete(email);
+              }
+            });
+            updateBulkUI();
+          }
+
+          function bulkAssignWorkflow() {
+            if (selectedBulkEmails.size === 0) return;
+            vscode.postMessage({
+              command: 'bulkAssignWorkflow',
+              emails: Array.from(selectedBulkEmails)
+            });
+          }
+
+          function bulkExportSelected() {
+            if (selectedBulkEmails.size === 0) return;
+            vscode.postMessage({
+              command: 'bulkExportAccounts',
+              emails: Array.from(selectedBulkEmails)
+            });
+          }
+
+          document.addEventListener('click', function(e) {
+            if (!isBulkMode) return;
+            const card = e.target.closest('.account-card');
+            if (!card) return;
+            if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select') || e.target.closest('a')) return;
+            const email = card.dataset.email;
+            if (email) {
+              if (selectedBulkEmails.has(email)) {
+                selectedBulkEmails.delete(email);
+              } else {
+                selectedBulkEmails.add(email);
+              }
+              updateBulkUI();
+            }
+          });
 
           // Attach search listener and restore state
           (function initSearch() {
@@ -4946,18 +5350,18 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const currentWfName = currentWf ? currentWf.name : (acc.workflow || '');
 
     const workflowBadgeHtml = currentWfName
-      ? `<span class="card-workflow-badge" onclick="event.stopPropagation(); handleAssignWorkflow('${acc.email}')" title="${i18n.t('workflows.badgeTooltip')}">
-           <svg class="icon-svg" style="width:11px; height:11px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      ? `<span class="card-wf-tag" onclick="event.stopPropagation(); handleAssignWorkflow('${acc.email}')" title="${currentWfName} · ${i18n.t('workflows.badgeTooltip')}">
+           <svg class="icon-svg" style="width:10px; height:10px; flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
            <span>${currentWfName}</span>
          </span>`
-      : `<span class="card-workflow-badge unassigned" onclick="event.stopPropagation(); handleAssignWorkflow('${acc.email}')" title="${i18n.t('workflows.badgeTooltip')}">
-           <svg class="icon-svg" style="width:10px; height:10px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-           <span>${i18n.t('workflows.uncategorized')}</span>
-         </span>`;
+      : `<button class="card-wf-add-btn" onclick="event.stopPropagation(); handleAssignWorkflow('${acc.email}')" title="${i18n.t('workflows.badgeTooltip')}">
+           <svg class="icon-svg" style="width:11px; height:11px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+         </button>`;
 
     return `
       <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''} ${isIneligible ? 'ineligible' : ''} ${acc.status === AccountStatus.DEPLETED ? 'depleted' : ''}" data-email="${acc.email}" data-name="${displayName}" data-alias="${acc.alias || ''}" data-status="${acc.status}" data-workflow="${acc.workflow || ''}" data-model-balances='${modelBalancesStr}'>
         <div class="card-header">
+          <input type="checkbox" class="card-bulk-check" data-email="${acc.email}" onclick="event.stopPropagation(); handleCardCheck(this, '${acc.email}')" />
           ${acc.avatarUrl ? `<img class="avatar ${avatarClass}" src="${acc.avatarUrl}" alt="${displayName}" />` : `<div class="avatar ${avatarClass}">${displayName.charAt(0).toUpperCase()}</div>`}
           <div class="user-info">
             <div class="name-container" style="display:flex; align-items:center; gap:6px;">
@@ -4970,11 +5374,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                 <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
               </button>
             </div>
-            <p>${acc.email}</p>
-            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:3px;">
+            <div class="user-email-row" style="display:flex; align-items:center; gap:5px; margin-top:2px;">
+              <span class="user-email-text" style="font-size:0.75rem; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:150px;" title="${acc.email}">${acc.email}</span>
               ${workflowBadgeHtml}
-              ${nextResetHtml}
             </div>
+            ${nextResetHtml}
           </div>
           ${activeBadge}
         </div>

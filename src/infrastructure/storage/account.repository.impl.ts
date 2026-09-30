@@ -278,4 +278,27 @@ export class AccountRepositoryImpl implements IAccountRepository {
     await this.context.globalState.update(STORAGE_KEYS.ACTIVE_WORKFLOW, workflowId);
     Logger.getInstance().info(`Active workflow set to: ${workflowId || '(all)'}`);
   }
+
+  async assignAccountsToWorkflow(emails: string[], workflowId?: string): Promise<void> {
+    const emailSet = new Set(emails.map(e => e.toLowerCase().trim()));
+    const accounts = await this.getAllAccounts();
+    let updated = false;
+
+    for (const acc of accounts) {
+      if (emailSet.has(acc.email.toLowerCase().trim())) {
+        if (workflowId) {
+          acc.workflow = workflowId;
+        } else {
+          delete acc.workflow;
+        }
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, accounts);
+      Logger.getInstance().info(`Assigned ${emails.length} accounts to workflow: ${workflowId || '(none)'}`);
+    }
+  }
 }
+

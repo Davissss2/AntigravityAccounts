@@ -82,4 +82,8 @@ export interface IAccountRepository {
 
   /** Set currently active workflow filter (null = all accounts) */
   setActiveWorkflowId(workflowId: string | null): Promise<void>;
+
+  /** Assign multiple accounts to a workflow (or undefined to unassign) in a single batch */
+  assignAccountsToWorkflow(emails: string[], workflowId?: string): Promise<void>;
 }
+

@@ -272,7 +272,8 @@
     "authSuccessTitle": "Authentication Successful",
     "authSuccessDetail": "The account has been successfully linked to the Antigravity extension. You can close this window and return to the editor.",
     "noPorts": "No available ports to run local authentication server.",
-    "closeWindow": "Close Window"
+    "closeWindow": "Close Window",
+    "returnToIde": "Return to Antigravity"
   },
   "authService": {
     "noRefreshToken": "Refresh Token not received. Please try again and accept all permissions.",
@@ -315,6 +316,29 @@
     "importCreateNew": "➕ Create a new Workflow for this import...",
     "badgeTooltip": "Click to change or assign workflow",
     "filterTooltip": "Filter by this workflow",
-    "emptyWorkflow": "No accounts registered in this workflow."
+    "emptyWorkflow": "No accounts registered in this workflow.",
+    "manageAccounts": "Manage accounts with checkboxes...",
+    "manageAccountsDetail": "Select individually which accounts belong to this workflow",
+    "addAllAccounts": "Move ALL accounts to this workflow",
+    "addAllAccountsDetail": "Assign all {{count}} accounts to '{{name}}'",
+    "addUncategorized": "Move uncategorized accounts to this workflow",
+    "addUncategorizedDetail": "Move {{count}} uncategorized accounts to '{{name}}'",
+    "clearAccounts": "Clear accounts from this workflow",
+    "clearAccountsDetail": "Unassign {{count}} accounts from '{{name}}' (does not delete them)",
+    "exportThisWorkflow": "Export workflow accounts (.json)",
+    "exportThisWorkflowDetail": "Download an encrypted backup with the {{count}} accounts in '{{name}}'",
+    "selectAccountsPrompt": "Select accounts for '{{name}}' (Press Enter to save):",
+    "manageSuccess": "✅ Successfully updated accounts in workflow '{{name}}'.",
+    "addAllSuccess": "✅ Moved all {{count}} accounts to '{{name}}'.",
+    "addUncategorizedSuccess": "✅ Moved {{count}} accounts to '{{name}}'.",
+    "clearSuccess": "✅ Cleared accounts from workflow '{{name}}'.",
+    "noUncategorized": "No uncategorized accounts found.",
+    "exportEmpty": "Workflow '{{name}}' has no accounts to export.",
+    "bulkSelect": "Select",
+    "bulkSelected": "{{count}} selected",
+    "bulkAssign": "Move to Workflow...",
+    "bulkAssignPrompt": "Move the {{count}} selected accounts to:",
+    "bulkExport": "Export selected",
+    "bulkSuccess": "✅ Successfully assigned {{count}} accounts to '{{name}}'."
   }
 }

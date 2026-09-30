@@ -272,7 +272,8 @@
     "authSuccessTitle": "Autenticación exitosa",
     "authSuccessDetail": "La cuenta se ha vinculado correctamente a la extensión Antigravity. Puedes cerrar esta ventana y regresar al editor.",
     "noPorts": "No hay puertos disponibles para ejecutar el servidor de autenticación local.",
-    "closeWindow": "Cerrar ventana"
+    "closeWindow": "Cerrar ventana",
+    "returnToIde": "Volver a Antigravity"
   },
   "authService": {
     "noRefreshToken": "No se recibió el token de actualización. Inténtalo de nuevo y acepta todos los permisos.",
@@ -315,6 +316,29 @@
     "importCreateNew": "➕ Crear un nuevo Workflow para esta importación...",
     "badgeTooltip": "Hacer clic para cambiar o asignar workflow",
     "filterTooltip": "Filtrar por este workflow",
-    "emptyWorkflow": "No hay cuentas registradas en este workflow."
+    "emptyWorkflow": "No hay cuentas registradas en este workflow.",
+    "manageAccounts": "Gestionar cuentas con casillas...",
+    "manageAccountsDetail": "Selecciona individualmente qué cuentas pertenecen a este workflow",
+    "addAllAccounts": "Mover TODAS las cuentas a este workflow",
+    "addAllAccountsDetail": "Asigna las {{count}} cuentas registradas a '{{name}}'",
+    "addUncategorized": "Mover cuentas sin categoría a este workflow",
+    "addUncategorizedDetail": "Mueve {{count}} cuentas sin categoría a '{{name}}'",
+    "clearAccounts": "Vaciar cuentas de este workflow",
+    "clearAccountsDetail": "Desvincula las {{count}} cuentas de '{{name}}' (no las borra)",
+    "exportThisWorkflow": "Exportar cuentas de este workflow (.json)",
+    "exportThisWorkflowDetail": "Descarga una copia de seguridad cifrada con las {{count}} cuentas de '{{name}}'",
+    "selectAccountsPrompt": "Selecciona las cuentas para '{{name}}' (Enter para guardar):",
+    "manageSuccess": "✅ Se han actualizado las cuentas del workflow '{{name}}'.",
+    "addAllSuccess": "✅ Se han movido todas las cuentas ({{count}}) a '{{name}}'.",
+    "addUncategorizedSuccess": "✅ Se han movido {{count}} cuentas a '{{name}}'.",
+    "clearSuccess": "✅ Se han desvinculado las cuentas del workflow '{{name}}'.",
+    "noUncategorized": "No hay cuentas sin categoría.",
+    "exportEmpty": "El workflow '{{name}}' no tiene cuentas para exportar.",
+    "bulkSelect": "Seleccionar",
+    "bulkSelected": "{{count}} seleccionadas",
+    "bulkAssign": "Mover a Workflow...",
+    "bulkAssignPrompt": "Mover las {{count}} cuentas seleccionadas a:",
+    "bulkExport": "Exportar selección",
+    "bulkSuccess": "✅ Se han asignado {{count}} cuentas a '{{name}}'."
   }
 }
