@@ -954,8 +954,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
    */
   private async handleSingleAccountRefresh(email: string): Promise<void> {
     try {
-      this._view?.webview.postMessage({ command: 'refreshStarted', totalAccounts: 1 });
-      
       await this.accountService.refreshSingleAccountBalance(email, {
         onStart: (email: string) => {
           this._view?.webview.postMessage({ command: 'accountRefreshStart', email, currentIndex: 1, totalAccounts: 1 });
@@ -975,9 +973,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       }, { force: true });
     } catch (e: any) {
       Logger.getInstance().error(`Error during manual single account refresh for ${email}`, e);
-    } finally {
-      this._view?.webview.postMessage({ command: 'refreshFinished', wasCancelled: false });
-      await this.refresh();
     }
   }
 

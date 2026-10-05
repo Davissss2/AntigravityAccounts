@@ -125,7 +125,7 @@ export class ExtensionConfig {
    * Whether to automatically restore the chat session and continue generation after depletion switch.
    */
   isAutoResumeChatEnabled(): boolean {
-    return this.getConfig().get<boolean>('autoResumeChat', true);
+    return this.getConfig().get<boolean>('autoResumeChat', false);
   }
 
   /**
@@ -153,7 +153,7 @@ export class ExtensionConfig {
    * Whether automatic capture and saving of newly detected Antigravity accounts is enabled (Default: true)
    */
   isAutoCaptureAccountsEnabled(): boolean {
-    return this.getConfig().get<boolean>('autoCaptureAccounts', true);
+    return this.getConfig().get<boolean>('autoCaptureAccounts', false);
   }
 
   /**

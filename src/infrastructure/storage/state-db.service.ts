@@ -174,29 +174,7 @@ export class StateDbService {
       await vscode.workspace.saveAll(filesConfig.get<string>('autoSave') === 'off');
     } catch (e) { /* best effort */ }
 
-    // Persist pending chat resume marker before relaunching Antigravity IDE
-    if (config.isAutoResumeChatEnabled()) {
-      try {
-        const storageDir = PathUtils.getAntigravityDataPath(this.context || config.getContext());
-        const existing = ChatResumeUtils.getPendingResume(storageDir);
-        // Only write if no fresh marker was already saved (e.g. by auto-rotation within last 30s)
-        if (!existing || Date.now() - existing.timestamp > 30_000) {
-          const timeoutSec = config.getAutoResumeTimeoutSeconds();
-          const activity = ChatResumeUtils.detectRecentChatActivity(timeoutSec);
-          ChatResumeUtils.savePendingResume(storageDir, {
-            reason: 'manual',
-            wasWorking: activity.wasWorking,
-            prompt: config.getAutoResumePrompt(),
-            targetEmail: email,
-            timestamp: Date.now(),
-            conversationId: activity.conversationId
-          });
-        }
-      } catch (resumeErr) {
-        Logger.getInstance().debug('Could not persist pending chat resume in triggerWorkerAndClose', resumeErr);
-      }
-    }
-
+    // Only auto-switch for quota depletion sets chat resume; manual switch never sets it.
     const antigravityExe = this.findAntigravityExe();
     // process.execPath inside Antigravity IS the Antigravity binary itself
     const currentExePath = process.execPath;

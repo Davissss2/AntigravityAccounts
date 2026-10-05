@@ -5,6 +5,17 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.11] - 2026-10-05
+
+### Changed & Fixed
+- **Estabilidad de Chat & Auto-Resume**: Eliminado el comando `antigravity.toggleChatFocus` que cerraba la ventana de chat si ya estaba abierta. Desactivada por defecto la reanudación automática (`autoResumeChat: false`) y eliminado el envío accidental de "continua" en cambios de cuenta manuales.
+- **Ultra-Fast Quota Refresh**: `fetchAvailableModels` establecido como Estrategia 1 (Primaria) directa. Se eliminan las esperas de timeout de 14s en endpoints legados; cada cuenta se consulta ahora en ~300ms.
+- **Delay Anti-Ban Optimizado**: Reducido el delay entre cuentas de 4s-8s a 350ms-750ms con micropausas, permitiendo escanear 86 cuentas en ~60s en lugar de 28 minutos.
+- **Refresco Individual Instantáneo**: El botón de recarga de tarjeta individual ya no bloquea toda la interfaz ni destruye el DOM completo, actualizando únicamente la tarjeta seleccionada en menos de 0.5s.
+- **Auto-Capture Desactivado**: Desactivada por defecto la monitorización y captura automática de sesiones nativas de VS Code/Google Auth para evitar desincronizaciones y llamadas de red bloqueantes.
+- **Renderizado Inmediato Webview**: El panel de cuentas ahora renderiza su vista inicial en frame 0 sin esperar operaciones asíncronas de red, eliminando por completo la pantalla negra/vacía al abrirlo.
+- **Acceso Directo a Base de Datos Local**: Detección de cuenta activa revertida a lectura local directa de `state.vscdb` en milisegundos sin latencia HTTP.
+
 ## [0.3.10] - 2026-10-05
 
 ### Native Antigravity Auth Provider (`antigravity_auth`) & Live Session Auto-Capture

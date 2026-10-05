@@ -66,90 +66,78 @@ export class BalanceService {
     };
 
     try {
-      // ── Fast Path: Directly query fetchAvailableModels for active account quota ──
-      if (options?.fast) {
-        Logger.getInstance().debug('[FastQuota] Querying available model quotas directly...');
-        const fastModels = await this.tryFetchAvailableModels(accessToken, options.projectId);
-        if (fastModels && (fastModels as any).__isDepleted) {
-          result.isDepleted = true;
-          result.status = AccountStatus.DEPLETED;
-          result.balances = this.createExhaustedBalances(result.balances);
-          return result;
-        }
-        if (fastModels && (fastModels as any).__isRateLimited) {
-          result.isRateLimited = true;
-          result.hasError = true;
-          return result;
-        }
-        if (fastModels && Object.keys(fastModels).length > 0) {
-          result.balances = fastModels;
-          return result;
-        }
-      }
-
-      // Strategy 1: Try Primary loadCodeAssist (Usually has all info)
-      Logger.getInstance().debug('Attempting primary loadCodeAssist...');
-      const codeAssist = await this.tryLoadCodeAssist(accessToken);
-      
-      if (codeAssist) {
-        if (codeAssist.isRateLimited) {
-          result.isRateLimited = true;
-          result.hasError = true;
-          return result;
-        }
-        if (codeAssist.ineligible) {
-          result.status = AccountStatus.INELIGIBLE;
-          result.hasError = true;
-          return result;
-        }
-        result.plan = this.parsePlanName(codeAssist.planName);
-        result.projectId = codeAssist.projectId;
-        
-        if (codeAssist.balances && Object.keys(codeAssist.balances).length > 0) {
-          result.balances = codeAssist.balances;
-        }
-      }
-
-      // Strategy 2: Absolute fallback - try daily environment loadCodeAssist
-      if (Object.keys(result.balances).length === 0) {
-        Logger.getInstance().debug('Attempting fallback daily loadCodeAssist...');
-        const fallbackCodeAssist = await this.tryFallbackLoadCodeAssist(accessToken);
-        if (fallbackCodeAssist) {
-          if (fallbackCodeAssist.isRateLimited) {
-            result.isRateLimited = true;
-            result.hasError = true;
-            return result;
-          }
-          if (fallbackCodeAssist.ineligible) {
-            result.status = AccountStatus.INELIGIBLE;
-            result.hasError = true;
-            return result;
-          }
-          if (result.plan === AccountPlan.UNKNOWN) {
-            result.plan = this.parsePlanName(fallbackCodeAssist.planName);
-          }
-          if (!result.projectId) {
-            result.projectId = fallbackCodeAssist.projectId;
-          }
-          if (fallbackCodeAssist.balances && Object.keys(fallbackCodeAssist.balances).length > 0) {
-            result.balances = fallbackCodeAssist.balances;
-          }
-        }
-      }
-
-      // Strategy 4: Fetch Available Models (Model percentages)
-      Logger.getInstance().debug('Attempting to fetch available models...');
-      const modelBalances = await this.tryFetchAvailableModels(accessToken, result.projectId);
+      // ── Strategy 1 (Primary & Fastest): Direct fetchAvailableModels ──
+      // This is the active, high-speed API that returns Gemini model quotas and timers in ~300ms.
+      Logger.getInstance().debug('Querying available model quotas directly (Primary Strategy)...');
+      const modelBalances = await this.tryFetchAvailableModels(accessToken, options?.projectId || result.projectId);
       if (modelBalances && (modelBalances as any).__isDepleted) {
         result.isDepleted = true;
         result.status = AccountStatus.DEPLETED;
         result.balances = this.createExhaustedBalances(result.balances);
-      } else if (modelBalances && (modelBalances as any).__isRateLimited) {
+        return result;
+      }
+      if (modelBalances && (modelBalances as any).__isRateLimited) {
         result.isRateLimited = true;
         result.hasError = true;
-        delete (modelBalances as any).__isRateLimited;
-      } else if (Object.keys(modelBalances).length > 0) {
-        result.balances = { ...result.balances, ...modelBalances };
+        return result;
+      }
+      if (modelBalances && Object.keys(modelBalances).length > 0) {
+        result.balances = modelBalances;
+        return result;
+      }
+
+      // ── Strategy 2 (Fallback): Only try loadCodeAssist if fetchAvailableModels failed or returned empty ──
+      if (!options?.fast) {
+        Logger.getInstance().debug('Attempting fallback primary loadCodeAssist...');
+        const codeAssist = await this.tryLoadCodeAssist(accessToken);
+        
+        if (codeAssist) {
+          if (codeAssist.isRateLimited) {
+            result.isRateLimited = true;
+            result.hasError = true;
+            return result;
+          }
+          if (codeAssist.ineligible) {
+            result.status = AccountStatus.INELIGIBLE;
+            result.hasError = true;
+            return result;
+          }
+          result.plan = this.parsePlanName(codeAssist.planName);
+          result.projectId = codeAssist.projectId;
+          
+          if (codeAssist.balances && Object.keys(codeAssist.balances).length > 0) {
+            result.balances = codeAssist.balances;
+            return result;
+          }
+        }
+
+        // Strategy 3: Absolute fallback - try daily environment loadCodeAssist
+        if (Object.keys(result.balances).length === 0) {
+          Logger.getInstance().debug('Attempting fallback daily loadCodeAssist...');
+          const fallbackCodeAssist = await this.tryFallbackLoadCodeAssist(accessToken);
+          if (fallbackCodeAssist) {
+            if (fallbackCodeAssist.isRateLimited) {
+              result.isRateLimited = true;
+              result.hasError = true;
+              return result;
+            }
+            if (fallbackCodeAssist.ineligible) {
+              result.status = AccountStatus.INELIGIBLE;
+              result.hasError = true;
+              return result;
+            }
+            if (result.plan === AccountPlan.UNKNOWN) {
+              result.plan = this.parsePlanName(fallbackCodeAssist.planName);
+            }
+            if (!result.projectId) {
+              result.projectId = fallbackCodeAssist.projectId;
+            }
+            if (fallbackCodeAssist.balances && Object.keys(fallbackCodeAssist.balances).length > 0) {
+              result.balances = fallbackCodeAssist.balances;
+              return result;
+            }
+          }
+        }
       }
 
       // Final Check

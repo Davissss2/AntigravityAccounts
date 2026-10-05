@@ -220,54 +220,44 @@ export class ChatResumeUtils {
    */
   static async executePendingResume(data: PendingResumeData): Promise<void> {
     try {
+      const config = ExtensionConfig.getInstance();
+      if (!config.isAutoResumeChatEnabled() || data.reason === 'manual' || !data.wasWorking) {
+        Logger.getInstance().info('[ChatResume] Skipping chat resume: autoResumeChat disabled, manual switch, or AI was not interrupted.');
+        return;
+      }
+
       Logger.getInstance().info(
-        `[ChatResume] Restoring chat session: wasWorking=${data.wasWorking}, prompt="${data.prompt}", convId=${data.conversationId}`
+        `[ChatResume] Restoring chat session after quota depletion: wasWorking=${data.wasWorking}, prompt="${data.prompt}", convId=${data.conversationId}`
       );
 
       // 1. Give Antigravity workbench time to fully initialize DOM and command handlers
       await new Promise((r) => setTimeout(r, 2600));
 
-      // 2. Open / focus the Antigravity Agent chat panel
-      let panelOpened = false;
+      // 2. Reveal Antigravity Agent chat panel (use openAgent, NEVER toggleChatFocus which closes open chat)
       try {
-        await vscode.commands.executeCommand('antigravity.toggleChatFocus');
-        panelOpened = true;
-        Logger.getInstance().info('[ChatResume] Opened Antigravity Agent chat panel via antigravity.toggleChatFocus');
-      } catch (focusErr) {
+        await vscode.commands.executeCommand('antigravity.openAgent');
+        Logger.getInstance().info('[ChatResume] Revealed Agent panel via antigravity.openAgent');
+      } catch (openErr) {
         try {
-          await vscode.commands.executeCommand('antigravity.openAgent');
-          panelOpened = true;
-          Logger.getInstance().info('[ChatResume] Opened Agent panel via fallback antigravity.openAgent');
-        } catch (openErr) {
-          Logger.getInstance().warn('[ChatResume] Could not open Agent panel via commands', openErr);
+          await vscode.commands.executeCommand('workbench.view.extension.antigravity');
+        } catch {
+          // best effort
         }
       }
 
-      // 3. If the AI was actively working and stopped due to quota, send the resume prompt
-      if (data.wasWorking && data.prompt) {
-        // Wait 1.4s for chat webview/component to mount and attach action listener
-        await new Promise((r) => setTimeout(r, 1400));
+      // 3. Send resume prompt ONLY for quota depletion auto-switch
+      if (data.reason === 'depleted' && data.prompt) {
+        await new Promise((r) => setTimeout(r, 1600));
 
         try {
           await vscode.commands.executeCommand('antigravity.sendPromptToAgentPanel', data.prompt);
           Logger.getInstance().info(`[ChatResume] Sent resume query "${data.prompt}" to Antigravity Agent panel.`);
         } catch (promptErr) {
           Logger.getInstance().warn(
-            '[ChatResume] Could not send prompt via antigravity.sendPromptToAgentPanel, trying fallback',
+            '[ChatResume] Could not send prompt via antigravity.sendPromptToAgentPanel',
             promptErr
           );
-          try {
-            await vscode.commands.executeCommand('workbench.action.chat.open', {
-              query: data.prompt
-            });
-          } catch {
-            // best effort
-          }
         }
-      } else {
-        Logger.getInstance().info(
-          '[ChatResume] Chat opened without sending prompt (AI was idle / no quota interruption detected).'
-        );
       }
     } catch (err: any) {
       Logger.getInstance().error('[ChatResume] Error executing pending chat resume', err);

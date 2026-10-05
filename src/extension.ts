@@ -157,7 +157,7 @@ function registerCommands(
     }).catch((err) => {
       logger.debug('Initial active account sync skipped or failed', err);
     });
-    accountService.syncFromAuthenticationSessions().catch(() => {});
+
   }
 
   // Monitor VS Code Google / external authentication changes in real-time

@@ -279,13 +279,6 @@ export class AccountService {
    */
   async getActiveAntigravityEmail(): Promise<string | null | undefined> {
     try {
-      // 1. High priority: Live native auth session in Antigravity IDE (real-time in memory)
-      const nativeEmail = await this.getNativeAuthEmail();
-      if (nativeEmail) {
-        return nativeEmail;
-      }
-
-      // 2. Fallback: Read state.vscdb on disk (for injected accounts or when silent session is not active)
       return await Promise.race([
         this.stateDbService.readCurrentEmailFromDb(),
         new Promise<undefined>(resolve => setTimeout(() => {
@@ -304,8 +297,7 @@ export class AccountService {
    */
   async getActiveAntigravityTokens(): Promise<{ accessToken: string; refreshToken: string; expiresAt: number } | null> {
     try {
-      const activeInfo = await this.getActiveAntigravityAccountInfo();
-      return activeInfo?.tokens || null;
+      return await this.stateDbService.readActiveTokensFromDb();
     } catch (error) {
       Logger.getInstance().error('Failed to read active tokens from Antigravity', error);
       return null;
@@ -317,39 +309,6 @@ export class AccountService {
    */
   async getActiveAntigravityAccountInfo(): Promise<{ email: string | null; tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null; avatarUrl?: string | null } | null> {
     try {
-      // 1. High priority: Live native auth session
-      const nativeSession = await this.getNativeAuthSession();
-      if (nativeSession && nativeSession.email) {
-        let tokens = nativeSession.tokens;
-        // Attempt to find refreshToken from state.vscdb or repository
-        try {
-          const dbInfo = await this.stateDbService.readActiveAccountInfoFromDb();
-          if (dbInfo?.email && isEmailMatch(dbInfo.email, nativeSession.email) && dbInfo.tokens?.refreshToken) {
-            tokens = {
-              accessToken: tokens?.accessToken || dbInfo.tokens.accessToken,
-              refreshToken: dbInfo.tokens.refreshToken,
-              expiresAt: dbInfo.tokens.expiresAt || tokens.expiresAt
-            };
-          } else {
-            const storedTokens = await this.accountRepo.getTokens(nativeSession.email);
-            if (storedTokens?.refreshToken) {
-              tokens = {
-                accessToken: tokens?.accessToken || storedTokens.accessToken,
-                refreshToken: storedTokens.refreshToken,
-                expiresAt: storedTokens.expiresAt
-              };
-            }
-          }
-        } catch {}
-
-        return {
-          email: nativeSession.email,
-          tokens,
-          avatarUrl: nativeSession.avatarUrl
-        };
-      }
-
-      // 2. Fallback: state.vscdb
       return await this.stateDbService.readActiveAccountInfoFromDb();
     } catch (error) {
       Logger.getInstance().error('Failed to read active account info from Antigravity', error);
@@ -1129,21 +1088,20 @@ export class AccountService {
         }
       }
 
-      // ── Anti-Ban: Dynamic randomized delay ("medio medio": 4s a 8s) ──
+      // ── Anti-Ban: Dynamic randomized delay (Optimizado 350ms - 750ms) ──
       if (accountsProcessed > 0) {
-        // Base delay: random entre 4,000ms (4s) y 8,000ms (8s)
-        const minDelay = 4000;
-        const maxDelay = 8000;
+        const minDelay = 350;
+        const maxDelay = 750;
         let delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
 
-        // Pequeña pausa natural cada 8 a 12 cuentas (6s a 10s) para romper patrones lineales
-        if (accountsProcessed % (Math.floor(Math.random() * 5) + 8) === 0) {
-          const extraPause = Math.floor(Math.random() * (10000 - 6000 + 1)) + 6000;
-          Logger.getInstance().info(`Anti-ban: Pausa natural de ${Math.round(extraPause / 1000)}s tras procesar ${accountsProcessed} cuentas.`);
+        // Breve pausa cada 15 cuentas (1.5s a 2.5s)
+        if (accountsProcessed % 15 === 0) {
+          const extraPause = Math.floor(Math.random() * 1000) + 1500;
+          Logger.getInstance().info(`Anti-ban: Breve pausa natural de ${(extraPause / 1000).toFixed(1)}s tras procesar ${accountsProcessed} cuentas.`);
           delay += extraPause;
         }
 
-        Logger.getInstance().info(`Anti-ban: Esperando ${(delay / 1000).toFixed(1)}s antes de consultar ${account.email}...`);
+        Logger.getInstance().info(`Consultando cuotas de ${account.email} tras ${(delay / 1000).toFixed(2)}s...`);
         
         await new Promise(resolve => {
           const timer = setTimeout(resolve, delay);
