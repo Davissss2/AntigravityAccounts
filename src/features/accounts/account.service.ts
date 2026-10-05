@@ -60,11 +60,14 @@ export class AccountService {
   ) {}
 
   private async determineAccountStatus(
-    balanceInfo: { balances: Record<string, any>; hasError: boolean; status?: AccountStatus },
+    balanceInfo: { balances: Record<string, any>; hasError: boolean; status?: AccountStatus; isDepleted?: boolean },
     preferredModel: string | null
   ): Promise<AccountStatus> {
     if (balanceInfo.status === AccountStatus.INELIGIBLE) {
       return AccountStatus.INELIGIBLE;
+    }
+    if (balanceInfo.isDepleted || balanceInfo.status === AccountStatus.DEPLETED) {
+      return AccountStatus.DEPLETED;
     }
     if (balanceInfo.hasError) {
       return AccountStatus.ERROR;
@@ -435,13 +438,10 @@ export class AccountService {
     }
     this._lastActiveQuotaCheckTime = now;
 
-    let tokens = await this.accountRepo.getTokens(activeEmail);
-    if (!tokens?.accessToken) {
-      const activeInfo = await this.getActiveAntigravityAccountInfo();
-      if (activeInfo?.tokens) {
-        tokens = activeInfo.tokens;
-        await this.accountRepo.storeTokens(activeEmail, tokens);
-      }
+    const activeInfo = await this.getActiveAntigravityAccountInfo();
+    let tokens = activeInfo?.tokens || await this.accountRepo.getTokens(activeEmail);
+    if (activeInfo?.tokens) {
+      await this.accountRepo.storeTokens(activeEmail, activeInfo.tokens);
     }
 
     if (!tokens?.accessToken) return account;
@@ -452,16 +452,20 @@ export class AccountService {
         projectId: account.projectId
       });
 
-      if (balanceInfo.isRateLimited) {
+      if (balanceInfo.isRateLimited && !balanceInfo.isDepleted) {
         Logger.getInstance().warn(`Rate limit (429) detected during fast refresh for ${activeEmail}`);
         return account;
+      }
+
+      if (balanceInfo.isDepleted) {
+        balanceInfo.balances = this.balanceService.createExhaustedBalances(account.balances);
       }
 
       const preferredModel = await this.accountRepo.getPreferredModel();
       const newStatus = await this.determineAccountStatus(balanceInfo, preferredModel);
 
       const oldBalances = account.balances || {};
-      const newBalances = { ...oldBalances, ...balanceInfo.balances };
+      const newBalances = balanceInfo.isDepleted ? balanceInfo.balances : { ...oldBalances, ...balanceInfo.balances };
       const hasChanged = JSON.stringify(oldBalances) !== JSON.stringify(newBalances) || account.status !== newStatus;
 
       await this.accountRepo.updateAccount(activeEmail, {
@@ -734,11 +738,15 @@ export class AccountService {
       const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken);
       
       // Safety Guard: Detect Google API rate limit (429) and abort workflow immediately to protect all accounts
-      if (balanceInfo.isRateLimited) {
+      if (balanceInfo.isRateLimited && !balanceInfo.isDepleted) {
         Logger.getInstance().warn(`Rate limit (429) detected while refreshing ${account.email}. Aborting scan to protect remaining accounts!`);
         vscode.window.showWarningMessage('Google API rate limit detected. Refresh stopped immediately to protect accounts from being blocked.');
         options?.onAccountDone?.(account.email, account.balances, account.status);
         break;
+      }
+
+      if (balanceInfo.isDepleted) {
+        balanceInfo.balances = this.balanceService.createExhaustedBalances(account.balances);
       }
 
       const preferredModel = await this.accountRepo.getPreferredModel();
@@ -781,7 +789,7 @@ export class AccountService {
         const activeEmail = await this.getActiveAntigravityEmail();
         if (activeEmail && isEmailMatch(account.email, activeEmail)) {
           Logger.getInstance().info(`Active account ${account.email} is depleted and auto-rotate is enabled.`);
-          await this.triggerAutoRotation(account.email);
+          await this.triggerAutoRotation(account.email, true);
         }
       }
     }
@@ -843,6 +851,17 @@ export class AccountService {
     callbacks?.onStart?.(email);
 
     let tokens = await this.accountRepo.getTokens(email);
+    const activeEmail = await this.getActiveAntigravityEmail();
+    const isActive = activeEmail && isEmailMatch(email, activeEmail);
+
+    if (isActive) {
+      const activeInfo = await this.getActiveAntigravityAccountInfo();
+      if (activeInfo?.tokens) {
+        tokens = activeInfo.tokens;
+        await this.accountRepo.storeTokens(email, tokens);
+      }
+    }
+
     if (!tokens) {
       callbacks?.onDone?.(email);
       return;
@@ -850,36 +869,34 @@ export class AccountService {
 
     const now = Math.floor(Date.now() / 1000);
 
-    // Auto-refresh token if needed before API call (unless it's the active IDE account)
-    if (tokens.expiresAt < (now + 300)) {
-      const activeEmail = await this.getActiveAntigravityEmail();
-      const isActive = activeEmail && isEmailMatch(email, activeEmail);
-      if (isActive) {
-        Logger.getInstance().info(`Skipping background token refresh for active account ${email} to prevent session invalidation.`);
-      } else {
-        try {
-          const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
-          tokens.accessToken = newTokens.accessToken;
-          tokens.expiresAt = now + newTokens.expiresIn;
-          await this.accountRepo.storeTokens(email, tokens);
-        } catch (e) {
-          Logger.getInstance().warn(`Skipping balance fetch for ${email}: expired token.`);
-          await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
-          callbacks?.onDone?.(email, undefined, AccountStatus.TOKEN_EXPIRED);
-          return;
-        }
+    // Auto-refresh token if needed before API call (unless it's the active IDE account with live token)
+    if (tokens.expiresAt < (now + 300) && !isActive) {
+      try {
+        const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
+        tokens.accessToken = newTokens.accessToken;
+        tokens.expiresAt = now + newTokens.expiresIn;
+        await this.accountRepo.storeTokens(email, tokens);
+      } catch (e) {
+        Logger.getInstance().warn(`Skipping balance fetch for ${email}: expired token.`);
+        await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
+        callbacks?.onDone?.(email, undefined, AccountStatus.TOKEN_EXPIRED);
+        return;
       }
     }
 
     const config = ExtensionConfig.getInstance();
-    const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken);
+    const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, { projectId: account.projectId });
 
-    // Safety Guard: Detect Google API rate limit (429)
-    if (balanceInfo.isRateLimited) {
+    // Safety Guard: Detect Google API rate limit (429) ONLY if not depleted
+    if (balanceInfo.isRateLimited && !balanceInfo.isDepleted) {
       Logger.getInstance().warn(`Rate limit (429) hit while refreshing single account ${email}.`);
       vscode.window.showWarningMessage('Google API rate limit detected for this account. Please wait before retrying.');
       callbacks?.onDone?.(email, account.balances, account.status);
       return;
+    }
+
+    if (balanceInfo.isDepleted) {
+      balanceInfo.balances = this.balanceService.createExhaustedBalances(account.balances);
     }
 
     const preferredModel = await this.accountRepo.getPreferredModel();
@@ -887,7 +904,8 @@ export class AccountService {
 
     await this.accountRepo.updateAccount(email, {
       balances: balanceInfo.balances,
-      plan: balanceInfo.plan,
+      plan: balanceInfo.plan !== AccountPlan.UNKNOWN ? balanceInfo.plan : account.plan,
+      projectId: balanceInfo.projectId || account.projectId,
       status: status,
       lastRefreshedAt: new Date().toISOString()
     });
@@ -913,10 +931,10 @@ export class AccountService {
 
     const isAutoRotate = ExtensionConfig.getInstance().isAutoRotateEnabled();
     if (isAutoRotate && status === AccountStatus.DEPLETED) {
-      const activeEmail = await this.getActiveAntigravityEmail();
-      if (activeEmail && isEmailMatch(email, activeEmail)) {
+      const currentActive = await this.getActiveAntigravityEmail();
+      if (currentActive && isEmailMatch(email, currentActive)) {
         Logger.getInstance().info(`Active account ${email} is depleted and auto-rotate is enabled.`);
-        await this.triggerAutoRotation(email);
+        await this.triggerAutoRotation(email, true);
       }
     }
 
@@ -1016,7 +1034,7 @@ export class AccountService {
   /**
    * Helper to automatically switch to the next healthy account with quota when active runs out.
    */
-  public async triggerAutoRotation(depletedEmail: string, isAutomatic: boolean = false): Promise<void> {
+  public async triggerAutoRotation(depletedEmail: string, isAutomatic: boolean = true): Promise<void> {
     if (this._isSwitching) {
       Logger.getInstance().info('Auto-rotation already in progress, skipping duplicate call.');
       return;
@@ -1043,38 +1061,8 @@ export class AccountService {
     Logger.getInstance().info(`[Auto-Switch] Selected best candidate ${nextAccount.email} for depleted ${depletedEmail}`);
 
     try {
-      if (isAutomatic) {
-        const cancelAction = i18n.t('common.cancel');
-        const switchNowAction = i18n.t('accounts.switchButton');
-        let cancelled = false;
-
-        // Show a 4-second notification toast giving the user a chance to cancel if needed
-        const notificationPromise = vscode.window.showWarningMessage(
-          i18n.t('service.autoRotateCountdown', { email: depletedEmail, nextEmail: nextAccount.email, seconds: 4 }),
-          switchNowAction,
-          cancelAction
-        ).then(choice => {
-          if (choice === cancelAction) {
-            cancelled = true;
-          }
-        });
-
-        // Wait 4 seconds for user cancellation
-        await Promise.race([
-          notificationPromise,
-          new Promise(r => setTimeout(r, 4000))
-        ]);
-
-        if (cancelled) {
-          Logger.getInstance().info('Auto-switch cancelled by user.');
-          return;
-        }
-
-        // Execute non-blocking account switch
-        await this.switchAccountWorkflow(nextAccount.email, { skipPrompt: true });
-      } else {
-        await this.switchAccountWorkflow(nextAccount.email);
-      }
+      // Immediate, non-blocking automatic switch and reload
+      await this.switchAccountWorkflow(nextAccount.email, { skipPrompt: true });
     } finally {
       this._isSwitching = false;
     }

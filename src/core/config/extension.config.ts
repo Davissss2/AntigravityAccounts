@@ -79,6 +79,14 @@ export class ExtensionConfig {
   }
 
   /**
+   * Whether to show a confirmation modal before closing and reloading window on account switch.
+   * Default: false (immediate automatic reload)
+   */
+  isConfirmOnSwitchEnabled(): boolean {
+    return this.getConfig().get<boolean>('confirmOnSwitch', false);
+  }
+
+  /**
    * Whether low credit notifications are enabled
    */
   isLowCreditNotificationsEnabled(): boolean {

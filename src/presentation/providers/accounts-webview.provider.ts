@@ -919,7 +919,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         onDone: (email: string, updatedBalances?: Record<string, any>, updatedStatus?: string) => {
           this._view?.webview.postMessage({ command: 'accountRefreshDone', email, balances: updatedBalances, status: updatedStatus });
         }
-      });
+      }, { force: true });
     } catch (e: any) {
       Logger.getInstance().error(`Error during active account refresh for ${activeAccount.email}`, e);
     } finally {
@@ -954,7 +954,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
           this._view?.webview.postMessage({ command: 'accountRefreshDone', email, html: cardHtml, balances: updatedBalances, status: updatedStatus });
         }
-      });
+      }, { force: true });
     } catch (e: any) {
       Logger.getInstance().error(`Error during manual single account refresh for ${email}`, e);
     } finally {

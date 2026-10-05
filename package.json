@@ -233,6 +233,11 @@
           "default": false,
           "description": "Automatically switch to another account when the active account's credits are depleted"
         },
+        "antigravityAccount.confirmOnSwitch": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show confirmation modal before closing and reloading window on account switch (Default: false, reloads automatically without prompt)"
+        },
         "antigravityAccount.cacheDurationDays": {
           "type": "number",
           "default": 7,

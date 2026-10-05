@@ -20,6 +20,7 @@ import * as os from 'os';
 import { spawn } from 'child_process';
 import { Logger } from '../../core/utils/logger';
 import { I18nService } from '../../i18n/i18n.service';
+import { ExtensionConfig } from '../../core/config/extension.config';
 import { PathUtils } from '../../core/utils/path.utils';
 import { ProtobufUtils } from '../../core/utils/protobuf.utils';
 import { Account, AccountTokens } from '../../core/domain/models/account.model';
@@ -140,7 +141,10 @@ export class StateDbService {
     deviceProfile?: DeviceProfile | null,
     skipPrompt: boolean = false
   ): Promise<boolean> {
-    if (!skipPrompt) {
+    const config = ExtensionConfig.getInstance();
+    const shouldPrompt = !skipPrompt && config.isConfirmOnSwitchEnabled();
+
+    if (shouldPrompt) {
       const i18n = I18nService.getInstance();
       const actionYes = i18n.t('switchPrompt.actionYes');
       const actionNo = i18n.t('switchPrompt.actionNo');
@@ -160,7 +164,7 @@ export class StateDbService {
         return false;
       }
     } else {
-      Logger.getInstance().info(`Auto-switching to ${email} (non-blocking prompt)...`);
+      Logger.getInstance().info(`Auto-switching to ${email} (immediate automatic reload)...`);
     }
 
     // Save open files before closing

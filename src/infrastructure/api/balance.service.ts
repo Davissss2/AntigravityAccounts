@@ -18,10 +18,40 @@ export interface BalanceResult {
   projectId?: string;
   hasError: boolean;
   isRateLimited?: boolean;
+  isDepleted?: boolean;
   status?: AccountStatus;
 }
 
 export class BalanceService {
+  /**
+   * Helper to create 0% balances when quota is completely exhausted
+   */
+  public createExhaustedBalances(existing?: Record<string, any>): Record<string, any> {
+    const balances: Record<string, any> = {};
+    if (existing && Object.keys(existing).length > 0) {
+      for (const [k, v] of Object.entries(existing)) {
+        if (typeof v === 'object' && v !== null) {
+          balances[k] = { ...v, value: 0 };
+        } else {
+          balances[k] = { value: 0 };
+        }
+      }
+    } else {
+      const defaultModelKeys = [
+        'models/gemini-2.5-flash',
+        'models/gemini-2.5-pro',
+        'models/gemini-3.8-flash',
+        'gemini-3.8-flash-high',
+        'gemini-3.8-flash-med',
+        'models/claude-3-5-sonnet'
+      ];
+      for (const k of defaultModelKeys) {
+        balances[k] = { value: 0 };
+      }
+    }
+    return balances;
+  }
+
   /**
    * Orchestrates the fetching of credits and plan type for an account.
    * Supports an ultra-fast path for active account quota polling.
@@ -40,6 +70,12 @@ export class BalanceService {
       if (options?.fast) {
         Logger.getInstance().debug('[FastQuota] Querying available model quotas directly...');
         const fastModels = await this.tryFetchAvailableModels(accessToken, options.projectId);
+        if (fastModels && (fastModels as any).__isDepleted) {
+          result.isDepleted = true;
+          result.status = AccountStatus.DEPLETED;
+          result.balances = this.createExhaustedBalances(result.balances);
+          return result;
+        }
         if (fastModels && (fastModels as any).__isRateLimited) {
           result.isRateLimited = true;
           result.hasError = true;
@@ -104,12 +140,15 @@ export class BalanceService {
       // Strategy 4: Fetch Available Models (Model percentages)
       Logger.getInstance().debug('Attempting to fetch available models...');
       const modelBalances = await this.tryFetchAvailableModels(accessToken, result.projectId);
-      if (modelBalances && (modelBalances as any).__isRateLimited) {
+      if (modelBalances && (modelBalances as any).__isDepleted) {
+        result.isDepleted = true;
+        result.status = AccountStatus.DEPLETED;
+        result.balances = this.createExhaustedBalances(result.balances);
+      } else if (modelBalances && (modelBalances as any).__isRateLimited) {
         result.isRateLimited = true;
         result.hasError = true;
         delete (modelBalances as any).__isRateLimited;
-      }
-      if (Object.keys(modelBalances).length > 0) {
+      } else if (Object.keys(modelBalances).length > 0) {
         result.balances = { ...result.balances, ...modelBalances };
       }
 
@@ -222,6 +261,16 @@ export class BalanceService {
         }
       } catch (e: any) {
         if (e instanceof ApiError && e.status === 429) {
+          const isExhausted = e.message && (
+            e.message.includes('RESOURCE_EXHAUSTED') ||
+            e.message.includes('Resource has been exhausted') ||
+            e.message.includes('quota') ||
+            e.message.includes('exhausted')
+          );
+          if (isExhausted) {
+            Logger.getInstance().warn(`fetchAvailableModels indicates quota is completely exhausted (429 RESOURCE_EXHAUSTED) at ${url}`);
+            return { __isDepleted: true };
+          }
           Logger.getInstance().warn(`fetchAvailableModels hit rate limit (429) at ${url}`);
           return { __isRateLimited: true };
         }

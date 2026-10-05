@@ -85,7 +85,8 @@ export class ApiClient {
       const response = await fetch(url, fetchOptions);
 
       if (!response.ok) {
-        throw new ApiError(response.status, response.statusText);
+        const errBody = await response.text().catch(() => '');
+        throw new ApiError(response.status, response.statusText, errBody || undefined);
       }
 
       const text = await response.text();
