@@ -1088,20 +1088,21 @@ export class AccountService {
         }
       }
 
-      // ── Anti-Ban: Dynamic randomized delay (Optimizado 350ms - 750ms) ──
+      // ── Anti-Ban: Dynamic randomized delay ("medio medio": 4s a 8s) ──
       if (accountsProcessed > 0) {
-        const minDelay = 350;
-        const maxDelay = 750;
+        // Base delay: random entre 4,000ms (4s) y 8,000ms (8s)
+        const minDelay = 4000;
+        const maxDelay = 8000;
         let delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
 
-        // Breve pausa cada 15 cuentas (1.5s a 2.5s)
-        if (accountsProcessed % 15 === 0) {
-          const extraPause = Math.floor(Math.random() * 1000) + 1500;
-          Logger.getInstance().info(`Anti-ban: Breve pausa natural de ${(extraPause / 1000).toFixed(1)}s tras procesar ${accountsProcessed} cuentas.`);
+        // Pequeña pausa natural cada 8 a 12 cuentas (6s a 10s) para romper patrones lineales
+        if (accountsProcessed % (Math.floor(Math.random() * 5) + 8) === 0) {
+          const extraPause = Math.floor(Math.random() * (10000 - 6000 + 1)) + 6000;
+          Logger.getInstance().info(`Anti-ban: Pausa natural de ${Math.round(extraPause / 1000)}s tras procesar ${accountsProcessed} cuentas.`);
           delay += extraPause;
         }
 
-        Logger.getInstance().info(`Consultando cuotas de ${account.email} tras ${(delay / 1000).toFixed(2)}s...`);
+        Logger.getInstance().info(`Anti-ban: Esperando ${(delay / 1000).toFixed(1)}s antes de consultar ${account.email}...`);
         
         await new Promise(resolve => {
           const timer = setTimeout(resolve, delay);
