@@ -2,7 +2,7 @@
   "name": "antigravity-account",
   "displayName": "Antigravity Account",
   "description": "Manage multiple Antigravity accounts seamlessly - switch, monitor credits, and auto-rotate with one click.",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "publisher": "Davissss2",
   "author": {
     "name": "Davissss2",
@@ -237,6 +237,11 @@
           "type": "boolean",
           "default": false,
           "description": "Show confirmation modal before closing and reloading window on account switch (Default: false, reloads automatically without prompt)"
+        },
+        "antigravityAccount.adaptiveQuotaPolling": {
+          "type": "boolean",
+          "default": true,
+          "description": "Dynamically accelerates quota polling when active account quota drops below 10% (checks every 8s) to trigger immediate auto-switch without hitting rate limits"
         },
         "antigravityAccount.cacheDurationDays": {
           "type": "number",

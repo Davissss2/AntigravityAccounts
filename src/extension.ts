@@ -168,12 +168,32 @@ function registerCommands(
       // ── 3. Fast Active Account Quota Monitoring & Auto-Switch ──
       if (currentActive) {
         const now = Date.now();
-        const activeIntervalSec = config.getActiveQuotaRefreshIntervalSeconds();
-        const intervalMs = Math.max(15, activeIntervalSec) * 1000;
+        const preferredModel = await accountRepo.getPreferredModel();
+        const activeAccount = await accountRepo.getAccount(currentActive);
+        const quota = activeAccount ? accountService.getAccountUsableQuotaPercentage(activeAccount, preferredModel) : 100;
+
+        // Dynamic interval:
+        // - Critical (<= 10%): Poll every 8s to catch depletion immediately without rate limiting
+        // - Low (<= 25%): Poll every 20s
+        // - Normal (> 25%): Respect user setting (default: 45s)
+        let dynamicIntervalSec = 45;
+        if (config.isAdaptiveQuotaPollingEnabled()) {
+          if (quota <= 10) {
+            dynamicIntervalSec = 8;
+          } else if (quota <= 25) {
+            dynamicIntervalSec = 20;
+          } else {
+            dynamicIntervalSec = Math.max(25, config.getActiveQuotaRefreshIntervalSeconds());
+          }
+        } else {
+          dynamicIntervalSec = Math.max(15, config.getActiveQuotaRefreshIntervalSeconds());
+        }
+
+        const intervalMs = dynamicIntervalSec * 1000;
 
         if (now - lastActiveBalanceCheckTime >= intervalMs) {
           lastActiveBalanceCheckTime = now;
-          logger.debug(`Rapid active account quota monitor polling for ${currentActive}...`);
+          logger.debug(`[Adaptive Quota Monitor] Polling ${currentActive} (quota: ${quota}%, interval: ${dynamicIntervalSec}s)...`);
           accountService.refreshActiveAccountFast(false).catch((err: any) => {
             logger.debug(`Fast quota check error for ${currentActive}`, err);
           });
@@ -183,6 +203,26 @@ function registerCommands(
       // ignore
     }
   }, 4000); // Check every 4 seconds for responsive updates
+
+  // Responsive trigger: refresh active quota on window focus if remaining quota is low (<= 15%)
+  context.subscriptions.push(
+    vscode.window.onDidChangeWindowState(async (state) => {
+      if (state.focused) {
+        const currentActive = await accountService.getActiveAntigravityEmail();
+        if (currentActive) {
+          const activeAccount = await accountRepo.getAccount(currentActive);
+          if (activeAccount) {
+            const preferredModel = await accountRepo.getPreferredModel();
+            const quota = accountService.getAccountUsableQuotaPercentage(activeAccount, preferredModel);
+            if (quota <= 15 && (Date.now() - lastActiveBalanceCheckTime >= 8000)) {
+              lastActiveBalanceCheckTime = Date.now();
+              accountService.refreshActiveAccountFast(false).catch(() => {});
+            }
+          }
+        }
+      }
+    })
+  );
 
   // ── Periodic Background Balance Refresh ──
   const periodicRefreshInterval = setInterval(async () => {

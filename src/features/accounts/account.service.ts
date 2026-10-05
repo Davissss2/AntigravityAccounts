@@ -418,6 +418,35 @@ export class AccountService {
   }
 
   /**
+   * Helper: compute remaining usable quota percentage (0-100) for an account.
+   * Examines preferred model first, or the lowest non-zero primary model balance.
+   */
+  getAccountUsableQuotaPercentage(account: Account, preferredModel?: string | null): number {
+    if (!account || !account.balances) return 100;
+    if (account.status === AccountStatus.DEPLETED || account.status === AccountStatus.TOKEN_EXPIRED || account.status === AccountStatus.ERROR || account.status === AccountStatus.INELIGIBLE) {
+      return 0;
+    }
+
+    if (preferredModel) {
+      const prefVal = getModelBalanceValue(account.balances, preferredModel);
+      if (prefVal >= 0) return prefVal;
+    }
+
+    // Examine core models (ignoring internal tab/tap prefixes)
+    const values: number[] = [];
+    for (const [k, v] of Object.entries(account.balances)) {
+      const lower = k.toLowerCase();
+      if (lower.startsWith('chat') || lower.startsWith('tab') || lower.startsWith('tap')) continue;
+      if (typeof v === 'object' && v !== null && 'value' in v) {
+        values.push(typeof v.value === 'number' ? v.value : Number(v.value));
+      }
+    }
+
+    if (values.length === 0) return 100;
+    return Math.min(...values);
+  }
+
+  /**
    * Lightweight, rapid balance refresh for the currently active Antigravity account.
    * Runs in milliseconds directly against model quotas without artificial delay.
    */
@@ -432,8 +461,16 @@ export class AccountService {
     }
 
     const now = Date.now();
-    // Throttle fast checks: minimum 15 seconds unless explicitly forced
-    if (!force && now - this._lastActiveQuotaCheckTime < 15_000) {
+    const config = ExtensionConfig.getInstance();
+    const preferredModel = await this.accountRepo.getPreferredModel();
+    const currentQuota = this.getAccountUsableQuotaPercentage(account, preferredModel);
+
+    // Dynamic throttle:
+    // When quota is <= 10%, throttle allows rapid checks every 8 seconds without hitting Google rate limits.
+    // When quota is <= 25%, throttle allows checks every 15 seconds.
+    // Otherwise throttle requires 25 seconds between background requests.
+    const minThrottleMs = (config.isAdaptiveQuotaPollingEnabled() && currentQuota <= 10) ? 8_000 : (currentQuota <= 25 ? 15_000 : 25_000);
+    if (!force && (now - this._lastActiveQuotaCheckTime < minThrottleMs)) {
       return account;
     }
     this._lastActiveQuotaCheckTime = now;

@@ -5,6 +5,17 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.7] - 2026-10-05
+
+### Dynamic Adaptive Quota Polling (< 10% Quota Trigger)
+- **Calibrated Accelerated Polling**: Automatically scales polling interval when active account quota drops to critical levels:
+  - Critical `<= 10%`: Polls every 8 seconds, ensuring quota exhaustion (0% / 429) triggers auto-switch immediately with zero delay.
+  - Low `<= 25%`: Polls every 20 seconds.
+  - Normal `> 25%`: Polls every 40-45 seconds to minimize network traffic and API usage.
+- **Window Focus Proactive Trigger**: Senses window focus changes (`onDidChangeWindowState`) and automatically refreshes quota if remaining balance is under 15% and at least 8 seconds elapsed since the last check.
+- **Strict Anti-Rate-Limit Protection**: Enforces an 8-second safety floor between checks to guarantee zero 429 penalties from Google Cloud Code PA.
+- **New Setting**: `antigravityAccount.adaptiveQuotaPolling` (default: `true`).
+
 ## [0.3.6] - 2026-10-05
 
 ### Claude Sonnet 5.5 & Opus 5.5 Support

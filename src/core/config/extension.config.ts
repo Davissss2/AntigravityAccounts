@@ -87,6 +87,13 @@ export class ExtensionConfig {
   }
 
   /**
+   * Whether dynamic adaptive quota polling is enabled (< 10% quota checks every 8s)
+   */
+  isAdaptiveQuotaPollingEnabled(): boolean {
+    return this.getConfig().get<boolean>('adaptiveQuotaPolling', true);
+  }
+
+  /**
    * Whether low credit notifications are enabled
    */
   isLowCreditNotificationsEnabled(): boolean {
