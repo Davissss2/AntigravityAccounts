@@ -61,6 +61,10 @@ export const SECRET_KEYS = {
   METADATA: (email: string) => `antigravityAccount.secure.${email}.metadata`,
 } as const;
 
+// ── Authentication Provider IDs ──
+export const AUTH_PROVIDERS = ['antigravity_auth', 'google'] as const;
+
+
 // ── State Database Keys ──
 export const STATE_DB_KEYS = {
   OAUTH_TOKEN: 'antigravityUnifiedStateSync.oauthToken',

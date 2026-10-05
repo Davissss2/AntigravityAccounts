@@ -18,7 +18,7 @@ import { generateDeviceProfile } from '../../core/domain/models/device-profile.m
 import { isEmailMatch } from '../../core/utils/account.utils';
 import { getModelBalanceValue } from '../../core/utils/model.utils';
 import { ApiClient } from '../../core/network/api.client';
-import { OAUTH } from '../../core/constants/app.constants';
+import { OAUTH, AUTH_PROVIDERS } from '../../core/constants/app.constants';
 import { ChatResumeUtils } from '../../core/utils/chat-resume.utils';
 import { PathUtils } from '../../core/utils/path.utils';
 
@@ -214,7 +214,7 @@ export class AccountService {
 
     // Decision 2: Pre-emptive Token Refresh (Add 5-minute buffer)
     const now = Math.floor(Date.now() / 1000);
-    if (tokens.expiresAt < (now + 300)) {
+    if (tokens.refreshToken && tokens.expiresAt < (now + 300)) {
       Logger.getInstance().info(`Token for ${email} is expired or expiring soon. Refreshing before injection...`);
       try {
         const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
@@ -232,6 +232,12 @@ export class AccountService {
         await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
         return 'error';
       }
+    } else if (!tokens.refreshToken && tokens.expiresAt <= now) {
+      // Access token expired and no refresh token is stored yet
+      const i18n = I18nService.getInstance();
+      vscode.window.showErrorMessage(i18n.t('service.sessionExpiredFailed', { email }));
+      await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
+      return 'error';
     }
 
     // Ensure device profile exists (generate if missing — for accounts added before this feature)
@@ -268,17 +274,24 @@ export class AccountService {
   }
 
   /**
-   * Get the currently active account email directly from Antigravity's state database.
-   * Does NOT rely on the tool's local database.
+   * Get the currently active account email directly from Antigravity's live session or state database.
+   * Prioritizes live native auth session in memory, with state.vscdb as fallback.
    */
   async getActiveAntigravityEmail(): Promise<string | null | undefined> {
     try {
+      // 1. High priority: Live native auth session in Antigravity IDE (real-time in memory)
+      const nativeEmail = await this.getNativeAuthEmail();
+      if (nativeEmail) {
+        return nativeEmail;
+      }
+
+      // 2. Fallback: Read state.vscdb on disk (for injected accounts or when silent session is not active)
       return await Promise.race([
         this.stateDbService.readCurrentEmailFromDb(),
         new Promise<undefined>(resolve => setTimeout(() => {
           Logger.getInstance().error('Timeout reading active account from state.vscdb');
           resolve(undefined);
-        }, 2000))
+        }, 1500))
       ]);
     } catch (error) {
       Logger.getInstance().error('Failed to read active account from Antigravity', error);
@@ -291,7 +304,8 @@ export class AccountService {
    */
   async getActiveAntigravityTokens(): Promise<{ accessToken: string; refreshToken: string; expiresAt: number } | null> {
     try {
-      return await this.stateDbService.readActiveTokensFromDb();
+      const activeInfo = await this.getActiveAntigravityAccountInfo();
+      return activeInfo?.tokens || null;
     } catch (error) {
       Logger.getInstance().error('Failed to read active tokens from Antigravity', error);
       return null;
@@ -299,10 +313,43 @@ export class AccountService {
   }
 
   /**
-   * Get the active account's email and tokens directly from Antigravity's state database in a single query.
+   * Get the active account's email and tokens from live IDE session or Antigravity's state database.
    */
-  async getActiveAntigravityAccountInfo(): Promise<{ email: string | null; tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null } | null> {
+  async getActiveAntigravityAccountInfo(): Promise<{ email: string | null; tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null; avatarUrl?: string | null } | null> {
     try {
+      // 1. High priority: Live native auth session
+      const nativeSession = await this.getNativeAuthSession();
+      if (nativeSession && nativeSession.email) {
+        let tokens = nativeSession.tokens;
+        // Attempt to find refreshToken from state.vscdb or repository
+        try {
+          const dbInfo = await this.stateDbService.readActiveAccountInfoFromDb();
+          if (dbInfo?.email && isEmailMatch(dbInfo.email, nativeSession.email) && dbInfo.tokens?.refreshToken) {
+            tokens = {
+              accessToken: tokens?.accessToken || dbInfo.tokens.accessToken,
+              refreshToken: dbInfo.tokens.refreshToken,
+              expiresAt: dbInfo.tokens.expiresAt || tokens.expiresAt
+            };
+          } else {
+            const storedTokens = await this.accountRepo.getTokens(nativeSession.email);
+            if (storedTokens?.refreshToken) {
+              tokens = {
+                accessToken: tokens?.accessToken || storedTokens.accessToken,
+                refreshToken: storedTokens.refreshToken,
+                expiresAt: storedTokens.expiresAt
+              };
+            }
+          }
+        } catch {}
+
+        return {
+          email: nativeSession.email,
+          tokens,
+          avatarUrl: nativeSession.avatarUrl
+        };
+      }
+
+      // 2. Fallback: state.vscdb
       return await this.stateDbService.readActiveAccountInfoFromDb();
     } catch (error) {
       Logger.getInstance().error('Failed to read active account info from Antigravity', error);
@@ -311,37 +358,112 @@ export class AccountService {
   }
 
   /**
-   * Retrieves the email address of the active Google authentication session in VS Code / Antigravity IDE.
+   * Retrieves the live authentication session (email, tokens, profile) from VS Code / Antigravity IDE.
+   * Checks Antigravity native auth ('antigravity_auth') and standard ('google').
    */
-  async getNativeAuthEmail(): Promise<string | null> {
+  async getNativeAuthSession(): Promise<{
+    email: string;
+    tokens: { accessToken: string; refreshToken: string; expiresAt: number };
+    avatarUrl?: string;
+    name?: string;
+  } | null> {
     try {
-      const providers = ['google'];
+      const providers = AUTH_PROVIDERS;
       const scopesOptions = [
+        [],
         ['https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile'],
-        ['email', 'profile'],
-        []
+        ['https://www.googleapis.com/auth/cloud-platform', 'https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile'],
+        ['email', 'profile']
       ];
 
       for (const providerId of providers) {
-        if (typeof (vscode.authentication as any).getAccounts === 'function') {
+        let session: vscode.AuthenticationSession | undefined;
+
+        for (const scopes of scopesOptions) {
+          try {
+            session = await vscode.authentication.getSession(providerId, scopes, { silent: true });
+            if (session?.accessToken) break;
+          } catch {}
+        }
+
+        if (!session?.accessToken && typeof (vscode.authentication as any).getAccounts === 'function') {
           try {
             const accounts = await (vscode.authentication as any).getAccounts(providerId);
-            if (accounts && accounts.length > 0 && accounts[0].label && accounts[0].label.includes('@')) {
-              return accounts[0].label.trim().toLowerCase();
+            if (accounts && accounts.length > 0) {
+              for (const scopes of scopesOptions) {
+                try {
+                  session = await vscode.authentication.getSession(providerId, scopes, {
+                    silent: true,
+                    account: accounts[0]
+                  });
+                  if (session?.accessToken) break;
+                } catch {}
+              }
             }
           } catch {}
         }
 
-        for (const scopes of scopesOptions) {
+        if (session && session.accessToken) {
+          let email: string | undefined;
+          let name: string = session.account?.label || 'User';
+          let avatarUrl: string | undefined;
+
           try {
-            const session = await vscode.authentication.getSession(providerId, scopes, { silent: true });
-            if (session?.account?.label && session.account.label.includes('@')) {
-              return session.account.label.trim().toLowerCase();
+            const userInfo = await ApiClient.request<{ email?: string; name?: string; picture?: string }>(
+              OAUTH.USERINFO_URL,
+              { accessToken: session.accessToken, timeoutMs: 3500 }
+            );
+            if (userInfo?.email) email = userInfo.email.trim().toLowerCase();
+            if (userInfo?.name) name = userInfo.name;
+            if (userInfo?.picture) avatarUrl = userInfo.picture;
+          } catch (e) {
+            Logger.getInstance().debug(`[Native Auth] Google userinfo fetch failed for provider ${providerId}`, e);
+          }
+
+          if (!email && session.account?.label) {
+            const raw = session.account.label.trim().toLowerCase();
+            email = raw.includes('@') ? raw : `${raw}@gmail.com`;
+          }
+
+          if (email && email.includes('@')) {
+            let refreshToken = (session as any).refreshToken || '';
+            if (!refreshToken) {
+              try {
+                const dbInfo = await this.stateDbService.readActiveAccountInfoFromDb();
+                if (dbInfo?.email && isEmailMatch(dbInfo.email, email) && dbInfo.tokens?.refreshToken) {
+                  refreshToken = dbInfo.tokens.refreshToken;
+                }
+              } catch {}
             }
-          } catch {}
+
+            const expiresAt = Math.floor(Date.now() / 1000) + 3600;
+            return {
+              email,
+              name,
+              avatarUrl,
+              tokens: {
+                accessToken: session.accessToken,
+                refreshToken,
+                expiresAt
+              }
+            };
+          }
         }
       }
       return null;
+    } catch (err) {
+      Logger.getInstance().debug('[Native Auth] Failed to query native auth session', err);
+      return null;
+    }
+  }
+
+  /**
+   * Retrieves the email address of the active Google / Antigravity authentication session in the IDE.
+   */
+  async getNativeAuthEmail(): Promise<string | null> {
+    try {
+      const session = await this.getNativeAuthSession();
+      return session?.email || null;
     } catch {
       return null;
     }
@@ -554,23 +676,29 @@ export class AccountService {
    * Scans VS Code's authentication sessions for any Google/Antigravity accounts that are logged in
    * and auto-captures them into the extension repository if enabled.
    */
-  async syncFromAuthenticationSessions(): Promise<void> {
+  async syncFromAuthenticationSessions(targetProviderId?: string): Promise<void> {
     try {
       const config = ExtensionConfig.getInstance();
       if (!config.isAutoCaptureAccountsEnabled()) return;
 
-      const providers = ['google'];
+      const providerCandidates = targetProviderId 
+        ? Array.from(new Set([targetProviderId, ...AUTH_PROVIDERS]))
+        : Array.from(AUTH_PROVIDERS);
+
       const scopesOptions = [
+        [],
         ['https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile'],
-        ['email', 'profile'],
-        []
+        ['https://www.googleapis.com/auth/cloud-platform', 'https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile'],
+        ['email', 'profile']
       ];
 
-      for (const providerId of providers) {
+      for (const providerId of providerCandidates) {
         try {
           let accounts: readonly vscode.AuthenticationSessionAccountInformation[] = [];
           if (typeof (vscode.authentication as any).getAccounts === 'function') {
-            accounts = await (vscode.authentication as any).getAccounts(providerId);
+            try {
+              accounts = await (vscode.authentication as any).getAccounts(providerId);
+            } catch {}
           }
 
           // Also check default session without account specified
@@ -578,7 +706,7 @@ export class AccountService {
           for (const scopes of scopesOptions) {
             try {
               const defaultSession = await vscode.authentication.getSession(providerId, scopes, { silent: true });
-              if (defaultSession) {
+              if (defaultSession?.accessToken) {
                 sessionsToProcess.push(defaultSession);
                 break;
               }
@@ -593,7 +721,7 @@ export class AccountService {
                   silent: true,
                   account: acc
                 });
-                if (session && !sessionsToProcess.some(s => s.id === session.id || s.accessToken === session.accessToken)) {
+                if (session?.accessToken && !sessionsToProcess.some(s => s.id === session.id || s.accessToken === session.accessToken)) {
                   sessionsToProcess.push(session);
                   break;
                 }
@@ -614,9 +742,9 @@ export class AccountService {
                 OAUTH.USERINFO_URL,
                 { accessToken: session.accessToken, timeoutMs: 4000 }
               );
-              if (userInfo.email) email = userInfo.email.trim().toLowerCase();
-              if (userInfo.name) name = userInfo.name;
-              if (userInfo.picture) avatarUrl = userInfo.picture;
+              if (userInfo?.email) email = userInfo.email.trim().toLowerCase();
+              if (userInfo?.name) name = userInfo.name;
+              if (userInfo?.picture) avatarUrl = userInfo.picture;
             } catch {
               // Fallback to account label
               if (session.account?.label) {
@@ -627,16 +755,27 @@ export class AccountService {
 
             if (!email || !email.includes('@')) continue;
 
+            // Attempt to link refresh token if in state.vscdb
+            let refreshToken = (session as any).refreshToken || '';
+            if (!refreshToken) {
+              try {
+                const dbInfo = await this.stateDbService.readActiveAccountInfoFromDb();
+                if (dbInfo?.email && isEmailMatch(dbInfo.email, email) && dbInfo.tokens?.refreshToken) {
+                  refreshToken = dbInfo.tokens.refreshToken;
+                }
+              } catch {}
+            }
+
             const existing = await this.accountRepo.getAccount(email);
             if (!existing) {
-              Logger.getInstance().info(`[Auth Monitor] Auto-capturing Google Auth account: ${email}`);
+              Logger.getInstance().info(`[Auth Monitor] Auto-capturing new account from ${providerId}: ${email}`);
 
               await this.accountRepo.saveAccount({
                 email,
                 name: name || email.split('@')[0],
                 avatarUrl,
                 accessToken: session.accessToken,
-                refreshToken: '',
+                refreshToken,
                 expiresAt: Math.floor(Date.now() / 1000) + 3600
               });
 
@@ -668,36 +807,23 @@ export class AccountService {
                 i18n.t('service.autoCapturedAccount', { email })
               );
             } else {
-              // Existing account: ensure accessToken is current
+              // Existing account: keep tokens up to date
               const storedTokens = await this.accountRepo.getTokens(email);
-              if (storedTokens && storedTokens.accessToken !== session.accessToken) {
+              const effectiveRefreshToken = refreshToken || storedTokens?.refreshToken || '';
+              if (!storedTokens || storedTokens.accessToken !== session.accessToken || (!storedTokens.refreshToken && effectiveRefreshToken)) {
                 await this.accountRepo.storeTokens(email, {
                   accessToken: session.accessToken,
-                  refreshToken: storedTokens.refreshToken,
+                  refreshToken: effectiveRefreshToken,
                   expiresAt: Math.floor(Date.now() / 1000) + 3600
                 });
-                Logger.getInstance().info(`[Auth Monitor] Updated access token for existing account: ${email}`);
+                Logger.getInstance().info(`[Auth Monitor] Updated tokens for existing account: ${email}`);
+              }
+
+              if (existing.status === AccountStatus.TOKEN_EXPIRED || existing.status === AccountStatus.ERROR) {
+                await this.accountRepo.updateAccount(email, { status: AccountStatus.ACTIVE });
+                this._onAccountsChanged.fire();
               }
             }
-
-            // Check if native Google Auth differs from state.vscdb active account
-            try {
-              const currentDbEmail = await this.stateDbService.readCurrentEmailFromDb();
-              if (currentDbEmail && !isEmailMatch(currentDbEmail, email) && this._lastNotifiedMismatchEmail !== email) {
-                this._lastNotifiedMismatchEmail = email;
-                const i18n = I18nService.getInstance();
-                const switchMsg = i18n.getLocale() === 'es'
-                  ? `Sesión activa con ${email} en el IDE diferente a Antigravity (${currentDbEmail}). ¿Deseas activarla?`
-                  : `Signed in as ${email} in the IDE, but Antigravity has ${currentDbEmail} loaded. Activate ${email}?`;
-                const activateBtn = i18n.getLocale() === 'es' ? 'Activar ahora' : 'Activate now';
-
-                vscode.window.showInformationMessage(switchMsg, activateBtn).then(async (action) => {
-                  if (action === activateBtn) {
-                    await this.switchAccountWorkflow(email);
-                  }
-                });
-              }
-            } catch {}
           }
         } catch (provErr) {
           Logger.getInstance().debug(`Error checking provider ${providerId}`, provErr);

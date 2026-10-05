@@ -166,9 +166,10 @@ function registerCommands(
       vscode.authentication.onDidChangeSessions(async (event) => {
         logger.info(`[Auth Monitor] Authentication sessions changed for provider: ${event.provider.id}`);
         if (config.isAutoCaptureAccountsEnabled()) {
-          await accountService.syncFromAuthenticationSessions();
+          await accountService.syncFromAuthenticationSessions(event.provider.id);
           await accountService.syncActiveAccountFromDb(true);
         }
+        accountService.emitAccountsChanged();
       })
     );
   } catch (authErr) {
@@ -209,9 +210,9 @@ function registerCommands(
       if (currentActive && activeInfo?.tokens) {
         const tokens = activeInfo.tokens;
         const storedTokens = await accountRepo.getTokens(currentActive);
-        if (!storedTokens || storedTokens.accessToken !== tokens.accessToken || storedTokens.refreshToken !== tokens.refreshToken) {
+        if (!storedTokens || storedTokens.accessToken !== tokens.accessToken || (!storedTokens.refreshToken && tokens.refreshToken)) {
           await accountRepo.storeTokens(currentActive, tokens);
-          logger.info(`Synchronized active tokens for ${currentActive} from state.vscdb to repository.`);
+          logger.info(`Synchronized active tokens for ${currentActive} to repository.`);
         }
       }
 

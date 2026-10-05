@@ -5,6 +5,16 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.10] - 2026-10-05
+
+### Native Antigravity Auth Provider (`antigravity_auth`) & Live Session Auto-Capture
+- **Internal `antigravity_auth` Support**: Registered Antigravity IDE's internal auth provider ID (`antigravity_auth`), enabling full real-time detection when users sign in or switch accounts using the native IDE Google Auth menu.
+- **In-Memory Live Session Priority**: Introduced `getNativeAuthSession()` to read active sessions directly from IDE memory, eliminating latency and stale readings caused by delayed SQLite disk writes to `state.vscdb`.
+- **Verified Account Identity Resolution**: Authenticated sessions automatically resolve canonical Google emails, names, and avatars via Google UserInfo API using the active access token.
+- **Autonomous Account Ingestion & Quota Initialization**: Logging in or switching to a new account natively in Antigravity automatically registers the account in the repository, provisions a dedicated `DeviceProfile`, fetches model quotas, and pins it as `ACTIVE`.
+- **Automatic Refresh Token Association**: Seamlessly detects and links `refreshToken` from `state.vscdb` as soon as it is flushed to disk, allowing captured accounts to be reactivated seamlessly.
+- **Unblocked Direct Activation**: `switchAccountWorkflow` allows activating newly auto-captured accounts immediately while their initial `accessToken` remains valid.
+
 ## [0.3.9] - 2026-10-05
 
 ### Visual Settings Controls & IDE Session Mismatch Synchronization
