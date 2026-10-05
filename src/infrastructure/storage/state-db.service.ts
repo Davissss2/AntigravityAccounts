@@ -27,6 +27,7 @@ import { Account, AccountTokens } from '../../core/domain/models/account.model';
 import { DeviceProfile } from '../../core/domain/models/device-profile.model';
 import { STATE_DB_KEYS, STORAGE_JSON_KEYS, PERSONAL_EMAIL_DOMAINS } from '../../core/constants/app.constants';
 import { getAntigravityVersion, isVersionSupported, MIN_SUPPORTED_VERSION } from '../../core/utils/version.utils';
+import { ChatResumeUtils } from '../../core/utils/chat-resume.utils';
 
 export class StateDbService {
   private static sqlJsInstance: any = null;
@@ -172,6 +173,29 @@ export class StateDbService {
       const filesConfig = vscode.workspace.getConfiguration('files');
       await vscode.workspace.saveAll(filesConfig.get<string>('autoSave') === 'off');
     } catch (e) { /* best effort */ }
+
+    // Persist pending chat resume marker before relaunching Antigravity IDE
+    if (config.isAutoResumeChatEnabled()) {
+      try {
+        const storageDir = PathUtils.getAntigravityDataPath(this.context || config.getContext());
+        const existing = ChatResumeUtils.getPendingResume(storageDir);
+        // Only write if no fresh marker was already saved (e.g. by auto-rotation within last 30s)
+        if (!existing || Date.now() - existing.timestamp > 30_000) {
+          const timeoutSec = config.getAutoResumeTimeoutSeconds();
+          const activity = ChatResumeUtils.detectRecentChatActivity(timeoutSec);
+          ChatResumeUtils.savePendingResume(storageDir, {
+            reason: 'manual',
+            wasWorking: activity.wasWorking,
+            prompt: config.getAutoResumePrompt(),
+            targetEmail: email,
+            timestamp: Date.now(),
+            conversationId: activity.conversationId
+          });
+        }
+      } catch (resumeErr) {
+        Logger.getInstance().debug('Could not persist pending chat resume in triggerWorkerAndClose', resumeErr);
+      }
+    }
 
     const antigravityExe = this.findAntigravityExe();
     // process.execPath inside Antigravity IS the Antigravity binary itself

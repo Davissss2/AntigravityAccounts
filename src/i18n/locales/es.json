@@ -130,7 +130,8 @@
     "settings": "Configuración",
     "searchPlaceholder": "Buscar por nombre o correo electrónico...",
     "noSearchResults": "Ninguna cuenta coincide con tu búsqueda.",
-    "refreshThisAccount": "Refrescar esta cuenta"
+    "refreshThisAccount": "Refrescar esta cuenta",
+    "nativeSessionMismatch": "Sesión del IDE en {{nativeEmail}} diferente a la cuenta activa de Antigravity ({{activeEmail}})."
   },
   "statusBar": {
     "noAccount": "Sin cuenta",
@@ -204,6 +205,18 @@
     "autoRefreshDescription": "Cuando está habilitado, los saldos se actualizan automáticamente al abrir el panel.",
     "autoRotateLabel": "Rotación automática de cuentas",
     "autoRotateDescription": "Cambiar automáticamente a otra cuenta con saldo cuando la cuenta activa se quede sin créditos.",
+    "autoCaptureLabel": "Auto-guardar cuentas del IDE",
+    "autoCaptureDescription": "Detecta y guarda automáticamente las cuentas que inicien sesión en Antigravity IDE sin tener que agregarlas a mano.",
+    "autoResumeChatLabel": "Reanudación automática del Chat",
+    "autoResumeChatDescription": "Reabre automáticamente la conversación y continúa la generación cuando la IA se detiene por falta de cuota.",
+    "autoResumePromptLabel": "Mensaje de reanudación",
+    "autoResumePromptDescription": "Texto enviado a la IA para continuar (por defecto 'continua').",
+    "adaptiveQuotaPollingLabel": "Aceleración inteligente de cuota (< 10%)",
+    "adaptiveQuotaPollingDescription": "Comprueba la cuota cada 8 segundos cuando baje del 10% para cambiar de cuenta inmediatamente al agotarse.",
+    "noticeDurationLabel": "Tiempo de aviso antes de cambiar",
+    "noticeDurationDescription": "Segundos de cuenta atrás antes de recargar la ventana al rotar cuenta (0 = Instantáneo).",
+    "confirmOnSwitchLabel": "Confirmar antes de cambiar cuenta",
+    "confirmOnSwitchDescription": "Muestra una ventana modal de confirmación antes de recargar el editor.",
     "refreshIntervalLabel": "Intervalo de actualización",
     "refreshIntervalDescription": "Los saldos se actualizarán si ha pasado más de este intervalo desde la última actualización.",
     "intervalImmediate": "Inmediatamente",

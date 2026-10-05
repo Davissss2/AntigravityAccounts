@@ -130,7 +130,8 @@
     "settings": "Settings",
     "searchPlaceholder": "Search by name or email...",
     "noSearchResults": "No accounts match your search.",
-    "refreshThisAccount": "Refresh this account"
+    "refreshThisAccount": "Refresh this account",
+    "nativeSessionMismatch": "IDE session is {{nativeEmail}}, different from active Antigravity account ({{activeEmail}})."
   },
   "statusBar": {
     "noAccount": "No account",
@@ -204,6 +205,18 @@
     "autoRefreshDescription": "When enabled, balances are refreshed automatically when you open the panel.",
     "autoRotateLabel": "Auto-Rotate Accounts",
     "autoRotateDescription": "Automatically switch to another account with credits when the active account runs out.",
+    "autoCaptureLabel": "Auto-Capture Native Logins",
+    "autoCaptureDescription": "Automatically detect and save accounts signed into Antigravity IDE without manual addition.",
+    "autoResumeChatLabel": "Chat Auto-Resume on Depletion",
+    "autoResumeChatDescription": "Automatically restore active chat session and continue AI generation after account rotation on depletion.",
+    "autoResumePromptLabel": "Auto-Resume Prompt",
+    "autoResumePromptDescription": "Prompt text sent to continue generation (e.g. 'continua').",
+    "adaptiveQuotaPollingLabel": "Dynamic Adaptive Quota Polling",
+    "adaptiveQuotaPollingDescription": "Accelerates polling to every 8s when active quota is <= 10% to auto-switch immediately without delays.",
+    "noticeDurationLabel": "Notice Duration Before Switch",
+    "noticeDurationDescription": "Seconds shown in countdown before reloading the window on switch (0 = Instantaneous).",
+    "confirmOnSwitchLabel": "Confirm Before Account Switch",
+    "confirmOnSwitchDescription": "Show a confirmation dialog before closing and reloading window on account switch.",
     "refreshIntervalLabel": "Refresh Interval",
     "refreshIntervalDescription": "Balances will refresh if more than this interval has passed since the last update.",
     "intervalImmediate": "Immediately",

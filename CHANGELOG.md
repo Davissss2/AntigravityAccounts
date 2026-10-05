@@ -5,10 +5,23 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.9] - 2026-10-05
+
+### Visual Settings Controls & IDE Session Mismatch Synchronization
+- **Expanded Settings Modal**: Exposed full configuration toggles and inputs in the sidebar settings modal:
+  - Auto-Capture Native Logins (`autoCaptureAccounts`)
+  - Dynamic Adaptive Quota Polling (`adaptiveQuotaPolling`)
+  - Chat Auto-Resume on Depletion (`autoResumeChat`)
+  - Custom Auto-Resume Prompt (`autoResumePrompt`)
+  - Notice Duration Before Switch (`noticeDurationSeconds`: 0s, 3s, 5s, 10s)
+  - Confirm Before Switch Dialog (`confirmOnSwitch`)
+- **Native Session Mismatch Detection & 1-Click Activation**: Detected when the user logs into Google Auth in Antigravity IDE with an account different from the SQLite injected state in `state.vscdb`. Renders an interactive banner and notification allowing instant 1-click activation to keep Cloud Code and AI models synchronized.
+- **Privacy & Documentation Sanitization**: Completely sanitized all documentation, examples, and changelogs to exclusively use generic placeholder emails.
+
 ## [0.3.8] - 2026-10-05
 
 ### Multi-Account Auto-Capture & VS Code Authentication Integration
-- **Real-Time Google Auth Session Detection**: Integrated directly with `vscode.authentication.onDidChangeSessions` and periodic checks (`syncFromAuthenticationSessions`). Logging in with Google accounts inside Antigravity IDE (e.g. `iarecodul59`, `iarecodul55`) is now detected and captured automatically within seconds.
+- **Real-Time Google Auth Session Detection**: Integrated directly with `vscode.authentication.onDidChangeSessions` and periodic checks (`syncFromAuthenticationSessions`). Logging in with Google accounts inside Antigravity IDE (e.g. `user@gmail.com`, `account2@gmail.com`) is now detected and captured automatically within seconds.
 - **Verified Google UserInfo Resolution**: Discovered sessions automatically fetch official email and profile details from Google's UserInfo endpoint, eliminating discrepancies between usernames and full email addresses.
 - **SecretStorage Self-Healing Reconciliation**: Added `reconcileOrphanedSecretAccounts()` to scan `state.vscdb` for any accounts existing in encrypted SecretStorage but omitted from `globalState.accounts.list`, restoring them on startup with full balance verification.
 - **Configurable Auto-Capture Toggle**: Added `antigravityAccount.autoCaptureAccounts` (default: `true`), allowing users and AI agents to enable or disable automatic ingestion of IDE logins.

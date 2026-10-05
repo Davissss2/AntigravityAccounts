@@ -44,17 +44,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<Antigr
   const config = ExtensionConfig.getInstance();
   config.initialize(context);
 
-  // ── Execute Pending Chat Resume (if auto-switched on quota depletion) ──
+  // ── Execute Pending Chat Resume (on account switch / quota depletion) ──
   try {
     const storageDir = PathUtils.getAntigravityDataPath(context);
-    const pendingResume = ChatResumeUtils.readAndClearPendingResume(storageDir);
+    let pendingResume = ChatResumeUtils.readAndClearPendingResume(storageDir);
+    if (!pendingResume) {
+      pendingResume = ChatResumeUtils.readAndClearPendingResume(PathUtils.getAntigravityDataPath());
+    }
     if (pendingResume && config.isAutoResumeChatEnabled()) {
+      logger.info(
+        `[ChatResume] Restoring chat after account switch to ${pendingResume.targetEmail} (wasWorking=${pendingResume.wasWorking}, prompt="${pendingResume.prompt}")`
+      );
       ChatResumeUtils.executePendingResume(pendingResume).catch(err => {
-        logger.debug('Error executing chat resume on startup', err);
+        logger.warn('[ChatResume] Error executing chat resume on startup', err);
       });
     }
   } catch (resumeErr) {
-    logger.debug('Could not check pending chat resume on startup', resumeErr);
+    logger.debug('[ChatResume] Could not check pending chat resume on startup', resumeErr);
   }
 
   // ── Run Storage Migration & Sanitization ──

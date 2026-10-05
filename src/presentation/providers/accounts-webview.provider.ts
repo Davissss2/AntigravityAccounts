@@ -639,6 +639,24 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             if (message.refreshIntervalMinutes !== undefined) {
               await config.update('refreshIntervalMinutes', message.refreshIntervalMinutes, vscode.ConfigurationTarget.Global);
             }
+            if (message.autoCaptureAccounts !== undefined) {
+              await config.update('autoCaptureAccounts', message.autoCaptureAccounts, vscode.ConfigurationTarget.Global);
+            }
+            if (message.autoResumeChat !== undefined) {
+              await config.update('autoResumeChat', message.autoResumeChat, vscode.ConfigurationTarget.Global);
+            }
+            if (message.autoResumePrompt !== undefined) {
+              await config.update('autoResumePrompt', message.autoResumePrompt, vscode.ConfigurationTarget.Global);
+            }
+            if (message.adaptiveQuotaPolling !== undefined) {
+              await config.update('adaptiveQuotaPolling', message.adaptiveQuotaPolling, vscode.ConfigurationTarget.Global);
+            }
+            if (message.noticeDurationSeconds !== undefined) {
+              await config.update('noticeDurationSeconds', message.noticeDurationSeconds, vscode.ConfigurationTarget.Global);
+            }
+            if (message.confirmOnSwitch !== undefined) {
+              await config.update('confirmOnSwitch', message.confirmOnSwitch, vscode.ConfigurationTarget.Global);
+            }
 
             Logger.getInstance().info('Settings saved successfully.');
             this.accountService.emitAccountsChanged();
@@ -1524,9 +1542,31 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       }
     };
     const configCacheDurationDays = vscode.workspace.getConfiguration('antigravityAccount').get<number>('cacheDurationDays', 7);
+    const configAutoCapture = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('autoCaptureAccounts', true);
+    const configAutoResumeChat = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('autoResumeChat', true);
+    const configAutoResumePrompt = vscode.workspace.getConfiguration('antigravityAccount').get<string>('autoResumePrompt', 'continua');
+    const configAdaptivePolling = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('adaptiveQuotaPolling', true);
+    const configNoticeDuration = vscode.workspace.getConfiguration('antigravityAccount').get<number>('noticeDurationSeconds', 0);
+    const configConfirmOnSwitch = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('confirmOnSwitch', false);
+    const nativeAuthEmail = await this.accountService.getNativeAuthEmail();
     const accounts = await this.accountRepo.getAccountSummaries();
     this._workflows = await this.accountRepo.getWorkflows();
     const activeWorkflowId = await this.accountRepo.getActiveWorkflowId();
+
+    let sessionMismatchBannerHtml = '';
+    if (nativeAuthEmail && this._pinnedActiveEmail && !isEmailMatch(nativeAuthEmail, this._pinnedActiveEmail)) {
+      sessionMismatchBannerHtml = `
+        <div class="session-mismatch-banner" style="background:rgba(234, 179, 8, 0.12); border:1px solid rgba(234, 179, 8, 0.35); border-radius:8px; padding:10px 12px; margin:0 0 12px 0; display:flex; align-items:center; justify-content:space-between; gap:8px;">
+          <div style="display:flex; align-items:center; gap:8px; font-size:0.82rem; line-height:1.35; color:var(--text-primary);">
+            <svg style="width:16px; height:16px; color:#eab308; flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span>${i18n.t('accounts.nativeSessionMismatch', { nativeEmail: nativeAuthEmail, activeEmail: this._pinnedActiveEmail })}</span>
+          </div>
+          <button class="btn btn-primary" onclick="sendMessage('switchAccount', '${nativeAuthEmail}')" style="padding:4px 10px; font-size:0.78rem; white-space:nowrap; flex-shrink:0;">
+            ${i18n.t('accounts.activate')}
+          </button>
+        </div>
+      `;
+    }
 
     // ── Preferred Model Resolution ──
     // Extract available model keys from all accounts with balances (after filtering)
@@ -3430,6 +3470,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           </div>
           <!-- Refresh Toast -->
           <div id="refreshToast" class="refresh-toast"></div>
+          <!-- Session Mismatch Banner -->
+          ${sessionMismatchBannerHtml}
           ${accountCardsHtml}
           <!-- Search No Results -->
           <div id="searchNoResults" class="search-no-results">
@@ -3578,6 +3620,69 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                 </select>
                 <p style="font-size:0.82em; opacity:0.65; margin:6px 0 0 0;">${i18n.t('webview.refreshIntervalDescription')}</p>
               </div>
+
+              <!-- Auto-Capture Native Logins -->
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; margin-top:14px;">
+                <label for="autoCaptureToggle" style="font-weight:bold; cursor:pointer;">${i18n.t('webview.autoCaptureLabel')}</label>
+                <label style="position:relative; display:inline-block; width:40px; height:22px; cursor:pointer;">
+                  <input type="checkbox" id="autoCaptureToggle" ${configAutoCapture ? 'checked' : ''} onchange="onAutoCaptureToggle()" style="opacity:0; width:0; height:0;">
+                  <span id="autoCaptureTrack" style="position:absolute; inset:0; background:${configAutoCapture ? '#4caf50' : 'var(--glass-border)'}; border-radius:11px; transition:background 0.3s, box-shadow 0.3s; ${configAutoCapture ? 'box-shadow:0 0 6px rgba(76,175,80,0.4);' : ''}"></span>
+                  <span id="autoCaptureSlider" style="position:absolute; top:2px; ${isRtl ? 'right' : 'left'}:2px; width:18px; height:18px; background:var(--text-primary); border-radius:50%; transition:0.3s; ${configAutoCapture ? (isRtl ? 'right:20px' : 'left:20px') : ''}"></span>
+                </label>
+              </div>
+              <p style="font-size:0.82em; opacity:0.65; margin:0 0 12px 0;">${i18n.t('webview.autoCaptureDescription')}</p>
+
+              <!-- Dynamic Adaptive Quota Polling (< 10%) -->
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; margin-top:14px;">
+                <label for="adaptivePollingToggle" style="font-weight:bold; cursor:pointer;">${i18n.t('webview.adaptiveQuotaPollingLabel')}</label>
+                <label style="position:relative; display:inline-block; width:40px; height:22px; cursor:pointer;">
+                  <input type="checkbox" id="adaptivePollingToggle" ${configAdaptivePolling ? 'checked' : ''} onchange="onAdaptivePollingToggle()" style="opacity:0; width:0; height:0;">
+                  <span id="adaptivePollingTrack" style="position:absolute; inset:0; background:${configAdaptivePolling ? '#4caf50' : 'var(--glass-border)'}; border-radius:11px; transition:background 0.3s, box-shadow 0.3s; ${configAdaptivePolling ? 'box-shadow:0 0 6px rgba(76,175,80,0.4);' : ''}"></span>
+                  <span id="adaptivePollingSlider" style="position:absolute; top:2px; ${isRtl ? 'right' : 'left'}:2px; width:18px; height:18px; background:var(--text-primary); border-radius:50%; transition:0.3s; ${configAdaptivePolling ? (isRtl ? 'right:20px' : 'left:20px') : ''}"></span>
+                </label>
+              </div>
+              <p style="font-size:0.82em; opacity:0.65; margin:0 0 12px 0;">${i18n.t('webview.adaptiveQuotaPollingDescription')}</p>
+
+              <!-- Chat Auto-Resume on Depletion -->
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; margin-top:14px;">
+                <label for="autoResumeChatToggle" style="font-weight:bold; cursor:pointer;">${i18n.t('webview.autoResumeChatLabel')}</label>
+                <label style="position:relative; display:inline-block; width:40px; height:22px; cursor:pointer;">
+                  <input type="checkbox" id="autoResumeChatToggle" ${configAutoResumeChat ? 'checked' : ''} onchange="onAutoResumeChatToggle()" style="opacity:0; width:0; height:0;">
+                  <span id="autoResumeChatTrack" style="position:absolute; inset:0; background:${configAutoResumeChat ? '#4caf50' : 'var(--glass-border)'}; border-radius:11px; transition:background 0.3s, box-shadow 0.3s; ${configAutoResumeChat ? 'box-shadow:0 0 6px rgba(76,175,80,0.4);' : ''}"></span>
+                  <span id="autoResumeChatSlider" style="position:absolute; top:2px; ${isRtl ? 'right' : 'left'}:2px; width:18px; height:18px; background:var(--text-primary); border-radius:50%; transition:0.3s; ${configAutoResumeChat ? (isRtl ? 'right:20px' : 'left:20px') : ''}"></span>
+                </label>
+              </div>
+              <p style="font-size:0.82em; opacity:0.65; margin:0 0 12px 0;">${i18n.t('webview.autoResumeChatDescription')}</p>
+
+              <!-- Auto-Resume Prompt -->
+              <div id="autoResumePromptGroup" style="margin-bottom: 14px; ${configAutoResumeChat ? '' : 'opacity:0.4; pointer-events:none;'}">
+                <label for="autoResumePromptInput" style="display:block; margin-bottom:6px; font-weight:bold; font-size:0.9em;">${i18n.t('webview.autoResumePromptLabel')}</label>
+                <input type="text" id="autoResumePromptInput" value="${(configAutoResumePrompt || '').replace(/"/g, '&quot;')}" style="width:100%; box-sizing:border-box; padding:8px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); border:1px solid var(--vscode-input-border); border-radius:4px;" placeholder="continua">
+                <p style="font-size:0.82em; opacity:0.65; margin:6px 0 0 0;">${i18n.t('webview.autoResumePromptDescription')}</p>
+              </div>
+
+              <!-- Notice Duration Before Switch -->
+              <div style="margin-bottom: 14px; margin-top:14px;">
+                <label for="noticeDurationSelect" style="display:block; margin-bottom:6px; font-weight:bold; font-size:0.9em;">${i18n.t('webview.noticeDurationLabel')}</label>
+                <select id="noticeDurationSelect" style="width:100%; padding:8px; background:var(--vscode-dropdown-background); color:var(--vscode-dropdown-foreground); border:1px solid var(--vscode-dropdown-border); border-radius:4px;">
+                  <option value="0" ${configNoticeDuration === 0 ? 'selected' : ''}>0s (${i18n.t('webview.intervalImmediate')})</option>
+                  <option value="3" ${configNoticeDuration === 3 ? 'selected' : ''}>3s</option>
+                  <option value="5" ${configNoticeDuration === 5 ? 'selected' : ''}>5s</option>
+                  <option value="10" ${configNoticeDuration === 10 ? 'selected' : ''}>10s</option>
+                </select>
+                <p style="font-size:0.82em; opacity:0.65; margin:6px 0 0 0;">${i18n.t('webview.noticeDurationDescription')}</p>
+              </div>
+
+              <!-- Confirm Before Account Switch -->
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; margin-top:14px;">
+                <label for="confirmOnSwitchToggle" style="font-weight:bold; cursor:pointer;">${i18n.t('webview.confirmOnSwitchLabel')}</label>
+                <label style="position:relative; display:inline-block; width:40px; height:22px; cursor:pointer;">
+                  <input type="checkbox" id="confirmOnSwitchToggle" ${configConfirmOnSwitch ? 'checked' : ''} onchange="onConfirmOnSwitchToggle()" style="opacity:0; width:0; height:0;">
+                  <span id="confirmOnSwitchTrack" style="position:absolute; inset:0; background:${configConfirmOnSwitch ? '#4caf50' : 'var(--glass-border)'}; border-radius:11px; transition:background 0.3s, box-shadow 0.3s; ${configConfirmOnSwitch ? 'box-shadow:0 0 6px rgba(76,175,80,0.4);' : ''}"></span>
+                  <span id="confirmOnSwitchSlider" style="position:absolute; top:2px; ${isRtl ? 'right' : 'left'}:2px; width:18px; height:18px; background:var(--text-primary); border-radius:50%; transition:0.3s; ${configConfirmOnSwitch ? (isRtl ? 'right:20px' : 'left:20px') : ''}"></span>
+                </label>
+              </div>
+              <p style="font-size:0.82em; opacity:0.65; margin:0 0 12px 0;">${i18n.t('webview.confirmOnSwitchDescription')}</p>
             </div>
 
             <!-- Immediate Mode Confirmation Dialog -->
@@ -3644,6 +3749,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           let currentRefreshInterval = ${configRefreshInterval};
           let currentSortBy = ${JSON.stringify(configSortBy)};
           let currentCacheDurationDays = ${configCacheDurationDays};
+          let currentAutoCapture = ${configAutoCapture};
+          let currentAdaptivePolling = ${configAdaptivePolling};
+          let currentAutoResumeChat = ${configAutoResumeChat};
+          let currentAutoResumePrompt = ${JSON.stringify(configAutoResumePrompt)};
+          let currentNoticeDuration = ${configNoticeDuration};
+          let currentConfirmOnSwitch = ${configConfirmOnSwitch};
           const isRtlDir = ${isRtl};
           const savedSearchQuery = ${JSON.stringify(this._searchQuery)};
           
@@ -4262,6 +4373,79 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             }
           }
 
+          function onAutoCaptureToggle() {
+            const toggle = document.getElementById('autoCaptureToggle');
+            const slider = document.getElementById('autoCaptureSlider');
+            const track = document.getElementById('autoCaptureTrack');
+            if (!toggle) return;
+            if (toggle.checked) {
+              slider.style[isRtlDir ? 'right' : 'left'] = '20px';
+              track.style.background = '#4caf50';
+              track.style.boxShadow = '0 0 6px rgba(76,175,80,0.4)';
+            } else {
+              slider.style[isRtlDir ? 'right' : 'left'] = '2px';
+              track.style.background = 'var(--glass-border)';
+              track.style.boxShadow = 'none';
+            }
+          }
+
+          function onAdaptivePollingToggle() {
+            const toggle = document.getElementById('adaptivePollingToggle');
+            const slider = document.getElementById('adaptivePollingSlider');
+            const track = document.getElementById('adaptivePollingTrack');
+            if (!toggle) return;
+            if (toggle.checked) {
+              slider.style[isRtlDir ? 'right' : 'left'] = '20px';
+              track.style.background = '#4caf50';
+              track.style.boxShadow = '0 0 6px rgba(76,175,80,0.4)';
+            } else {
+              slider.style[isRtlDir ? 'right' : 'left'] = '2px';
+              track.style.background = 'var(--glass-border)';
+              track.style.boxShadow = 'none';
+            }
+          }
+
+          function onAutoResumeChatToggle() {
+            const toggle = document.getElementById('autoResumeChatToggle');
+            const slider = document.getElementById('autoResumeChatSlider');
+            const track = document.getElementById('autoResumeChatTrack');
+            const promptGroup = document.getElementById('autoResumePromptGroup');
+            if (!toggle) return;
+            if (toggle.checked) {
+              slider.style[isRtlDir ? 'right' : 'left'] = '20px';
+              track.style.background = '#4caf50';
+              track.style.boxShadow = '0 0 6px rgba(76,175,80,0.4)';
+              if (promptGroup) {
+                promptGroup.style.opacity = '1';
+                promptGroup.style.pointerEvents = 'auto';
+              }
+            } else {
+              slider.style[isRtlDir ? 'right' : 'left'] = '2px';
+              track.style.background = 'var(--glass-border)';
+              track.style.boxShadow = 'none';
+              if (promptGroup) {
+                promptGroup.style.opacity = '0.4';
+                promptGroup.style.pointerEvents = 'none';
+              }
+            }
+          }
+
+          function onConfirmOnSwitchToggle() {
+            const toggle = document.getElementById('confirmOnSwitchToggle');
+            const slider = document.getElementById('confirmOnSwitchSlider');
+            const track = document.getElementById('confirmOnSwitchTrack');
+            if (!toggle) return;
+            if (toggle.checked) {
+              slider.style[isRtlDir ? 'right' : 'left'] = '20px';
+              track.style.background = '#4caf50';
+              track.style.boxShadow = '0 0 6px rgba(76,175,80,0.4)';
+            } else {
+              slider.style[isRtlDir ? 'right' : 'left'] = '2px';
+              track.style.background = 'var(--glass-border)';
+              track.style.boxShadow = 'none';
+            }
+          }
+
           function onIntervalChange() {
             const select = document.getElementById('refreshIntervalSelect');
             if (select.value === '0') {
@@ -4366,6 +4550,40 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               cacheDurationSelect.value = String(currentCacheDurationDays);
             }
 
+            const autoCaptureToggle = document.getElementById('autoCaptureToggle');
+            if (autoCaptureToggle) {
+              autoCaptureToggle.checked = currentAutoCapture;
+              onAutoCaptureToggle();
+            }
+
+            const adaptivePollingToggle = document.getElementById('adaptivePollingToggle');
+            if (adaptivePollingToggle) {
+              adaptivePollingToggle.checked = currentAdaptivePolling;
+              onAdaptivePollingToggle();
+            }
+
+            const autoResumeChatToggle = document.getElementById('autoResumeChatToggle');
+            if (autoResumeChatToggle) {
+              autoResumeChatToggle.checked = currentAutoResumeChat;
+              onAutoResumeChatToggle();
+            }
+
+            const autoResumePromptInput = document.getElementById('autoResumePromptInput');
+            if (autoResumePromptInput) {
+              autoResumePromptInput.value = currentAutoResumePrompt || 'continua';
+            }
+
+            const noticeDurationSelect = document.getElementById('noticeDurationSelect');
+            if (noticeDurationSelect) {
+              noticeDurationSelect.value = String(currentNoticeDuration);
+            }
+
+            const confirmOnSwitchToggle = document.getElementById('confirmOnSwitchToggle');
+            if (confirmOnSwitchToggle) {
+              confirmOnSwitchToggle.checked = currentConfirmOnSwitch;
+              onConfirmOnSwitchToggle();
+            }
+
             modal.style.display = 'flex';
             attachIntervalListener();
             } catch (err) {
@@ -4411,6 +4629,24 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               const cacheDurationSelect = document.getElementById('cacheDurationSelect');
               const selectedCacheDuration = cacheDurationSelect ? (parseInt(cacheDurationSelect.value, 10) || 7) : 7;
 
+              const autoCaptureToggle = document.getElementById('autoCaptureToggle');
+              const autoCaptureEnabled = autoCaptureToggle ? autoCaptureToggle.checked : true;
+
+              const adaptivePollingToggle = document.getElementById('adaptivePollingToggle');
+              const adaptivePollingEnabled = adaptivePollingToggle ? adaptivePollingToggle.checked : true;
+
+              const autoResumeChatToggle = document.getElementById('autoResumeChatToggle');
+              const autoResumeChatEnabled = autoResumeChatToggle ? autoResumeChatToggle.checked : true;
+
+              const autoResumePromptInput = document.getElementById('autoResumePromptInput');
+              const autoResumePrompt = autoResumePromptInput ? (autoResumePromptInput.value.trim() || 'continua') : 'continua';
+
+              const noticeDurationSelect = document.getElementById('noticeDurationSelect');
+              const noticeDuration = noticeDurationSelect ? (parseInt(noticeDurationSelect.value, 10) || 0) : 0;
+
+              const confirmOnSwitchToggle = document.getElementById('confirmOnSwitchToggle');
+              const confirmOnSwitch = confirmOnSwitchToggle ? confirmOnSwitchToggle.checked : false;
+
               currentLanguage = selectedLang;
               currentPreferredModel = selectedModel;
               currentAutoRefresh = autoRefreshEnabled;
@@ -4419,6 +4655,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               currentRefreshInterval = refreshInterval;
               currentSortBy = selectedSortBy;
               currentCacheDurationDays = selectedCacheDuration;
+              currentAutoCapture = autoCaptureEnabled;
+              currentAdaptivePolling = adaptivePollingEnabled;
+              currentAutoResumeChat = autoResumeChatEnabled;
+              currentAutoResumePrompt = autoResumePrompt;
+              currentNoticeDuration = noticeDuration;
+              currentConfirmOnSwitch = confirmOnSwitch;
 
               closeSettingsModalOnly();
               vscode.postMessage({ command: 'showLoading' });
@@ -4433,7 +4675,13 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                 lowCreditNotificationsEnabled: lowCreditNotificationsEnabled,
                 refreshIntervalMinutes: refreshInterval,
                 sortBy: selectedSortBy,
-                cacheDurationDays: selectedCacheDuration
+                cacheDurationDays: selectedCacheDuration,
+                autoCaptureAccounts: autoCaptureEnabled,
+                adaptiveQuotaPolling: adaptivePollingEnabled,
+                autoResumeChat: autoResumeChatEnabled,
+                autoResumePrompt: autoResumePrompt,
+                noticeDurationSeconds: noticeDuration,
+                confirmOnSwitch: confirmOnSwitch
               });
             } catch (err) {
               console.error('Error in saveSettings:', err);

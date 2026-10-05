@@ -53,6 +53,8 @@ export class AccountService {
   private _isRefreshing: boolean = false;
   /** Timeout for automatic queued refresh */
   private _queuedTimeout: NodeJS.Timeout | null = null;
+  /** Last email notified for native vs injected mismatch */
+  private _lastNotifiedMismatchEmail: string | null = null;
 
   constructor(
     private authService: AuthService,
@@ -304,6 +306,43 @@ export class AccountService {
       return await this.stateDbService.readActiveAccountInfoFromDb();
     } catch (error) {
       Logger.getInstance().error('Failed to read active account info from Antigravity', error);
+      return null;
+    }
+  }
+
+  /**
+   * Retrieves the email address of the active Google authentication session in VS Code / Antigravity IDE.
+   */
+  async getNativeAuthEmail(): Promise<string | null> {
+    try {
+      const providers = ['google'];
+      const scopesOptions = [
+        ['https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile'],
+        ['email', 'profile'],
+        []
+      ];
+
+      for (const providerId of providers) {
+        if (typeof (vscode.authentication as any).getAccounts === 'function') {
+          try {
+            const accounts = await (vscode.authentication as any).getAccounts(providerId);
+            if (accounts && accounts.length > 0 && accounts[0].label && accounts[0].label.includes('@')) {
+              return accounts[0].label.trim().toLowerCase();
+            }
+          } catch {}
+        }
+
+        for (const scopes of scopesOptions) {
+          try {
+            const session = await vscode.authentication.getSession(providerId, scopes, { silent: true });
+            if (session?.account?.label && session.account.label.includes('@')) {
+              return session.account.label.trim().toLowerCase();
+            }
+          } catch {}
+        }
+      }
+      return null;
+    } catch {
       return null;
     }
   }
@@ -640,6 +679,25 @@ export class AccountService {
                 Logger.getInstance().info(`[Auth Monitor] Updated access token for existing account: ${email}`);
               }
             }
+
+            // Check if native Google Auth differs from state.vscdb active account
+            try {
+              const currentDbEmail = await this.stateDbService.readCurrentEmailFromDb();
+              if (currentDbEmail && !isEmailMatch(currentDbEmail, email) && this._lastNotifiedMismatchEmail !== email) {
+                this._lastNotifiedMismatchEmail = email;
+                const i18n = I18nService.getInstance();
+                const switchMsg = i18n.getLocale() === 'es'
+                  ? `Sesión activa con ${email} en el IDE diferente a Antigravity (${currentDbEmail}). ¿Deseas activarla?`
+                  : `Signed in as ${email} in the IDE, but Antigravity has ${currentDbEmail} loaded. Activate ${email}?`;
+                const activateBtn = i18n.getLocale() === 'es' ? 'Activar ahora' : 'Activate now';
+
+                vscode.window.showInformationMessage(switchMsg, activateBtn).then(async (action) => {
+                  if (action === activateBtn) {
+                    await this.switchAccountWorkflow(email);
+                  }
+                });
+              }
+            } catch {}
           }
         } catch (provErr) {
           Logger.getInstance().debug(`Error checking provider ${providerId}`, provErr);
@@ -1351,7 +1409,7 @@ export class AccountService {
         const storageDir = PathUtils.getAntigravityDataPath(config.getContext());
         ChatResumeUtils.savePendingResume(storageDir, {
           reason: 'depleted',
-          wasWorking: activity.wasWorking,
+          wasWorking: activity.wasWorking || activity.isQuotaError,
           prompt: config.getAutoResumePrompt(),
           targetEmail: nextAccount.email,
           timestamp: Date.now(),

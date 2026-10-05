@@ -9,9 +9,9 @@
  * Compares only the local parts (the username before '@') if one of them is missing a domain name.
  * 
  * Example:
- * - isEmailMatch('iarecodul53@gmail.com', 'Iarecodul53') => true
- * - isEmailMatch('iarecodul51@gmail.com', 'iarecodul51@gmail.com') => true
- * - isEmailMatch('iarecodul50@gmail.com', 'iarecodul51@gmail.com') => false
+ * - isEmailMatch('developer1@gmail.com', 'Developer1') => true
+ * - isEmailMatch('developer1@gmail.com', 'developer1@gmail.com') => true
+ * - isEmailMatch('developer1@gmail.com', 'developer2@gmail.com') => false
  */
 export function isEmailMatch(email1: string | null | undefined, email2: string | null | undefined): boolean {
   if (!email1 || !email2) return false;
