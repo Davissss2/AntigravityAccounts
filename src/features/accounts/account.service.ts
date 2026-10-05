@@ -444,6 +444,17 @@ export class AccountService {
       await this.accountRepo.storeTokens(activeEmail, activeInfo.tokens);
     }
 
+    if (tokens?.refreshToken && (tokens.expiresAt < (Math.floor(Date.now() / 1000) + 120) || !tokens.accessToken)) {
+      try {
+        const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
+        tokens.accessToken = newTokens.accessToken;
+        tokens.expiresAt = Math.floor(Date.now() / 1000) + newTokens.expiresIn;
+        await this.accountRepo.storeTokens(activeEmail, tokens);
+      } catch (e) {
+        Logger.getInstance().warn(`Could not refresh access token for active account ${activeEmail}`);
+      }
+    }
+
     if (!tokens?.accessToken) return account;
 
     try {
@@ -869,8 +880,8 @@ export class AccountService {
 
     const now = Math.floor(Date.now() / 1000);
 
-    // Auto-refresh token if needed before API call (unless it's the active IDE account with live token)
-    if (tokens.expiresAt < (now + 300) && !isActive) {
+    // Auto-refresh token if needed before API call
+    if (tokens.refreshToken && (tokens.expiresAt < (now + 120) || !tokens.accessToken)) {
       try {
         const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
         tokens.accessToken = newTokens.accessToken;

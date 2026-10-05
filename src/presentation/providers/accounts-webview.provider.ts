@@ -18,7 +18,7 @@ import { DeviceProfile } from '../../core/domain/models/device-profile.model';
 import { Workflow } from '../../core/domain/models/workflow.model';
 import { CryptoUtils } from '../../core/utils/crypto.utils';
 import { ExtensionConfig } from '../../core/config/extension.config';
-import { getFriendlyModelName, normalizeModelKey } from '../../core/utils/model.utils';
+import { getFriendlyModelName, normalizeModelKey, getModelBalanceValue } from '../../core/utils/model.utils';
 import { isEmailMatch } from '../../core/utils/account.utils';
 
 /** Shape of an individual account inside the backup */
@@ -1532,6 +1532,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     // Extract available model keys from all accounts with balances (after filtering)
     // and guarantee that standard IDE models are always present in the list.
     const availableModelKeysSet = new Set<string>([
+      'Sonnet 5.5',
+      'Opus 5.5',
       'Sonnet 4.6',
       'Opus 4.6',
       '3.8 Flash (High)',
@@ -4754,10 +4756,18 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
    * Finds the newest Claude model key from a list of keys.
    */
   private findNewestClaudeKey(keys: string[]): string | undefined {
-    const claudeKeys = keys.filter(k => k.toLowerCase().includes('claude'));
+    const claudeKeys = keys.filter(k => {
+      const lower = k.toLowerCase();
+      return lower.includes('claude') || lower.includes('sonnet') || lower.includes('opus');
+    });
     if (claudeKeys.length === 0) return undefined;
 
     return claudeKeys.sort((a, b) => {
+      const aLower = a.toLowerCase();
+      const bLower = b.toLowerCase();
+      if ((bLower.includes('5.5') || bLower.includes('5-5')) && !(aLower.includes('5.5') || aLower.includes('5-5'))) return 1;
+      if ((aLower.includes('5.5') || aLower.includes('5-5')) && !(bLower.includes('5.5') || bLower.includes('5-5'))) return -1;
+
       // Extract numbers to compare versions (e.g. 4-6 vs 3-5)
       const aMatch = a.match(/\d+(?:[.-]\d+)*/);
       const bMatch = b.match(/\d+(?:[.-]\d+)*/);
@@ -4766,42 +4776,15 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       if (!aMatch) return 1;
       if (!bMatch) return -1;
       
-      // Basic string comparison of versions works well enough for X-Y format
       return bMatch[0].localeCompare(aMatch[0]);
     })[0];
   }
 
   /**
    * Extracts the balance value of a specific model from the raw balances object.
-   * Handles "claude-{version}-All" mapping by finding a matching base version.
    */
   private getModelBalanceValue(balances: Record<string, any> | undefined, targetKey: string): number {
-    if (!balances) return -1; // -1 ensures accounts without the model are sorted last
-    
-    const lowerTarget = targetKey.toLowerCase();
-    
-    // Direct match check by comparing friendly names
-    for (const [k, v] of Object.entries(balances)) {
-      if (!k) continue;
-      const friendlyName = getFriendlyModelName(k);
-      if (friendlyName && friendlyName.toLowerCase() === lowerTarget) {
-        return typeof v === 'object' && v !== null && 'value' in v ? v.value : -1;
-      }
-    }
-
-    // Handle Claude version match (e.g. Claude 4.6 (Thinking))
-    if (lowerTarget.startsWith('claude ') && lowerTarget.endsWith(' (thinking)')) {
-      const targetVersion = lowerTarget.replace('claude ', '').replace(' (thinking)', '');
-      for (const [k, v] of Object.entries(balances)) {
-        if (!k || !k.toLowerCase().includes('claude')) continue;
-        const friendlyName = getFriendlyModelName(k);
-        if (friendlyName && friendlyName.toLowerCase().includes(` ${targetVersion} `)) {
-          return typeof v === 'object' && v !== null && 'value' in v ? v.value : -1;
-        }
-      }
-    }
-
-    return -1; // Model not found
+    return getModelBalanceValue(balances, targetKey);
   }
 
   /**

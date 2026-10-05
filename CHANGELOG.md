@@ -5,6 +5,20 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6] - 2026-10-05
+
+### Claude Sonnet 5.5 & Opus 5.5 Support
+- Added comprehensive model normalization and friendly display mapping for Claude Sonnet 5.5 (`Sonnet 5.5`) and Opus 5.5 (`Opus 5.5`).
+- Enhanced `availableModelKeysSet` and dynamic Claude sorting to prioritize Sonnet 5.5 and Opus 5.5 in preferred model selection.
+
+### 429 RESOURCE_EXHAUSTED Quota Fix
+- Differentiated standard Google rate limits from true quota depletion (`RESOURCE_EXHAUSTED` / `Resource has been exhausted`).
+- Account balances and status now transition to 0% and `DEPLETED` on exhaustion, triggering instant auto-switch without stalling.
+
+### Seamless Background Auto-Switch & Manual Refresh
+- Eliminated reload confirmation modals (`confirmOnSwitch: false` by default) for completely autonomous account rotation.
+- Fixed single-account manual card refresh by bypassing the 30-second cooldown (`force: true`) and ensuring expired tokens refresh proactively.
+
 ## [0.3.5] - 2026-10-05
 
 ### 🚀 Auto-Capture Native Antigravity Logins
