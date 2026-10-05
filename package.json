@@ -2,7 +2,7 @@
   "name": "antigravity-account",
   "displayName": "Antigravity Account",
   "description": "Manage multiple Antigravity accounts seamlessly - switch, monitor credits, and auto-rotate with one click.",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "publisher": "Davissss2",
   "author": {
     "name": "Davissss2",
@@ -73,6 +73,36 @@
       {
         "command": "antigravity-account.setLanguage",
         "title": "Set Language",
+        "category": "Antigravity Account"
+      },
+      {
+        "command": "antigravity-account.getAccounts",
+        "title": "Get All Accounts (API)",
+        "category": "Antigravity Account"
+      },
+      {
+        "command": "antigravity-account.getActiveAccount",
+        "title": "Get Active Account (API)",
+        "category": "Antigravity Account"
+      },
+      {
+        "command": "antigravity-account.autoSwitch",
+        "title": "Auto-Switch to Best Quota Account",
+        "category": "Antigravity Account"
+      },
+      {
+        "command": "antigravity-account.refreshActiveQuota",
+        "title": "Refresh Active Account Quota",
+        "category": "Antigravity Account"
+      },
+      {
+        "command": "antigravity-account.toggleAutoSwitch",
+        "title": "Toggle Auto-Switch on Depletion",
+        "category": "Antigravity Account"
+      },
+      {
+        "command": "antigravity-account.syncActiveAccount",
+        "title": "Sync Native Antigravity Account",
         "category": "Antigravity Account"
       }
     ],
@@ -179,6 +209,13 @@
           "minimum": 0,
           "maximum": 1440,
           "description": "Interval in minutes for automatic background balance refresh when auto-refresh is enabled (0 = Disabled)"
+        },
+        "antigravityAccount.activeQuotaRefreshIntervalSeconds": {
+          "type": "number",
+          "default": 45,
+          "minimum": 15,
+          "maximum": 600,
+          "description": "Polling interval in seconds for rapid quota monitoring and depletion detection of the currently active account (Default: 45s)"
         },
         "antigravityAccount.lowCreditThreshold": {
           "type": "number",

@@ -14,7 +14,10 @@ import { I18nService } from './i18n/i18n.service';
 import { ExtensionConfig } from './core/config/extension.config';
 import { PathUtils } from './core/utils/path.utils';
 
-import { AccountStatus } from './core/domain/models/account.model';
+import { Account, AccountStatus, AccountSummary } from './core/domain/models/account.model';
+import { AntigravityAccountApi, SwitchAccountOptions, AutoSwitchResult, ActiveAccountInfo } from './api/extension-api';
+
+export * from './api/extension-api';
 
 import { AuthService } from './infrastructure/auth/auth.service';
 import { BalanceService } from './infrastructure/api/balance.service';
@@ -28,11 +31,11 @@ import { AccountsWebviewProvider } from './presentation/providers/accounts-webvi
  * Called when the extension is activated.
  * Responsible for:
  * - Initializing core services (Logger, I18n, Config)
- * - Registering commands
+ * - Registering commands and public API
  * - Setting up the sidebar webview
  * - Initializing the status bar
  */
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
+export async function activate(context: vscode.ExtensionContext): Promise<AntigravityAccountApi> {
   const logger = Logger.getInstance();
   logger.info('Antigravity Account is activating...');
 
@@ -72,9 +75,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   
   updateLanguage();
 
-  // ── Register Commands ──
-  const commands = registerCommands(context, i18n);
-  context.subscriptions.push(...commands);
+  // ── Register Commands & Public API ──
+  const { disposables, api } = registerCommands(context, i18n);
+  context.subscriptions.push(...disposables);
 
   // ── Listen for configuration changes ──
   context.subscriptions.push(
@@ -85,9 +88,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
-
-
   logger.info('Antigravity Account activated successfully.');
+  return api;
 }
 
 /**
@@ -100,13 +102,13 @@ export function deactivate(): void {
 }
 
 /**
- * Register all extension commands.
+ * Register all extension commands and expose programmatic API.
  * Each command delegates to the appropriate use case / controller.
  */
 function registerCommands(
   context: vscode.ExtensionContext,
   i18n: I18nService
-): vscode.Disposable[] {
+): { disposables: vscode.Disposable[]; api: AntigravityAccountApi } {
   const authService = new AuthService();
   const balanceService = new BalanceService();
   const accountRepo = new AccountRepositoryImpl(context);
@@ -121,78 +123,66 @@ function registerCommands(
   let lastActiveEmail: string | null = null;
   let lastActiveBalanceCheckTime = 0;
 
-  accountService.getActiveAntigravityEmail().then((email: string | null | undefined) => {
-    lastActiveEmail = email || null;
-  }).catch(() => {});
+  // Initial auto-capture & sync of active Antigravity account on startup
+  accountService.syncActiveAccountFromDb(false).then((acc) => {
+    if (acc) {
+      lastActiveEmail = acc.email;
+    }
+  }).catch((err) => {
+    logger.debug('Initial active account sync skipped or failed', err);
+  });
 
   const activeCheckInterval = setInterval(async () => {
     try {
       const activeInfo = await accountService.getActiveAntigravityAccountInfo();
       const currentActive = activeInfo?.email || null;
+
+      // ── 1. Detect Account Change in IDE ──
       if (currentActive !== lastActiveEmail) {
         logger.info(`Active account changed in IDE to: ${currentActive}`);
         lastActiveEmail = currentActive;
-        accountService.emitAccountsChanged();
+        
         if (currentActive) {
-          // Check if account was refreshed recently before querying API to avoid duplicate hits
-          accountRepo.getAccount(currentActive).then((account) => {
-            const lastRefreshed = account?.lastRefreshedAt ? new Date(account.lastRefreshedAt).getTime() : 0;
-            const cooldownMs = 5 * 60 * 1000; // 5 minute cooldown
-            if (Date.now() - lastRefreshed > cooldownMs) {
-              logger.info(`Refreshing newly active account balance: ${currentActive}`);
-              accountService.refreshSingleAccountBalance(currentActive).catch((err: any) => {
-                logger.error(`Failed to refresh active account balance on change for ${currentActive}`, err);
-              });
-            } else {
-              logger.info(`Skipping balance refresh for newly switched ${currentActive}, already refreshed within 5m.`);
-            }
-          }).catch(() => {});
+          // Auto-capture / sync newly active account and refresh its quota immediately
+          await accountService.syncActiveAccountFromDb(true);
+        }
+        accountService.emitAccountsChanged();
+      } else if (currentActive) {
+        // Ensure account is captured even if lastActiveEmail hasn't changed
+        const account = await accountRepo.getAccount(currentActive);
+        if (!account) {
+          await accountService.syncActiveAccountFromDb(true);
         }
       }
 
-      // Sync active tokens from state.vscdb to our local repository
+      // ── 2. Sync Active Tokens ──
       if (currentActive && activeInfo?.tokens) {
         const tokens = activeInfo.tokens;
         const storedTokens = await accountRepo.getTokens(currentActive);
-        // Only update if the access token or refresh token is different to avoid unnecessary writes
         if (!storedTokens || storedTokens.accessToken !== tokens.accessToken || storedTokens.refreshToken !== tokens.refreshToken) {
           await accountRepo.storeTokens(currentActive, tokens);
           logger.info(`Synchronized active tokens for ${currentActive} from state.vscdb to repository.`);
         }
       }
 
-      // Background check for active account balance depletion to trigger auto-rotation
-      // ONLY runs if autoRotateEnabled is explicitly enabled by the user!
-      if (currentActive && config.isAutoRotateEnabled()) {
-        try {
-          const account = await accountRepo.getAccount(currentActive);
-          if (account) {
-            const isDepleted = account.status === AccountStatus.DEPLETED;
-            const isExpired = account.status === AccountStatus.TOKEN_EXPIRED;
-            const isIneligible = account.status === AccountStatus.INELIGIBLE;
-            
-            // Skip checks for accounts already known to be unusable
-            if (!isDepleted && !isExpired && !isIneligible) {
-              const now = Date.now();
-              // Check at most every 10 minutes (600,000 ms) instead of 30 seconds
-              const activeCheckCooldownMs = 10 * 60 * 1000;
-              if (now - lastActiveBalanceCheckTime >= activeCheckCooldownMs) {
-                lastActiveBalanceCheckTime = now;
-                logger.info(`Background active account balance check running for ${currentActive} (auto-rotate enabled)...`);
-                accountService.refreshSingleAccountBalance(currentActive).catch((err: any) => {
-                  logger.error(`Failed to refresh active account balance in background for ${currentActive}`, err);
-                });
-              }
-            }
-          }
-        } catch (dbErr) {
-          logger.error('Failed to load active account metadata in background check', dbErr);
+      // ── 3. Fast Active Account Quota Monitoring & Auto-Switch ──
+      if (currentActive) {
+        const now = Date.now();
+        const activeIntervalSec = config.getActiveQuotaRefreshIntervalSeconds();
+        const intervalMs = Math.max(15, activeIntervalSec) * 1000;
+
+        if (now - lastActiveBalanceCheckTime >= intervalMs) {
+          lastActiveBalanceCheckTime = now;
+          logger.debug(`Rapid active account quota monitor polling for ${currentActive}...`);
+          accountService.refreshActiveAccountFast(false).catch((err: any) => {
+            logger.debug(`Fast quota check error for ${currentActive}`, err);
+          });
         }
       }
     } catch (e) {
       // ignore
     }
-  }, 5000); // Check every 5 seconds for responsive updates
+  }, 4000); // Check every 4 seconds for responsive updates
 
   // ── Periodic Background Balance Refresh ──
   const periodicRefreshInterval = setInterval(async () => {
@@ -251,16 +241,84 @@ function registerCommands(
     })
   );
 
-  // No longer syncing on startup, webview detects it dynamically on render.
+  // ── Public Programmatic API Definition ──
+  const api: AntigravityAccountApi = {
+    async getAccounts() {
+      return await accountRepo.getAccountSummaries();
+    },
+    async getAllAccounts() {
+      return await accountRepo.getAllAccounts();
+    },
+    async getActiveAccount() {
+      const activeInfo = await accountService.getActiveAntigravityAccountInfo();
+      const email = activeInfo?.email || null;
+      let account: AccountSummary | null = null;
+      if (email) {
+        const summaries = await accountRepo.getAccountSummaries();
+        account = summaries.find(s => s.email.toLowerCase() === email.toLowerCase()) || null;
+      }
+      return {
+        email,
+        account,
+        raw: activeInfo
+      };
+    },
+    async switchAccount(email: string, options?: SwitchAccountOptions) {
+      if (accountsProvider.isRefreshing()) {
+        const remaining = accountsProvider.getPendingQueueEmails();
+        if (remaining.length > 0) {
+          await accountRepo.setPendingRefreshEmails(remaining);
+          accountsProvider.cancelRefresh();
+        }
+      }
+      return await accountService.switchAccountWorkflow(email, options);
+    },
+    async autoSwitch(options?: SwitchAccountOptions) {
+      const activeEmail = (await accountService.getActiveAntigravityEmail()) || '';
+      const candidate = await accountService.findBestAccountWithQuota(activeEmail);
+      if (!candidate) {
+        return {
+          success: false,
+          message: 'No healthy account with quota available for auto-switch.'
+        };
+      }
+      if (accountsProvider.isRefreshing()) {
+        const remaining = accountsProvider.getPendingQueueEmails();
+        if (remaining.length > 0) {
+          await accountRepo.setPendingRefreshEmails(remaining);
+          accountsProvider.cancelRefresh();
+        }
+      }
+      const res = await accountService.switchAccountWorkflow(candidate.email, { skipPrompt: options?.skipPrompt ?? true });
+      return {
+        success: res === 'success',
+        targetEmail: candidate.email,
+        message: res === 'success' ? `Switched to ${candidate.email}` : `Switch to ${candidate.email} ended with status: ${res}`
+      };
+    },
+    async refreshActiveQuota(force = true) {
+      return await accountService.refreshActiveAccountFast(force);
+    },
+    async refreshBalances(force = true) {
+      await accountService.refreshBalancesWorkflow(false, { force });
+    },
+    async syncActiveAccount(forceRefresh = true) {
+      return await accountService.syncActiveAccountFromDb(forceRefresh);
+    },
+    async setAutoSwitchEnabled(enabled: boolean) {
+      await config.setAutoRotateEnabled(enabled);
+    },
+    isAutoSwitchEnabled() {
+      return config.isAutoRotateEnabled();
+    }
+  };
 
+  // ── Register Commands ──
   disposables.push(
     vscode.commands.registerCommand('antigravity-account.openPanel', () => {
-      // Focus the webview panel in the sidebar
       vscode.commands.executeCommand('antigravity-account.accountsView.focus');
     })
   );
-
-
 
   disposables.push(
     vscode.commands.registerCommand('antigravity-account.addAccount', async () => {
@@ -269,12 +327,36 @@ function registerCommands(
   );
 
   disposables.push(
-    vscode.commands.registerCommand('antigravity-account.switchAccount', async () => {
+    vscode.commands.registerCommand('antigravity-account.switchAccount', async (targetEmailOrOptions?: any, maybeOptions?: any) => {
+      let targetEmail: string | undefined;
+      let skipPrompt: boolean = false;
+
+      if (typeof targetEmailOrOptions === 'string') {
+        targetEmail = targetEmailOrOptions;
+        if (maybeOptions && typeof maybeOptions === 'object') {
+          skipPrompt = !!maybeOptions.skipPrompt;
+        }
+      } else if (targetEmailOrOptions && typeof targetEmailOrOptions === 'object') {
+        targetEmail = targetEmailOrOptions.email;
+        skipPrompt = !!targetEmailOrOptions.skipPrompt;
+      }
+
+      if (targetEmail) {
+        if (accountsProvider.isRefreshing()) {
+          const remaining = accountsProvider.getPendingQueueEmails();
+          if (remaining.length > 0) {
+            await accountRepo.setPendingRefreshEmails(remaining);
+            accountsProvider.cancelRefresh();
+          }
+        }
+        return await accountService.switchAccountWorkflow(targetEmail, { skipPrompt });
+      }
+
       // Temporary quick pick until UI is built
       const accounts = await accountRepo.getAccountSummaries();
       if (accounts.length === 0) {
         vscode.window.showWarningMessage(i18n.t('extension.noAccountsToSwitch'));
-        return;
+        return 'error';
       }
 
       // Dynamically detect the active account from Antigravity's state.vscdb
@@ -306,14 +388,59 @@ function registerCommands(
             accountsProvider.cancelRefresh();
           }
         }
-        await accountService.switchAccountWorkflow(picked.email);
+        return await accountService.switchAccountWorkflow(picked.email);
       }
+      return 'cancelled';
     })
   );
 
   disposables.push(
-    vscode.commands.registerCommand('antigravity-account.refreshBalances', async () => {
-      await accountService.refreshBalancesWorkflow(true);
+    vscode.commands.registerCommand('antigravity-account.getAccounts', async () => {
+      return await api.getAccounts();
+    })
+  );
+
+  disposables.push(
+    vscode.commands.registerCommand('antigravity-account.getActiveAccount', async () => {
+      return await api.getActiveAccount();
+    })
+  );
+
+  disposables.push(
+    vscode.commands.registerCommand('antigravity-account.autoSwitch', async (options?: SwitchAccountOptions) => {
+      return await api.autoSwitch(options);
+    })
+  );
+
+  disposables.push(
+    vscode.commands.registerCommand('antigravity-account.refreshActiveQuota', async (force?: boolean) => {
+      return await api.refreshActiveQuota(force !== false);
+    })
+  );
+
+  disposables.push(
+    vscode.commands.registerCommand('antigravity-account.toggleAutoSwitch', async (explicitEnabled?: boolean) => {
+      const nextVal = typeof explicitEnabled === 'boolean' ? explicitEnabled : !api.isAutoSwitchEnabled();
+      await api.setAutoSwitchEnabled(nextVal);
+      const msg = nextVal ? i18n.t('webview.autoRotateEnabledToast') : i18n.t('webview.autoRotateDisabledToast');
+      vscode.window.showInformationMessage(msg);
+      return nextVal;
+    })
+  );
+
+  disposables.push(
+    vscode.commands.registerCommand('antigravity-account.syncActiveAccount', async (forceRefresh?: boolean) => {
+      const acc = await api.syncActiveAccount(forceRefresh !== false);
+      if (acc) {
+        vscode.window.showInformationMessage(`Active Antigravity account synchronized: ${acc.email}`);
+      }
+      return acc;
+    })
+  );
+
+  disposables.push(
+    vscode.commands.registerCommand('antigravity-account.refreshBalances', async (force?: boolean) => {
+      await accountService.refreshBalancesWorkflow(force !== false);
     })
   );
 
@@ -334,12 +461,12 @@ function registerCommands(
       if (picked) {
         const extConfig = vscode.workspace.getConfiguration('antigravityAccount');
         await extConfig.update('language', picked.description, vscode.ConfigurationTarget.Global);
-        vscode.commands.executeCommand('antigravity-account.openPanel'); // trigger webview focus to reflect changes if possible
+        vscode.commands.executeCommand('antigravity-account.openPanel');
       }
     })
   );
 
-  return disposables;
+  return { disposables, api };
 }
 
 /**

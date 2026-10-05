@@ -12,15 +12,22 @@ import { IAccountRepository } from '../../core/domain/repositories/account.repos
 import { StateDbService } from '../../infrastructure/storage/state-db.service';
 import { Logger } from '../../core/utils/logger';
 import { I18nService } from '../../i18n/i18n.service';
-import { AccountStatus } from '../../core/domain/models/account.model';
+import { Account, AccountPlan, AccountStatus } from '../../core/domain/models/account.model';
 import { ExtensionConfig } from '../../core/config/extension.config';
 import { generateDeviceProfile } from '../../core/domain/models/device-profile.model';
 import { isEmailMatch } from '../../core/utils/account.utils';
 import { getModelBalanceValue } from '../../core/utils/model.utils';
+import { ApiClient } from '../../core/network/api.client';
+import { OAUTH } from '../../core/constants/app.constants';
 
 export class AccountService {
   private _onAccountsChanged = new vscode.EventEmitter<void>();
   public readonly onAccountsChanged = this._onAccountsChanged.event;
+
+  /** Guard to prevent multiple simultaneous account switches */
+  private _isSwitching: boolean = false;
+  /** Timestamp of the last fast quota check for the active account */
+  private _lastActiveQuotaCheckTime: number = 0;
 
   /** Manually fire the accounts changed event (e.g. after import) */
   public emitAccountsChanged(): void {
@@ -182,7 +189,7 @@ export class AccountService {
    * Workflow: Switch active account
    * Validates/refreshes token, injects into SQLite, and marks active.
    */
-  async switchAccountWorkflow(email: string): Promise<'success' | 'cancelled' | 'error'> {
+  async switchAccountWorkflow(email: string, options?: { skipPrompt?: boolean }): Promise<'success' | 'cancelled' | 'error'> {
     const account = await this.accountRepo.getAccount(email);
     if (!account) return 'error';
 
@@ -236,7 +243,7 @@ export class AccountService {
     }
 
     // Inject into Database (tokens + device profile + telemetry)
-    const result = await this.stateDbService.injectAccountState(account, tokens, deviceProfile);
+    const result = await this.stateDbService.injectAccountState(account, tokens, deviceProfile, options?.skipPrompt);
     
     if (result === 'success') {
       // We no longer save the active account in the local DB.
@@ -294,6 +301,245 @@ export class AccountService {
       Logger.getInstance().error('Failed to read active account info from Antigravity', error);
       return null;
     }
+  }
+
+  /**
+   * Automatically captures and registers the active Antigravity account from state.vscdb
+   * if the user logged in directly through Antigravity IDE without adding it manually.
+   */
+  async syncActiveAccountFromDb(forceRefresh: boolean = false): Promise<Account | null> {
+    try {
+      const activeInfo = await this.getActiveAntigravityAccountInfo();
+      if (!activeInfo?.email) {
+        return null;
+      }
+
+      const email = activeInfo.email;
+      let account = await this.accountRepo.getAccount(email);
+
+      // Check if account is not registered yet
+      if (!account) {
+        Logger.getInstance().info(`[Auto-Capture] Detected new account logged into Antigravity IDE: ${email}`);
+
+        let name = email.split('@')[0];
+        let avatarUrl = (activeInfo as any).avatarUrl || undefined;
+
+        if (activeInfo.tokens?.accessToken) {
+          try {
+            const userInfo = await ApiClient.request<{ name?: string; picture?: string }>(
+              OAUTH.USERINFO_URL,
+              { accessToken: activeInfo.tokens.accessToken, timeoutMs: 4000 }
+            );
+            if (userInfo.name) name = userInfo.name;
+            if (userInfo.picture) avatarUrl = userInfo.picture;
+          } catch (uiErr) {
+            Logger.getInstance().debug(`[Auto-Capture] Could not fetch userinfo for ${email}, using defaults.`);
+          }
+        }
+
+        const expiresAt = activeInfo.tokens?.expiresAt || (Math.floor(Date.now() / 1000) + 3600);
+        const accessToken = activeInfo.tokens?.accessToken || '';
+        const refreshToken = activeInfo.tokens?.refreshToken || '';
+
+        // Save core account
+        await this.accountRepo.saveAccount({
+          email,
+          name,
+          avatarUrl,
+          accessToken,
+          refreshToken,
+          expiresAt
+        });
+
+        // Generate and save unique device profile
+        const existingProfile = await this.accountRepo.getDeviceProfile(email);
+        if (!existingProfile) {
+          const deviceProfile = generateDeviceProfile();
+          await this.accountRepo.storeDeviceProfile(email, deviceProfile);
+          Logger.getInstance().info(`[Auto-Capture] Generated device profile for ${email}`);
+        }
+
+        // Fetch initial balances immediately
+        if (accessToken) {
+          try {
+            const balanceInfo = await this.balanceService.getBalanceInfo(accessToken);
+            const preferredModel = await this.accountRepo.getPreferredModel();
+            const status = await this.determineAccountStatus(balanceInfo, preferredModel);
+            await this.accountRepo.updateAccount(email, {
+              balances: balanceInfo.balances,
+              plan: balanceInfo.plan,
+              projectId: balanceInfo.projectId,
+              status,
+              lastRefreshedAt: new Date().toISOString()
+            });
+          } catch (balErr) {
+            Logger.getInstance().warn(`[Auto-Capture] Failed to fetch initial balance for ${email}`, balErr);
+          }
+        }
+
+        account = await this.accountRepo.getAccount(email);
+        this._onAccountsChanged.fire();
+
+        const i18n = I18nService.getInstance();
+        vscode.window.showInformationMessage(
+          i18n.t('service.autoCapturedAccount', { email })
+        );
+
+        return account;
+      } else {
+        // Account exists: keep tokens in sync if newer
+        if (activeInfo.tokens) {
+          const storedTokens = await this.accountRepo.getTokens(email);
+          if (!storedTokens || storedTokens.accessToken !== activeInfo.tokens.accessToken || storedTokens.refreshToken !== activeInfo.tokens.refreshToken) {
+            await this.accountRepo.storeTokens(email, activeInfo.tokens);
+            Logger.getInstance().info(`[Auto-Capture] Synchronized updated tokens for active account ${email}`);
+          }
+        }
+
+        // If it was expired or error, mark active since user has a valid active session
+        if (account.status === AccountStatus.TOKEN_EXPIRED || account.status === AccountStatus.ERROR) {
+          await this.accountRepo.updateAccount(email, { status: AccountStatus.ACTIVE });
+          this._onAccountsChanged.fire();
+        }
+
+        if (forceRefresh) {
+          await this.refreshActiveAccountFast(true);
+        }
+
+        return account;
+      }
+    } catch (err) {
+      Logger.getInstance().error('Error during syncActiveAccountFromDb', err);
+      return null;
+    }
+  }
+
+  /**
+   * Lightweight, rapid balance refresh for the currently active Antigravity account.
+   * Runs in milliseconds directly against model quotas without artificial delay.
+   */
+  async refreshActiveAccountFast(force: boolean = false): Promise<Account | null> {
+    const activeEmail = await this.getActiveAntigravityEmail();
+    if (!activeEmail) return null;
+
+    const account = await this.accountRepo.getAccount(activeEmail);
+    if (!account) {
+      // Auto-capture if not yet registered!
+      return await this.syncActiveAccountFromDb(true);
+    }
+
+    const now = Date.now();
+    // Throttle fast checks: minimum 15 seconds unless explicitly forced
+    if (!force && now - this._lastActiveQuotaCheckTime < 15_000) {
+      return account;
+    }
+    this._lastActiveQuotaCheckTime = now;
+
+    let tokens = await this.accountRepo.getTokens(activeEmail);
+    if (!tokens?.accessToken) {
+      const activeInfo = await this.getActiveAntigravityAccountInfo();
+      if (activeInfo?.tokens) {
+        tokens = activeInfo.tokens;
+        await this.accountRepo.storeTokens(activeEmail, tokens);
+      }
+    }
+
+    if (!tokens?.accessToken) return account;
+
+    try {
+      const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
+        fast: true,
+        projectId: account.projectId
+      });
+
+      if (balanceInfo.isRateLimited) {
+        Logger.getInstance().warn(`Rate limit (429) detected during fast refresh for ${activeEmail}`);
+        return account;
+      }
+
+      const preferredModel = await this.accountRepo.getPreferredModel();
+      const newStatus = await this.determineAccountStatus(balanceInfo, preferredModel);
+
+      const oldBalances = account.balances || {};
+      const newBalances = { ...oldBalances, ...balanceInfo.balances };
+      const hasChanged = JSON.stringify(oldBalances) !== JSON.stringify(newBalances) || account.status !== newStatus;
+
+      await this.accountRepo.updateAccount(activeEmail, {
+        balances: newBalances,
+        plan: balanceInfo.plan !== AccountPlan.UNKNOWN ? balanceInfo.plan : account.plan,
+        projectId: balanceInfo.projectId || account.projectId,
+        status: newStatus,
+        lastRefreshedAt: new Date().toISOString()
+      });
+
+      if (hasChanged) {
+        this._onAccountsChanged.fire();
+      }
+
+      // Check for auto-switch on depletion!
+      const config = ExtensionConfig.getInstance();
+      if (config.isAutoRotateEnabled() && newStatus === AccountStatus.DEPLETED) {
+        Logger.getInstance().info(`[Fast Monitor] Active account ${activeEmail} depleted. Triggering auto-switch.`);
+        await this.triggerAutoRotation(activeEmail, true);
+      }
+
+      return await this.accountRepo.getAccount(activeEmail);
+    } catch (err) {
+      Logger.getInstance().error(`Fast refresh failed for active account ${activeEmail}`, err);
+      return account;
+    }
+  }
+
+  /**
+   * Finds the best healthy account with available quota to switch to.
+   * Priority:
+   * 1. Preferred model quota > 0 (highest % first)
+   * 2. Highest total/average model quota > 0
+   * 3. Status ACTIVE / LOW_BALANCE (not DEPLETED, not TOKEN_EXPIRED, not INELIGIBLE)
+   */
+  async findBestAccountWithQuota(currentEmail: string): Promise<Account | null> {
+    const allAccounts = await this.accountRepo.getAllAccounts();
+    const candidates = allAccounts.filter(a => 
+      !isEmailMatch(a.email, currentEmail) &&
+      a.status !== AccountStatus.DEPLETED &&
+      a.status !== AccountStatus.TOKEN_EXPIRED &&
+      a.status !== AccountStatus.INELIGIBLE
+    );
+
+    if (candidates.length === 0) return null;
+
+    const preferredModel = await this.accountRepo.getPreferredModel();
+
+    if (preferredModel) {
+      const candidatesWithPref = candidates.map(acc => ({
+        account: acc,
+        prefQuota: getModelBalanceValue(acc.balances, preferredModel),
+      }));
+
+      const positivePref = candidatesWithPref.filter(c => c.prefQuota > 0);
+      if (positivePref.length > 0) {
+        positivePref.sort((a, b) => b.prefQuota - a.prefQuota);
+        return positivePref[0].account;
+      }
+    }
+
+    const ranked = candidates.map(acc => {
+      let maxQuota = 0;
+      let totalQuota = 0;
+      for (const v of Object.values(acc.balances || {})) {
+        const val = typeof v === 'object' && v !== null && 'value' in v ? v.value : (typeof v === 'number' ? v : 0);
+        if (val > maxQuota) maxQuota = val;
+        totalQuota += val;
+      }
+      return { account: acc, maxQuota, totalQuota };
+    });
+
+    ranked.sort((a, b) => {
+      if (b.maxQuota !== a.maxQuota) return b.maxQuota - a.maxQuota;
+      return b.totalQuota - a.totalQuota;
+    });
+
+    return ranked[0].account;
   }
 
 
@@ -768,56 +1014,70 @@ export class AccountService {
   }
 
   /**
-   * Helper to automatically switch to the next healthy account when the active one runs out of credits.
+   * Helper to automatically switch to the next healthy account with quota when active runs out.
    */
-  private async triggerAutoRotation(depletedEmail: string): Promise<void> {
-    const accounts = await this.accountRepo.getAllAccounts();
-    if (accounts.length <= 1) {
+  public async triggerAutoRotation(depletedEmail: string, isAutomatic: boolean = false): Promise<void> {
+    if (this._isSwitching) {
+      Logger.getInstance().info('Auto-rotation already in progress, skipping duplicate call.');
+      return;
+    }
+
+    const allAccounts = await this.accountRepo.getAllAccounts();
+    if (allAccounts.length <= 1) {
       Logger.getInstance().info('Auto-rotation skipped: only one account registered.');
       return;
     }
 
-    // Sort alphabetically by displayName just like the UI!
-    const sorted = [...accounts].sort((a, b) => {
-      const aName = a.alias || a.name || a.email;
-      const bName = b.alias || b.name || b.email;
-      return aName.localeCompare(bName, undefined, { numeric: true, sensitivity: 'base' });
-    });
+    const nextAccount = await this.findBestAccountWithQuota(depletedEmail);
+    const i18n = I18nService.getInstance();
 
-    const currentIndex = sorted.findIndex(a => isEmailMatch(a.email, depletedEmail));
-    if (currentIndex === -1) return;
-
-    let nextAccount = null;
-    const len = sorted.length;
-
-    // Search circularly starting from the account after the current depleted one
-    for (let i = 1; i < len; i++) {
-      const idx = (currentIndex + i) % len;
-      const candidate = sorted[idx];
-      if (candidate.status === AccountStatus.ACTIVE || candidate.status === AccountStatus.LOW_BALANCE) {
-        nextAccount = candidate;
-        break;
-      }
-    }
-
-    // Fallback search from the beginning if no candidate succeeded starting after the depleted index
     if (!nextAccount) {
-      nextAccount = sorted.find(a => !isEmailMatch(a.email, depletedEmail) &&
-        (a.status === AccountStatus.ACTIVE || a.status === AccountStatus.LOW_BALANCE));
+      Logger.getInstance().warn('Active account is depleted, but no other healthy accounts with quota are available.');
+      vscode.window.showWarningMessage(
+        i18n.t('service.autoRotateNoCandidate', { email: depletedEmail })
+      );
+      return;
     }
 
-    if (nextAccount) {
-      Logger.getInstance().info(`Auto-rotating from depleted ${depletedEmail} to healthy ${nextAccount.email}`);
-      const i18n = I18nService.getInstance();
-      
-      vscode.window.showWarningMessage(
-        i18n.t('notifications.depleted', { email: depletedEmail })
-      );
+    this._isSwitching = true;
+    Logger.getInstance().info(`[Auto-Switch] Selected best candidate ${nextAccount.email} for depleted ${depletedEmail}`);
 
-      // Trigger automatic account switch
-      await this.switchAccountWorkflow(nextAccount.email);
-    } else {
-      Logger.getInstance().warn('Active account is depleted, but no other healthy accounts are available to rotate to.');
+    try {
+      if (isAutomatic) {
+        const cancelAction = i18n.t('common.cancel');
+        const switchNowAction = i18n.t('accounts.switchButton');
+        let cancelled = false;
+
+        // Show a 4-second notification toast giving the user a chance to cancel if needed
+        const notificationPromise = vscode.window.showWarningMessage(
+          i18n.t('service.autoRotateCountdown', { email: depletedEmail, nextEmail: nextAccount.email, seconds: 4 }),
+          switchNowAction,
+          cancelAction
+        ).then(choice => {
+          if (choice === cancelAction) {
+            cancelled = true;
+          }
+        });
+
+        // Wait 4 seconds for user cancellation
+        await Promise.race([
+          notificationPromise,
+          new Promise(r => setTimeout(r, 4000))
+        ]);
+
+        if (cancelled) {
+          Logger.getInstance().info('Auto-switch cancelled by user.');
+          return;
+        }
+
+        // Execute non-blocking account switch
+        await this.switchAccountWorkflow(nextAccount.email, { skipPrompt: true });
+      } else {
+        await this.switchAccountWorkflow(nextAccount.email);
+      }
+    } finally {
+      this._isSwitching = false;
     }
   }
 }
+

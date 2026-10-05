@@ -5,6 +5,38 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] - 2026-10-05
+
+### 🚀 Auto-Capture Native Antigravity Logins
+- **Automatic Account Ingestion**: Logging into a Google account natively inside Antigravity IDE now automatically captures and saves the account in the manager without requiring manual OAuth popups or manual data entry.
+- **State DB Token & Avatar Synchronization**: Automatically reads OAuth credentials, user status, and profile avatar directly from Antigravity's internal `state.vscdb`, generating plausible device profiles and telemetry seamlessly.
+- **Continuous Syncing**: Detects external account changes within 4 seconds and synchronizes refreshed tokens automatically into encrypted SecretStorage.
+
+### ⚡ Fast Active Quota Monitoring & Sub-Second Polling
+- **Dedicated Fast Quota Path**: Active account quota is now polled through an optimized direct path (`fetchAvailableModels`) responding in ~200ms without traversing slow sandbox endpoints.
+- **Rapid Background Monitor**: Added `antigravityAccount.activeQuotaRefreshIntervalSeconds` (default: 45s, min: 15s) ensuring quota gauges reflect prompt usage in near real-time.
+- **Network Resilience**: Implemented `AbortController` timeouts (7s default) preventing stuck network calls on unstable connections.
+
+### 🔄 Intelligent Auto-Switch on Quota Depletion
+- **Autonomous Rotation**: Automatically detects when the active account's quota is exhausted (0% / depleted) and switches to the healthy account with the highest remaining credits.
+- **Heuristic Ranking**: Ranks candidates based on user-preferred model balances first, followed by total available quota across models.
+- **User-Friendly Countdown & Non-Blocking Injection**: Displays a 4-second notification countdown toast allowing cancellation before switching, and supports `skipPrompt` for non-blocking autonomous worker execution.
+- **Direct Toolbar Toggle**: Added an Auto-Switch toggle button directly on the extension header bar for instant enabling/disabling.
+
+### 🤖 Programmatic AI API & Automation Commands
+- **Public Extension Export**: The extension now returns `AntigravityAccountApi` upon activation, allowing AI agents, MCP servers, and background scripts to inspect and control accounts programmatically.
+- **Contributed VS Code Commands**:
+  - `antigravity-account.getAccounts`: Returns all registered accounts with balances and statuses.
+  - `antigravity-account.getActiveAccount`: Returns currently active account details.
+  - `antigravity-account.switchAccount`: Switches accounts programmatically accepting `(email, { skipPrompt })`.
+  - `antigravity-account.autoSwitch`: Immediately switches to the best account with available quota.
+  - `antigravity-account.refreshActiveQuota`: Triggers an instant fast-path quota reload.
+  - `antigravity-account.toggleAutoSwitch`: Toggles or updates auto-rotation configuration.
+  - `antigravity-account.syncActiveAccount`: Forces an immediate rescan of Antigravity's active session.
+
+### 🧠 Gemini 3.8 Model Support
+- Added model normalization and display mapping for `3.8 Flash (High)` and `3.8 Flash (Med)`.
+
 ## [0.3.4] - 2026-09-30
 
 ### 🎨 Slim & Ultra-Compact Card Redesign

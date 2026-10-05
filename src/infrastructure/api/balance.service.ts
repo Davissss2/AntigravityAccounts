@@ -24,17 +24,33 @@ export interface BalanceResult {
 export class BalanceService {
   /**
    * Orchestrates the fetching of credits and plan type for an account.
-   * Executes multiple fallback strategies sequentially to guarantee reliability.
+   * Supports an ultra-fast path for active account quota polling.
    */
-  async getBalanceInfo(accessToken: string): Promise<BalanceResult> {
+  async getBalanceInfo(accessToken: string, options?: { fast?: boolean; projectId?: string }): Promise<BalanceResult> {
     const result: BalanceResult = {
       balances: {},
       plan: AccountPlan.UNKNOWN,
       hasError: false,
-      isRateLimited: false
+      isRateLimited: false,
+      projectId: options?.projectId
     };
 
     try {
+      // ── Fast Path: Directly query fetchAvailableModels for active account quota ──
+      if (options?.fast) {
+        Logger.getInstance().debug('[FastQuota] Querying available model quotas directly...');
+        const fastModels = await this.tryFetchAvailableModels(accessToken, options.projectId);
+        if (fastModels && (fastModels as any).__isRateLimited) {
+          result.isRateLimited = true;
+          result.hasError = true;
+          return result;
+        }
+        if (fastModels && Object.keys(fastModels).length > 0) {
+          result.balances = fastModels;
+          return result;
+        }
+      }
+
       // Strategy 1: Try Primary loadCodeAssist (Usually has all info)
       Logger.getInstance().debug('Attempting primary loadCodeAssist...');
       const codeAssist = await this.tryLoadCodeAssist(accessToken);

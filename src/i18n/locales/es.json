@@ -173,7 +173,10 @@
       "description": "Idioma de visualización de la extensión"
     },
     "export": "Configuración de exportación",
-    "import": "Configuración de importación"
+    "import": "Configuración de importación",
+    "autoSwitchShort": "Auto",
+    "autoSwitchEnabled": "Auto-cambio de cuenta activado",
+    "autoSwitchDisabled": "Auto-cambio de cuenta desactivado"
   },
   "webview": {
     "unspecified": "No especificado",
@@ -257,7 +260,10 @@
     "reAuthFailed": "❌ Error en la reautenticación para {{email}}: {{error}}",
     "reAuthEmailMismatch": "La cuenta conectada ({{actual}}) no coincide con la cuenta esperada ({{expected}}). Inicia sesión con la cuenta de Google correcta.",
     "accountIneligible": "La cuenta {{email}} no es elegible para Antigravity. Inicia sesión con otra cuenta.",
-    "switchIneligibleAccount": "No se puede cambiar a la cuenta {{email}} porque no es elegible para Antigravity."
+    "switchIneligibleAccount": "No se puede cambiar a la cuenta {{email}} porque no es elegible para Antigravity.",
+    "autoCapturedAccount": "Cuenta de Antigravity detectada y guardada automáticamente: {{email}}",
+    "autoRotateNoCandidate": "Cuota agotada en {{email}}. No hay otras cuentas disponibles con cuota restante.",
+    "autoRotateCountdown": "Cuota agotada en {{email}}. Cambiando automáticamente a {{nextEmail}} en {{seconds}}s..."
   },
   "stateDb": {
     "outdatedAntigravity": "La versión instalada de Antigravity es anterior a la {{minVersion}} y no es compatible.\nActualiza Antigravity a la versión {{minVersion}} o posterior para utilizar el cambio de cuenta.",

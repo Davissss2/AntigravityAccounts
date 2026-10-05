@@ -51,6 +51,13 @@ export class ExtensionConfig {
   }
 
   /**
+   * Get the active account quota polling interval in seconds (default: 45s)
+   */
+  getActiveQuotaRefreshIntervalSeconds(): number {
+    return this.getConfig().get<number>('activeQuotaRefreshIntervalSeconds', 45);
+  }
+
+  /**
    * Get the low credit warning threshold
    */
   getLowCreditThreshold(): number {
@@ -62,6 +69,13 @@ export class ExtensionConfig {
    */
   isAutoRotateEnabled(): boolean {
     return this.getConfig().get<boolean>('autoRotateEnabled', false);
+  }
+
+  /**
+   * Set whether automatic account rotation on depletion is enabled
+   */
+  async setAutoRotateEnabled(enabled: boolean): Promise<void> {
+    await this.getConfig().update('autoRotateEnabled', enabled, true);
   }
 
   /**

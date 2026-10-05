@@ -21,6 +21,7 @@ interface ApiRequestOptions {
   headers?: Record<string, string>;
   body?: any;
   accessToken?: string;
+  timeoutMs?: number;
 }
 
 export class ApiClient {
@@ -53,7 +54,7 @@ export class ApiClient {
   }
 
   /**
-   * Performs an HTTP request with standard Antigravity headers.
+   * Performs an HTTP request with standard Antigravity headers and configurable timeout.
    */
   static async request<T>(url: string, options: ApiRequestOptions = {}): Promise<T> {
     const headers: Record<string, string> = {
@@ -66,9 +67,14 @@ export class ApiClient {
       headers['Authorization'] = `Bearer ${options.accessToken}`;
     }
 
+    const controller = new AbortController();
+    const timeoutMs = options.timeoutMs ?? 7000;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
     const fetchOptions: RequestInit = {
       method: options.method || 'GET',
       headers,
+      signal: controller.signal,
     };
 
     if (options.body) {
@@ -88,12 +94,18 @@ export class ApiClient {
       
       return JSON.parse(text) as T;
     } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        Logger.getInstance().warn(`API Request timed out after ${timeoutMs}ms for ${url}`);
+        throw new ApiError(408, 'Request Timeout', `Request timed out after ${timeoutMs}ms`);
+      }
       if (error instanceof ApiError) {
         Logger.getInstance().error(`API Request failed for ${url}`, `${error.status} ${error.statusText}`);
         throw error;
       }
       Logger.getInstance().error(`API Request failed for ${url}`, error.message);
       throw error;
+    } finally {
+      clearTimeout(timer);
     }
   }
 }

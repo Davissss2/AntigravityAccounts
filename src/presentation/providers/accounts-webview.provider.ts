@@ -221,6 +221,18 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             Logger.getInstance().info('Refresh abort signal sent by user.');
           }
           break;
+        case 'toggleAutoSwitch': {
+          const config = vscode.workspace.getConfiguration('antigravityAccount');
+          const current = config.get<boolean>('autoRotateEnabled', false);
+          const nextVal = !current;
+          await config.update('autoRotateEnabled', nextVal, vscode.ConfigurationTarget.Global);
+          Logger.getInstance().info(`Auto-switch toggled to: ${nextVal}`);
+          vscode.window.showInformationMessage(
+            nextVal ? i18n.t('settings.autoSwitchEnabled') : i18n.t('settings.autoSwitchDisabled')
+          );
+          await this.refresh();
+          break;
+        }
         case 'switchModel':
           if (message.email && message.modelKey) {
             await this.accountRepo.setPreferredModel(message.modelKey);
@@ -742,39 +754,42 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
    *   6. If not found → clear pin
    */
   private async detectAndPinActiveAccount(): Promise<void> {
-    // Step 1: Check if the account list is empty
-    const accounts = await this.accountRepo.getAllAccounts();
-    if (accounts.length === 0) {
-      this._pinnedActiveEmail = null;
-      return;
-    }
-
-    // Step 2: Get the currently logged-in Antigravity account
+    // Step 1: Check if active email is logged into Antigravity
     const activeEmail = await this.accountService.getActiveAntigravityEmail();
 
-    // Step 2.5: If there was an error reading the database, preserve the current pin
+    // Step 1.5: If error reading database, preserve current pin
     if (activeEmail === undefined) {
       Logger.getInstance().info('Failed to read active email, preserving current pin.');
       return;
     }
 
-    // Step 3: If no account (Antigravity is logged out) → clear pin and stop
+    // Step 2: If no account (Antigravity is logged out) → clear pin and stop
     if (!activeEmail) {
       this._pinnedActiveEmail = null;
       return;
     }
 
-    // Step 4: Check if the email is in the tool's account list
-    const matchedAccount = accounts.find(a => isEmailMatch(a.email, activeEmail));
+    let accounts = await this.accountRepo.getAllAccounts();
+    let matchedAccount = accounts.find(a => isEmailMatch(a.email, activeEmail));
+
+    // Step 3: If not in repository, auto-capture it immediately!
+    if (!matchedAccount) {
+      Logger.getInstance().info(`[Auto-Capture] Active Antigravity account "${activeEmail}" not in repository. Auto-capturing...`);
+      const captured = await this.accountService.syncActiveAccountFromDb(true);
+      if (captured) {
+        matchedAccount = captured;
+        this._pinnedActiveEmail = captured.email.toLowerCase();
+        Logger.getInstance().info(`Pinned newly auto-captured account: ${captured.email}`);
+        return;
+      }
+    }
 
     if (matchedAccount) {
-      // Step 5: Pin this account — it will be moved to the top of the list
+      // Step 4: Pin this account — it will be moved to the top of the list
       this._pinnedActiveEmail = matchedAccount.email.toLowerCase();
       Logger.getInstance().info(`Pinned active account: ${matchedAccount.email}`);
     } else {
-      // Step 6: Email not in our list — clear pin
       this._pinnedActiveEmail = null;
-      Logger.getInstance().info(`Active Antigravity email "${activeEmail}" does not match any stored account.`);
     }
   }
 
@@ -1519,6 +1534,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const availableModelKeysSet = new Set<string>([
       'Sonnet 4.6',
       'Opus 4.6',
+      '3.8 Flash (High)',
+      '3.8 Flash (Med)',
       '3.7 Flash',
       '3.1 Pro (Low)',
       '3.1 Pro (High)',
@@ -2025,6 +2042,33 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           .toolbar-sort:hover, .toolbar-scan:hover {
             border-color: var(--focus-border);
             background: var(--surface-light);
+          }
+          .toolbar-bulk-btn, .toolbar-autoswitch-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            background: var(--surface-subtle);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 6px 9px;
+            color: var(--text-secondary);
+            font-size: 0.72rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+            user-select: none;
+          }
+          .toolbar-bulk-btn:hover, .toolbar-autoswitch-btn:hover {
+            border-color: var(--focus-border);
+            color: var(--text-primary);
+            background: var(--surface-light);
+          }
+          .toolbar-autoswitch-btn.active {
+            border-color: rgba(16, 185, 129, 0.4);
+            color: var(--success-color);
+            background: rgba(16, 185, 129, 0.12);
           }
           .toolbar-sort select, .toolbar-scan select {
             position: absolute;
@@ -3356,6 +3400,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               <option value="without-quota">${i18n.t('webview.scanWithoutQuota')}</option>
             </select>
           </label>
+          <button type="button" class="toolbar-autoswitch-btn ${configAutoRotate ? 'active' : ''}" id="btnToggleAutoSwitch" onclick="sendMessage('toggleAutoSwitch')" title="${configAutoRotate ? i18n.t('settings.autoSwitchEnabled') : i18n.t('settings.autoSwitchDisabled')}">
+            <svg class="icon-svg" style="width:11px; height:11px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            <span class="autoswitch-btn-text">Auto: ${configAutoRotate ? 'ON' : 'OFF'}</span>
+          </button>
           <button type="button" class="toolbar-bulk-btn" id="btnToggleBulk" onclick="toggleBulkSelectMode()" title="${i18n.t('workflows.bulkSelect')}">
             <svg class="icon-svg" style="width:12px; height:12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
             <span class="bulk-btn-text">${i18n.t('workflows.bulkSelect')}</span>

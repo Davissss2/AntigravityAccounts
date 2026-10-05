@@ -34,9 +34,8 @@ export const API = {
   FETCH_CREDITS: 'https://cloudcode-pa.googleapis.com/v1internal:fetchCredits',
   DAILY_LOAD_CODE_ASSIST: 'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
   FETCH_MODELS_URLS: [
-    'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:fetchAvailableModels',
-    'https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',
     'https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',
+    'https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',
   ],
   DEFAULT_VERSION: '1.22.2',
 } as const;
@@ -67,6 +66,7 @@ export const STATE_DB_KEYS = {
   OAUTH_TOKEN: 'antigravityUnifiedStateSync.oauthToken',
   USER_STATUS: 'antigravityUnifiedStateSync.userStatus',
   ENTERPRISE_PREFS: 'antigravityUnifiedStateSync.enterprisePreferences',
+  PROFILE_URL: 'antigravity.profileUrl',
   AUTH_STATUS: 'antigravityAuthStatus',
   ONBOARDING: 'antigravityOnboarding',
   LEGACY: 'google.antigravity',

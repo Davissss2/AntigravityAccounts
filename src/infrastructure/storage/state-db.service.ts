@@ -45,7 +45,8 @@ export class StateDbService {
   async injectAccountState(
     account: Account,
     tokens: AccountTokens,
-    deviceProfile?: DeviceProfile | null
+    deviceProfile?: DeviceProfile | null,
+    skipPrompt: boolean = false
   ): Promise<'success' | 'cancelled' | 'error'> {
     const versionCheckResult = this.checkAntigravityVersion();
     if (versionCheckResult === 'unsupported') {
@@ -117,7 +118,7 @@ export class StateDbService {
       }
 
       // ── Step 4: Spawn background worker + close window ──
-      const triggered = await this.triggerWorkerAndClose(account.email, dbPath, rows, deviceProfile);
+      const triggered = await this.triggerWorkerAndClose(account.email, dbPath, rows, deviceProfile, skipPrompt);
       return triggered ? 'success' : 'cancelled';
 
     } catch (error: any) {
@@ -136,25 +137,30 @@ export class StateDbService {
     email: string,
     dbPath: string,
     rows: Array<{ key: string; value: string | null }>,
-    deviceProfile?: DeviceProfile | null
+    deviceProfile?: DeviceProfile | null,
+    skipPrompt: boolean = false
   ): Promise<boolean> {
-    const i18n = I18nService.getInstance();
-    const actionYes = i18n.t('switchPrompt.actionYes');
-    const actionNo = i18n.t('switchPrompt.actionNo');
+    if (!skipPrompt) {
+      const i18n = I18nService.getInstance();
+      const actionYes = i18n.t('switchPrompt.actionYes');
+      const actionNo = i18n.t('switchPrompt.actionNo');
 
-    const choice = await vscode.window.showInformationMessage(
-      i18n.t('switchPrompt.title', { email }),
-      {
-        modal: true,
-        detail: i18n.t('stateDb.reloadPrompt'),
-      },
-      actionYes,
-      actionNo
-    );
+      const choice = await vscode.window.showInformationMessage(
+        i18n.t('switchPrompt.title', { email }),
+        {
+          modal: true,
+          detail: i18n.t('stateDb.reloadPrompt'),
+        },
+        actionYes,
+        actionNo
+      );
 
-    if (choice !== actionYes) {
-      Logger.getInstance().info('User cancelled account switch.');
-      return false;
+      if (choice !== actionYes) {
+        Logger.getInstance().info('User cancelled account switch.');
+        return false;
+      }
+    } else {
+      Logger.getInstance().info(`Auto-switching to ${email} (non-blocking prompt)...`);
     }
 
     // Save open files before closing
@@ -696,7 +702,7 @@ inject().catch((err) => {
    * Reads both the active email and tokens from state.vscdb in a single database read.
    * This is a significant optimization over reading them separately.
    */
-  async readActiveAccountInfoFromDb(): Promise<{ email: string | null; tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null } | null> {
+  async readActiveAccountInfoFromDb(): Promise<{ email: string | null; tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null; avatarUrl?: string | null } | null> {
     const dbPath = PathUtils.getVscdbPath(this.context);
     if (!fs.existsSync(dbPath)) {
       Logger.getInstance().info('state.vscdb not found, cannot detect active account/tokens.');
@@ -711,6 +717,7 @@ inject().catch((err) => {
       try {
         let email: string | null = null;
         let tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null = null;
+        let avatarUrl: string | null = null;
 
         // 1. Read userStatus
         const stmtUser = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
@@ -736,7 +743,18 @@ inject().catch((err) => {
         }
         stmtToken.free();
 
-        return { email, tokens };
+        // 3. Read profileUrl if present
+        try {
+          const stmtProfile = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
+          stmtProfile.bind({ $key: STATE_DB_KEYS.PROFILE_URL });
+          if (stmtProfile.step()) {
+            const row = stmtProfile.get();
+            avatarUrl = (row[0] as string) || null;
+          }
+          stmtProfile.free();
+        } catch { /* optional */ }
+
+        return { email, tokens, avatarUrl };
       } finally {
         db.close();
       }
