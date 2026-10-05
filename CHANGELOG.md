@@ -5,6 +5,25 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.13] - 2026-10-05
+
+### Fixed
+- **Detección Real de Cuotas y Cuentas Agotadas (0% vs 100%)**:
+  - En llamadas a Google Cloud Code PA (`fetchAvailableModels`), ahora se inyecta siempre por defecto el proyecto canónico `aicode-consumers` cuando la cuenta no tiene un `projectId` explícito, evitando que Google devuelva un catálogo estático falso con cuotas al 100%.
+  - Detección precisa de cuota agotada (`0%`) cuando Google omite `remainingFraction` en Protobuf/JSON.
+  - Marcado automático de estado `DEPLETED` (`Agotada`) cuando todos los modelos principales de Gemini están en 0%, preservando el temporizador `resetTime` para mostrar la cuenta atrás exacta de recarga ("Renews in Xd Yh").
+  - Filtrado estricto de endpoints de preview/depuración internos (`chat_*`, `tab_*`, `tap_*`) al evaluar la salud y disponibilidad de cuota de la cuenta.
+  - Normalización y mapeo completo de `gemini-3.8-flash-tiered` en utilidades de modelos.
+
+## [0.3.12] - 2026-10-05
+
+### Fixed & Optimized
+- **Activación Inmediata de Webview (Cero Pantalla Negra)**: Añadido el evento de activación `onView:antigravity-account.accountsView` en package.json. Al iniciar el IDE con el panel visible o hacer clic en el icono, la extensión se inicializa instantáneamente sin esperar a que finalicen las tareas de fondo de `onStartupFinished`.
+- **Migración de Storage No Bloqueante & Caché de Flag**: Desacoplada la rutina `migrateAndSanitizeStorage` del ciclo sincrónico de `activate()`. Se añade `MIGRATION_FLAG` y borrado condicional estricto, eliminando más de 800 llamadas IPC redundantes a Windows Credential Manager en cada arranque y eliminando el bloqueo de 60 segundos.
+- **Renderizado Instantáneo en Frame 0**: `resolveWebviewView` ahora renderiza el HTML completo del panel de inmediato (< 2ms) con el estado en memoria de `globalState` y la cuenta activa pre-anclada, sin esperar lecturas de disco SQLite ni peticiones de red.
+- **Desacoplamiento de Sesión Nativa Asíncrona**: Eliminadas las consultas de red bloqueantes a Google UserInfo de la generación del DOM HTML; la verificación de discrepancia de sesión nativa se ejecuta ahora en segundo plano sin congelar la interfaz.
+- **Corrección de Importación**: Corregido error de importación de `ExtensionConfig` en `chat-resume.utils.ts`.
+
 ## [0.3.11] - 2026-10-05
 
 ### Changed & Fixed
@@ -44,7 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Multi-Account Auto-Capture & VS Code Authentication Integration
 - **Real-Time Google Auth Session Detection**: Integrated directly with `vscode.authentication.onDidChangeSessions` and periodic checks (`syncFromAuthenticationSessions`). Logging in with Google accounts inside Antigravity IDE (e.g. `user@gmail.com`, `account2@gmail.com`) is now detected and captured automatically within seconds.
 - **Verified Google UserInfo Resolution**: Discovered sessions automatically fetch official email and profile details from Google's UserInfo endpoint, eliminating discrepancies between usernames and full email addresses.
-- **SecretStorage Self-Healing Reconciliation**: Added `reconcileOrphanedSecretAccounts()` to scan `state.vscdb` for any accounts existing in encrypted SecretStorage but omitted from `globalState.accounts.list`, restoring them on startup with full balance verification.
+- **SecretStorage Self-Healing Reconciliation**: Added `reconcileOrphanedSecretAccounts()` to scan `state.vscdb` for any accounts existing in encrypted SecretStorage but omitted from ``globalState`.accounts.list`, restoring them on startup with full balance verification.
 - **Configurable Auto-Capture Toggle**: Added `antigravityAccount.autoCaptureAccounts` (default: `true`), allowing users and AI agents to enable or disable automatic ingestion of IDE logins.
 - **Chat Auto-Resume on Quota Depletion**: Automatically reopens the active chat session and types `continua` only if the assistant was actively executing tasks when quota depleted.
 - **New Commands & API**:

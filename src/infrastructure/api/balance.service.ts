@@ -68,12 +68,15 @@ export class BalanceService {
     try {
       // ── Strategy 1 (Primary & Fastest): Direct fetchAvailableModels ──
       // This is the active, high-speed API that returns Gemini model quotas and timers in ~300ms.
-      Logger.getInstance().debug('Querying available model quotas directly (Primary Strategy)...');
-      const modelBalances = await this.tryFetchAvailableModels(accessToken, options?.projectId || result.projectId);
+      const effectiveProjectId = options?.projectId || result.projectId || 'aicode-consumers';
+      result.projectId = effectiveProjectId;
+      Logger.getInstance().debug(`Querying available model quotas directly for project ${effectiveProjectId} (Primary Strategy)...`);
+      const modelBalances = await this.tryFetchAvailableModels(accessToken, effectiveProjectId);
       if (modelBalances && (modelBalances as any).__isDepleted) {
+        delete (modelBalances as any).__isDepleted;
         result.isDepleted = true;
         result.status = AccountStatus.DEPLETED;
-        result.balances = this.createExhaustedBalances(result.balances);
+        result.balances = modelBalances;
         return result;
       }
       if (modelBalances && (modelBalances as any).__isRateLimited) {
@@ -221,11 +224,12 @@ export class BalanceService {
 
   private async tryFetchAvailableModels(accessToken: string, projectId?: string): Promise<Record<string, any>> {
     const balances: Record<string, any> = {};
-    const body = projectId ? { project: projectId } : {};
+    const effectiveProject = projectId || 'aicode-consumers';
+    const body = { project: effectiveProject };
 
     for (const url of API.FETCH_MODELS_URLS) {
       try {
-        Logger.getInstance().debug(`Attempting fetchAvailableModels at ${url}...`);
+        Logger.getInstance().debug(`Attempting fetchAvailableModels at ${url} with project ${effectiveProject}...`);
         const data = await ApiClient.request<any>(url, {
           method: 'POST',
           body,
@@ -233,17 +237,41 @@ export class BalanceService {
         });
 
         if (data && data.models) {
+          let hasGeminiQuota = false;
+          let geminiCount = 0;
+
           for (const [modelId, modelData] of Object.entries<any>(data.models)) {
             if (modelData.quotaInfo) {
+               // When Google omits remainingFraction in Protobuf, it means 0% (depleted)
                const fraction = modelData.quotaInfo.remainingFraction !== undefined ? modelData.quotaInfo.remainingFraction : 0;
+               const value = Math.round(fraction * 100);
                balances[modelId] = {
-                 value: Math.round(fraction * 100),
+                 value,
                  resetTime: modelData.quotaInfo.resetTime
                };
+
+               const lower = modelId.toLowerCase();
+               if (
+                 (lower.includes('gemini') || lower.includes('flash') || lower.includes('pro')) &&
+                 !lower.startsWith('tab') &&
+                 !lower.startsWith('chat') &&
+                 !lower.startsWith('tap')
+               ) {
+                 geminiCount++;
+                 if (value > 0) {
+                   hasGeminiQuota = true;
+                 }
+               }
             }
           }
+
           if (Object.keys(balances).length > 0) {
              Logger.getInstance().info(`Successfully fetched model quotas from ${url}`);
+             // If all real Gemini models are at 0%, mark account balances as depleted!
+             if (geminiCount > 0 && !hasGeminiQuota) {
+               Logger.getInstance().info(`Account has 0% quota across all ${geminiCount} Gemini models. Marking depleted.`);
+               (balances as any).__isDepleted = true;
+             }
              return balances;
           }
         }

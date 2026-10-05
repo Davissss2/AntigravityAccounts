@@ -63,13 +63,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<Antigr
     logger.debug('[ChatResume] Could not check pending chat resume on startup', resumeErr);
   }
 
-  // ── Run Storage Migration & Sanitization ──
+  // ── Run Fast MCP Config Check ──
   try {
-    await migrateAndSanitizeStorage(context);
     await ensureValidMcpConfig();
   } catch (err: any) {
-    logger.error('Failed to run storage migration/sanitization during activation', err);
+    logger.error('Failed to validate mcp_config during activation', err);
   }
+
+  // ── Run Storage Migration & Sanitization Asynchronously (Non-blocking) ──
+  migrateAndSanitizeStorage(context).catch((err: any) => {
+    logger.error('Failed to run storage migration/sanitization', err);
+  });
 
   // ── Initialize i18n ──
   const i18n = I18nService.getInstance();
@@ -657,6 +661,12 @@ async function migrateAndSanitizeStorage(context: vscode.ExtensionContext): Prom
     const globalState = context.globalState;
     const secrets = context.secrets;
 
+    const MIGRATION_FLAG = 'antigravityAccount.storageMigration_v2_done';
+    if (globalState.get<boolean>(MIGRATION_FLAG, false)) {
+      logger.debug('Storage migration already completed, skipping secret scan.');
+      return;
+    }
+
     // 1. Load accounts list
     let accounts = globalState.get<any[]>('antigravity.accounts.list', []);
     let activeAccount = globalState.get<string | null>('antigravity.accounts.active', null);
@@ -744,21 +754,22 @@ async function migrateAndSanitizeStorage(context: vscode.ExtensionContext): Prom
           if (accessToken) await secrets.store(newAccKey, accessToken);
           if (metadata) await secrets.store(newMetaKey, metadata);
           if (deviceProfile) await secrets.store(newProfileKey, deviceProfile);
+
+          // Clean up old keys ONLY if legacy credentials were found
+          await secrets.delete(oldLegacyKeys.ref);
+          await secrets.delete(oldLegacyKeys.acc);
+          await secrets.delete(oldLegacyKeys.meta);
+          await secrets.delete(oldLegacyKeys.profile);
+
+          await secrets.delete(oldHubKeys.ref);
+          await secrets.delete(oldHubKeys.acc);
+          await secrets.delete(oldHubKeys.meta);
+          await secrets.delete(oldHubKeys.profile);
         }
-
-        // Clean up old keys unconditionally from SecretStorage
-        await secrets.delete(oldLegacyKeys.ref);
-        await secrets.delete(oldLegacyKeys.acc);
-        await secrets.delete(oldLegacyKeys.meta);
-        await secrets.delete(oldLegacyKeys.profile);
-
-        await secrets.delete(oldHubKeys.ref);
-        await secrets.delete(oldHubKeys.acc);
-        await secrets.delete(oldHubKeys.meta);
-        await secrets.delete(oldHubKeys.profile);
       }
     }
 
+    await globalState.update(MIGRATION_FLAG, true);
     logger.info('Storage migration and sanitization check finished successfully.');
   } catch (error: any) {
     logger.error('Failed to complete storage migration/sanitization', error);

@@ -82,10 +82,16 @@ export class AccountService {
     let isLow = false;
     let totalCredits = 0;
 
-    const modelValues: number[] = [];
+    const primaryModelValues: number[] = [];
     for (const [k, rawV] of Object.entries(balanceInfo.balances)) {
+      const lower = k.toLowerCase();
+      // Filter out internal preview, tabs, chats
+      if (lower.startsWith('chat') || lower.startsWith('tab') || lower.startsWith('tap')) {
+        continue;
+      }
+
       if (typeof rawV === 'object' && rawV !== null && 'value' in rawV) {
-        modelValues.push(rawV.value);
+        primaryModelValues.push(rawV.value);
       } else {
         totalCredits += typeof rawV === 'number' ? rawV : Number(rawV);
       }
@@ -98,16 +104,16 @@ export class AccountService {
       } else if (prefValue > 0 && prefValue < 20) {
         isLow = true;
       } else if (prefValue === -1) {
-        const hasModelsWithQuota = modelValues.some(val => val > 0);
-        if (modelValues.length > 0 && !hasModelsWithQuota && totalCredits <= 0) {
+        const hasModelsWithQuota = primaryModelValues.some(val => val > 0);
+        if (primaryModelValues.length > 0 && !hasModelsWithQuota && totalCredits <= 0) {
           isDepleted = true;
         } else if (totalCredits <= config.getLowCreditThreshold()) {
           isLow = true;
         }
       }
     } else {
-      const hasModelsWithQuota = modelValues.some(val => val > 0);
-      if (modelValues.length > 0 && !hasModelsWithQuota && totalCredits <= 0) {
+      const hasModelsWithQuota = primaryModelValues.some(val => val > 0);
+      if (primaryModelValues.length > 0 && !hasModelsWithQuota && totalCredits <= 0) {
         isDepleted = true;
       } else if (totalCredits <= config.getLowCreditThreshold()) {
         isLow = true;
@@ -139,7 +145,7 @@ export class AccountService {
         progress.report({ message: i18n.t('common.loading') });
 
         // 2. Fetch Initial Balance (Decision 1: Fails gracefully)
-        const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken);
+        const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, { projectId: account.projectId });
         
         // 3. Save core account data and secure tokens
         const expiresAt = Math.floor(Date.now() / 1000) + tokens.expiresIn;

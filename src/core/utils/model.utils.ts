@@ -10,7 +10,7 @@ export function normalizeModelKey(key: string): string {
   const lower = key.toLowerCase().trim();
 
   // Explicit mappings for all known aliases and legacy strings
-  if (lower === 'gemini-3.8-flash' || lower === 'gemini 3.8 flash' || lower === '3.8 flash' || lower === '3.8-flash' || lower === 'gemini-3.8-flash-high' || lower === 'gemini 3.8 flash (high)' || lower === '3.8 flash (high)') {
+  if (lower === 'gemini-3.8-flash' || lower === 'gemini 3.8 flash' || lower === '3.8 flash' || lower === '3.8-flash' || lower === 'gemini-3.8-flash-high' || lower === 'gemini 3.8 flash (high)' || lower === '3.8 flash (high)' || lower === 'gemini-3.8-flash-tiered' || lower === 'gemini 3.8 flash tiered' || lower === 'gemini 3.8 flash (tiered)' || lower.includes('3.8-flash-tiered')) {
     return '3.8 Flash (High)';
   }
   if (lower === 'gemini-3.8-flash-medium' || lower === 'gemini 3.8 flash (med)' || lower === '3.8 flash (med)' || lower === 'gemini-3.8-flash-extra-low') {

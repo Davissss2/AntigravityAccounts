@@ -12,6 +12,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as vscode from 'vscode';
 import { Logger } from './logger';
+import { ExtensionConfig } from '../config/extension.config';
 
 export interface PendingResumeData {
   reason: 'depleted' | 'manual';

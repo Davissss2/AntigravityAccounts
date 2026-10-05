@@ -82,17 +82,44 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     currentEmail: '',
   };
 
+  /** Cached native auth email for the mismatch banner, avoids blocking HTML generation */
+  private _cachedNativeAuthEmail: string | null = null;
+
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly accountRepo: IAccountRepository,
     private readonly accountService: AccountService
   ) {
+    // Pre-seed cached active account from repository so first render has active pin ready
+    this.accountRepo.getActiveAccountEmail().then(email => {
+      if (email && !this._pinnedActiveEmail) {
+        this._pinnedActiveEmail = email.toLowerCase();
+      }
+    }).catch(() => {});
+
     // Automatically re-detect active account and re-render when data changes
     this.accountService.onAccountsChanged(() => {
       // Do not recreate full HTML DOM during active scan since cards update individually
       if (!this._isRefreshingProgress.isRefreshing) {
         this.detectAndPinActiveAccount().then(() => this.refresh());
       }
+    });
+  }
+
+  /**
+   * Asynchronously checks if the native IDE auth session differs from the pinned active account,
+   * without blocking HTML generation or causing black screen delays.
+   */
+  private checkNativeAuthMismatch(): void {
+    this.accountService.getNativeAuthEmail().then(email => {
+      if (email !== this._cachedNativeAuthEmail) {
+        this._cachedNativeAuthEmail = email;
+        if (this._view && this._pinnedActiveEmail && email && !isEmailMatch(email, this._pinnedActiveEmail)) {
+          this.refresh();
+        }
+      }
+    }).catch(err => {
+      Logger.getInstance().debug('Error checking native auth mismatch in background', err);
     });
   }
 
@@ -114,7 +141,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     this._refreshAbortController?.abort();
   }
 
-  public resolveWebviewView(
+  public async resolveWebviewView(
     webviewView: vscode.WebviewView,
     context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken,
@@ -681,14 +708,28 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
     // Skip all account operations if not running in Antigravity editor
     if (!this.isAntigravityEditor()) {
-      this.refresh();
+      await this.refresh();
       return;
     }
 
-    // Step 1: Detect and pin the active Antigravity account (independent of balance refresh)
-    // Step 2: Render the UI with the pinned account at the top
-    // Step 3: Conditionally trigger balance refresh based on settings
-    this.detectAndPinActiveAccount().then(() => this.refresh()).then(async () => {
+    // Step 0: Pre-seed pinned active account from repository cache (in-memory globalState)
+    if (!this._pinnedActiveEmail) {
+      try {
+        const cachedActive = await this.accountRepo.getActiveAccountEmail();
+        if (cachedActive && !this._pinnedActiveEmail) {
+          this._pinnedActiveEmail = cachedActive.toLowerCase();
+        }
+      } catch {}
+    }
+
+    // Step 1: IMMEDIATE RENDER — Render the full UI in Frame 0 (0ms latency, ZERO black screen!)
+    await this.refresh();
+
+    // Step 2: Background asynchronous active account detection & pinning from state.vscdb
+    this.detectAndPinActiveAccount().then(async () => {
+      // Re-render only if pinned account changed or to ensure active state is crisp
+      await this.refresh();
+
       const accounts = await this.accountRepo.getAllAccounts();
       if (accounts.length === 0) return;
 
@@ -732,7 +773,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           await this.handleProgressiveRefresh(false, inactiveEmailsToRefresh);
         }
       }
+    }).catch(err => {
+      Logger.getInstance().error('Error during background active account detection', err);
     });
+
+    // Step 3: Background non-blocking check for native auth session mismatch
+    this.checkNativeAuthMismatch();
   }
 
   /**
@@ -1543,7 +1589,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const configAdaptivePolling = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('adaptiveQuotaPolling', true);
     const configNoticeDuration = vscode.workspace.getConfiguration('antigravityAccount').get<number>('noticeDurationSeconds', 0);
     const configConfirmOnSwitch = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('confirmOnSwitch', false);
-    const nativeAuthEmail = await this.accountService.getNativeAuthEmail();
+    const nativeAuthEmail = this._cachedNativeAuthEmail;
     const accounts = await this.accountRepo.getAccountSummaries();
     this._workflows = await this.accountRepo.getWorkflows();
     const activeWorkflowId = await this.accountRepo.getActiveWorkflowId();
