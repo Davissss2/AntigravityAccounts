@@ -2,7 +2,7 @@
   "name": "antigravity-account",
   "displayName": "Antigravity Account",
   "description": "Manage multiple Antigravity accounts seamlessly - switch, monitor credits, and auto-rotate with one click.",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "publisher": "Davissss2",
   "author": {
     "name": "Davissss2",
@@ -103,6 +103,31 @@
       {
         "command": "antigravity-account.syncActiveAccount",
         "title": "Sync Native Antigravity Account",
+        "category": "Antigravity Account"
+      },
+      {
+        "command": "antigravity-account.toggleAutoCapture",
+        "title": "Toggle Auto-Capture of Native Logins",
+        "category": "Antigravity Account"
+      },
+      {
+        "command": "antigravity-account.toggleAutoResume",
+        "title": "Toggle Chat Auto-Resume on Depletion",
+        "category": "Antigravity Account"
+      },
+      {
+        "command": "antigravity-account.reconcileAccounts",
+        "title": "Reconcile Orphaned Accounts",
+        "category": "Antigravity Account"
+      },
+      {
+        "command": "antigravity-account.getConfig",
+        "title": "Get Configuration (API)",
+        "category": "Antigravity Account"
+      },
+      {
+        "command": "antigravity-account.updateConfig",
+        "title": "Update Configuration (API)",
         "category": "Antigravity Account"
       }
     ],
@@ -237,6 +262,35 @@
           "type": "boolean",
           "default": false,
           "description": "Show confirmation modal before closing and reloading window on account switch (Default: false, reloads automatically without prompt)"
+        },
+        "antigravityAccount.noticeDurationSeconds": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 60,
+          "description": "Notice duration in seconds shown before switching accounts (0 = instantaneous)"
+        },
+        "antigravityAccount.autoCaptureAccounts": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically detect and save accounts signed into Antigravity IDE without manual addition"
+        },
+        "antigravityAccount.autoResumeChat": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically restore active chat session and continue AI generation after account rotation on depletion"
+        },
+        "antigravityAccount.autoResumePrompt": {
+          "type": "string",
+          "default": "continua",
+          "description": "Prompt text automatically sent to the AI chat after account switch when previous generation stopped due to quota depletion"
+        },
+        "antigravityAccount.autoResumeTimeoutSeconds": {
+          "type": "number",
+          "default": 90,
+          "minimum": 10,
+          "maximum": 600,
+          "description": "Maximum seconds elapsed since the last assistant message to consider that the AI was actively working and stopped due to quota"
         },
         "antigravityAccount.adaptiveQuotaPolling": {
           "type": "boolean",

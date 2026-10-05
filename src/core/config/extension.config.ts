@@ -122,6 +122,79 @@ export class ExtensionConfig {
   }
 
   /**
+   * Whether to automatically restore the chat session and continue generation after depletion switch.
+   */
+  isAutoResumeChatEnabled(): boolean {
+    return this.getConfig().get<boolean>('autoResumeChat', true);
+  }
+
+  /**
+   * Text prompt to automatically send to the chat when resuming after depletion.
+   */
+  getAutoResumePrompt(): string {
+    return this.getConfig().get<string>('autoResumePrompt', 'continua');
+  }
+
+  /**
+   * Maximum elapsed seconds since last AI activity to consider the agent was actively working.
+   */
+  getAutoResumeTimeoutSeconds(): number {
+    return this.getConfig().get<number>('autoResumeTimeoutSeconds', 90);
+  }
+
+  /**
+   * Duration in seconds of the pre-switch notification countdown notice (0 = instant reload).
+   */
+  getNoticeDurationSeconds(): number {
+    return this.getConfig().get<number>('noticeDurationSeconds', 0);
+  }
+
+  /**
+   * Whether automatic capture and saving of newly detected Antigravity accounts is enabled (Default: true)
+   */
+  isAutoCaptureAccountsEnabled(): boolean {
+    return this.getConfig().get<boolean>('autoCaptureAccounts', true);
+  }
+
+  /**
+   * Set whether automatic capture and saving of newly detected Antigravity accounts is enabled
+   */
+  async setAutoCaptureAccountsEnabled(enabled: boolean): Promise<void> {
+    await this.getConfig().update('autoCaptureAccounts', enabled, true);
+  }
+
+  /**
+   * Retrieves the entire extension settings object as a plain configuration record.
+   */
+  getFullConfig(): any {
+    return {
+      autoRotateEnabled: this.isAutoRotateEnabled(),
+      autoCaptureAccounts: this.isAutoCaptureAccountsEnabled(),
+      confirmOnSwitch: this.isConfirmOnSwitchEnabled(),
+      noticeDurationSeconds: this.getNoticeDurationSeconds(),
+      autoResumeChat: this.isAutoResumeChatEnabled(),
+      autoResumePrompt: this.getAutoResumePrompt(),
+      autoResumeTimeoutSeconds: this.getAutoResumeTimeoutSeconds(),
+      adaptiveQuotaPolling: this.isAdaptiveQuotaPollingEnabled(),
+      activeQuotaRefreshIntervalSeconds: this.getActiveQuotaRefreshIntervalSeconds(),
+      lowCreditThreshold: this.getLowCreditThreshold(),
+      lowCreditNotificationsEnabled: this.isLowCreditNotificationsEnabled(),
+    };
+  }
+
+  /**
+   * Updates multiple configuration properties programmatically.
+   */
+  async updateFullConfig(settings: Record<string, any>): Promise<void> {
+    const config = this.getConfig();
+    for (const [key, value] of Object.entries(settings)) {
+      if (value !== undefined) {
+        await config.update(key, value, vscode.ConfigurationTarget.Global);
+      }
+    }
+  }
+
+  /**
    * Get the extension context (for services that need it)
    */
   getContext(): vscode.ExtensionContext {

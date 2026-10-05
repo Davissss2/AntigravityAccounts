@@ -15,7 +15,8 @@ import { ExtensionConfig } from './core/config/extension.config';
 import { PathUtils } from './core/utils/path.utils';
 
 import { Account, AccountStatus, AccountSummary } from './core/domain/models/account.model';
-import { AntigravityAccountApi, SwitchAccountOptions, AutoSwitchResult, ActiveAccountInfo } from './api/extension-api';
+import { AntigravityAccountApi, SwitchAccountOptions, AutoSwitchResult, ActiveAccountInfo, ExtensionSettingsConfig } from './api/extension-api';
+import { ChatResumeUtils } from './core/utils/chat-resume.utils';
 
 export * from './api/extension-api';
 
@@ -42,6 +43,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<Antigr
   // ── Initialize Configuration ──
   const config = ExtensionConfig.getInstance();
   config.initialize(context);
+
+  // ── Execute Pending Chat Resume (if auto-switched on quota depletion) ──
+  try {
+    const storageDir = PathUtils.getAntigravityDataPath(context);
+    const pendingResume = ChatResumeUtils.readAndClearPendingResume(storageDir);
+    if (pendingResume && config.isAutoResumeChatEnabled()) {
+      ChatResumeUtils.executePendingResume(pendingResume).catch(err => {
+        logger.debug('Error executing chat resume on startup', err);
+      });
+    }
+  } catch (resumeErr) {
+    logger.debug('Could not check pending chat resume on startup', resumeErr);
+  }
 
   // ── Run Storage Migration & Sanitization ──
   try {
@@ -123,17 +137,47 @@ function registerCommands(
   let lastActiveEmail: string | null = null;
   let lastActiveBalanceCheckTime = 0;
 
-  // Initial auto-capture & sync of active Antigravity account on startup
-  accountService.syncActiveAccountFromDb(false).then((acc) => {
-    if (acc) {
-      lastActiveEmail = acc.email;
-    }
-  }).catch((err) => {
-    logger.debug('Initial active account sync skipped or failed', err);
+  // Initial reconciliation from SecretStorage (recovers any orphaned or desynchronized accounts)
+  accountService.reconcileOrphanedSecretAccounts().catch((err) => {
+    logger.debug('Reconciliation of orphaned secret accounts skipped or failed', err);
   });
 
+  // Initial auto-capture & sync of active Antigravity account and VS Code sessions on startup
+  if (config.isAutoCaptureAccountsEnabled()) {
+    accountService.syncActiveAccountFromDb(false).then((acc) => {
+      if (acc) {
+        lastActiveEmail = acc.email;
+      }
+    }).catch((err) => {
+      logger.debug('Initial active account sync skipped or failed', err);
+    });
+    accountService.syncFromAuthenticationSessions().catch(() => {});
+  }
+
+  // Monitor VS Code Google / external authentication changes in real-time
+  try {
+    context.subscriptions.push(
+      vscode.authentication.onDidChangeSessions(async (event) => {
+        logger.info(`[Auth Monitor] Authentication sessions changed for provider: ${event.provider.id}`);
+        if (config.isAutoCaptureAccountsEnabled()) {
+          await accountService.syncFromAuthenticationSessions();
+          await accountService.syncActiveAccountFromDb(true);
+        }
+      })
+    );
+  } catch (authErr) {
+    logger.debug('Failed to subscribe to onDidChangeSessions', authErr);
+  }
+
+  let authSyncCounter = 0;
   const activeCheckInterval = setInterval(async () => {
     try {
+      // Periodically check for new external auth sessions (every 12 seconds = every 3 ticks)
+      authSyncCounter++;
+      if (authSyncCounter % 3 === 0 && config.isAutoCaptureAccountsEnabled()) {
+        accountService.syncFromAuthenticationSessions().catch(() => {});
+      }
+
       const activeInfo = await accountService.getActiveAntigravityAccountInfo();
       const currentActive = activeInfo?.email || null;
 
@@ -142,12 +186,12 @@ function registerCommands(
         logger.info(`Active account changed in IDE to: ${currentActive}`);
         lastActiveEmail = currentActive;
         
-        if (currentActive) {
+        if (currentActive && config.isAutoCaptureAccountsEnabled()) {
           // Auto-capture / sync newly active account and refresh its quota immediately
           await accountService.syncActiveAccountFromDb(true);
         }
         accountService.emitAccountsChanged();
-      } else if (currentActive) {
+      } else if (currentActive && config.isAutoCaptureAccountsEnabled()) {
         // Ensure account is captured even if lastActiveEmail hasn't changed
         const account = await accountRepo.getAccount(currentActive);
         if (!account) {
@@ -345,11 +389,27 @@ function registerCommands(
     async syncActiveAccount(forceRefresh = true) {
       return await accountService.syncActiveAccountFromDb(forceRefresh);
     },
+    async reconcileAccounts() {
+      return await accountService.reconcileOrphanedSecretAccounts();
+    },
     async setAutoSwitchEnabled(enabled: boolean) {
       await config.setAutoRotateEnabled(enabled);
     },
     isAutoSwitchEnabled() {
       return config.isAutoRotateEnabled();
+    },
+    isAutoCaptureAccountsEnabled() {
+      return config.isAutoCaptureAccountsEnabled();
+    },
+    async setAutoCaptureAccountsEnabled(enabled: boolean) {
+      await config.setAutoCaptureAccountsEnabled(enabled);
+    },
+    getConfig() {
+      return config.getFullConfig();
+    },
+    async updateConfig(settings: Partial<ExtensionSettingsConfig>) {
+      await config.updateFullConfig(settings as Record<string, any>);
+      statusBarProvider.update();
     }
   };
 
@@ -503,6 +563,51 @@ function registerCommands(
         await extConfig.update('language', picked.description, vscode.ConfigurationTarget.Global);
         vscode.commands.executeCommand('antigravity-account.openPanel');
       }
+    })
+  );
+
+  disposables.push(
+    vscode.commands.registerCommand('antigravity-account.toggleAutoCapture', async () => {
+      const current = config.isAutoCaptureAccountsEnabled();
+      await config.setAutoCaptureAccountsEnabled(!current);
+      vscode.window.showInformationMessage(
+        `Antigravity Account: Auto-Capture ${!current ? 'ENABLED' : 'DISABLED'}`
+      );
+    })
+  );
+
+  disposables.push(
+    vscode.commands.registerCommand('antigravity-account.toggleAutoResume', async () => {
+      const current = config.isAutoResumeChatEnabled();
+      await vscode.workspace.getConfiguration('antigravityAccount').update('autoResumeChat', !current, vscode.ConfigurationTarget.Global);
+      vscode.window.showInformationMessage(
+        `Antigravity Account: Chat Auto-Resume ${!current ? 'ENABLED' : 'DISABLED'}`
+      );
+    })
+  );
+
+  disposables.push(
+    vscode.commands.registerCommand('antigravity-account.reconcileAccounts', async () => {
+      const restored = await api.reconcileAccounts();
+      if (restored.length > 0) {
+        vscode.window.showInformationMessage(`Restored ${restored.length} account(s) from SecretStorage.`);
+      } else {
+        vscode.window.showInformationMessage('No orphaned accounts found in SecretStorage.');
+      }
+      return restored;
+    })
+  );
+
+  disposables.push(
+    vscode.commands.registerCommand('antigravity-account.getConfig', () => {
+      return api.getConfig();
+    })
+  );
+
+  disposables.push(
+    vscode.commands.registerCommand('antigravity-account.updateConfig', async (newSettings: Partial<ExtensionSettingsConfig>) => {
+      await api.updateConfig(newSettings);
+      return api.getConfig();
     })
   );
 

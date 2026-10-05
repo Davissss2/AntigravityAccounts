@@ -5,6 +5,21 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8] - 2026-10-05
+
+### Multi-Account Auto-Capture & VS Code Authentication Integration
+- **Real-Time Google Auth Session Detection**: Integrated directly with `vscode.authentication.onDidChangeSessions` and periodic checks (`syncFromAuthenticationSessions`). Logging in with Google accounts inside Antigravity IDE (e.g. `iarecodul59`, `iarecodul55`) is now detected and captured automatically within seconds.
+- **Verified Google UserInfo Resolution**: Discovered sessions automatically fetch official email and profile details from Google's UserInfo endpoint, eliminating discrepancies between usernames and full email addresses.
+- **SecretStorage Self-Healing Reconciliation**: Added `reconcileOrphanedSecretAccounts()` to scan `state.vscdb` for any accounts existing in encrypted SecretStorage but omitted from `globalState.accounts.list`, restoring them on startup with full balance verification.
+- **Configurable Auto-Capture Toggle**: Added `antigravityAccount.autoCaptureAccounts` (default: `true`), allowing users and AI agents to enable or disable automatic ingestion of IDE logins.
+- **Chat Auto-Resume on Quota Depletion**: Automatically reopens the active chat session and types `continua` only if the assistant was actively executing tasks when quota depleted.
+- **New Commands & API**:
+  - `antigravity-account.toggleAutoCapture`
+  - `antigravity-account.toggleAutoResume`
+  - `antigravity-account.reconcileAccounts`
+  - `antigravity-account.getConfig`
+  - `antigravity-account.updateConfig`
+
 ## [0.3.7] - 2026-10-05
 
 ### Dynamic Adaptive Quota Polling (< 10% Quota Trigger)

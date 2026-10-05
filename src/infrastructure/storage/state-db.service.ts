@@ -769,6 +769,48 @@ inject().catch((err) => {
   }
 
   /**
+   * Scans state.vscdb for any secret storage keys belonging to this extension,
+   * extracting all unique candidate account emails that have stored refresh tokens.
+   */
+  async findSecretAccountEmails(): Promise<string[]> {
+    const dbPath = PathUtils.getVscdbPath(this.context);
+    if (!fs.existsSync(dbPath)) return [];
+
+    try {
+      const SQL = await this.getSqlJs();
+      const buf = fs.readFileSync(dbPath);
+      const db = new SQL.Database(buf);
+
+      try {
+        const stmt = db.prepare("SELECT key FROM ItemTable WHERE key LIKE '%secret://%davissss2.antigravity-account%refreshToken%'");
+        const emails = new Set<string>();
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        while (stmt.step()) {
+          const key = stmt.get()[0] as string;
+          const m = key.match(/antigravityAccount\.secure\.(.*?)\.refreshToken/);
+          if (m) {
+            let email = m[1].trim();
+            if (email.endsWith('.con')) {
+              email = email.slice(0, -4) + '.com';
+            }
+            if (emailRegex.test(email)) {
+              emails.add(email);
+            }
+          }
+        }
+        stmt.free();
+        return Array.from(emails);
+      } finally {
+        db.close();
+      }
+    } catch (error) {
+      Logger.getInstance().error('Failed to query secret account emails from state.vscdb', error);
+      return [];
+    }
+  }
+
+  /**
    * Parses OAuth tokens from a base64-encoded oauthToken Topic protobuf value.
    */
   private parseTokensFromBase64(base64Value: string): { accessToken: string; refreshToken: string; expiresAt: number } | null {

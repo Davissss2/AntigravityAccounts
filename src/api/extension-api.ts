@@ -16,10 +16,24 @@ export interface ActiveAccountInfo {
   raw?: any;
 }
 
+export interface ExtensionSettingsConfig {
+  autoRotateEnabled: boolean;
+  autoCaptureAccounts: boolean;
+  confirmOnSwitch: boolean;
+  noticeDurationSeconds: number;
+  autoResumeChat: boolean;
+  autoResumePrompt: string;
+  autoResumeTimeoutSeconds: number;
+  adaptiveQuotaPolling: boolean;
+  activeQuotaRefreshIntervalSeconds: number;
+  lowCreditThreshold: number;
+  lowCreditNotificationsEnabled: boolean;
+}
+
 /**
  * Public programmatic API for Antigravity Accounts.
  * Allows AI agents, external extensions, or automation scripts to query accounts,
- * trigger fast quota reloads, switch accounts, and configure auto-rotation.
+ * trigger fast quota reloads, switch accounts, configure auto-rotation, and manage auto-capture.
  */
 export interface AntigravityAccountApi {
   /**
@@ -64,6 +78,11 @@ export interface AntigravityAccountApi {
   syncActiveAccount(forceRefresh?: boolean): Promise<Account | null>;
 
   /**
+   * Reconciles any accounts stored in SecretStorage that were missing from repository list.
+   */
+  reconcileAccounts(): Promise<Account[]>;
+
+  /**
    * Sets whether automatic rotation on quota depletion is enabled.
    */
   setAutoSwitchEnabled(enabled: boolean): Promise<void>;
@@ -72,4 +91,25 @@ export interface AntigravityAccountApi {
    * Checks whether automatic rotation on quota depletion is currently enabled.
    */
   isAutoSwitchEnabled(): boolean;
+
+  /**
+   * Checks whether automatic capture and saving of accounts logged into Antigravity IDE is enabled.
+   */
+  isAutoCaptureAccountsEnabled(): boolean;
+
+  /**
+   * Sets whether automatic capture and saving of accounts logged into Antigravity IDE is enabled.
+   */
+  setAutoCaptureAccountsEnabled(enabled: boolean): Promise<void>;
+
+  /**
+   * Retrieves the complete extension settings configuration.
+   */
+  getConfig(): ExtensionSettingsConfig;
+
+  /**
+   * Programmatically updates one or more extension settings.
+   */
+  updateConfig(settings: Partial<ExtensionSettingsConfig>): Promise<void>;
 }
+

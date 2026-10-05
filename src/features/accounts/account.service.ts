@@ -19,6 +19,8 @@ import { isEmailMatch } from '../../core/utils/account.utils';
 import { getModelBalanceValue } from '../../core/utils/model.utils';
 import { ApiClient } from '../../core/network/api.client';
 import { OAUTH } from '../../core/constants/app.constants';
+import { ChatResumeUtils } from '../../core/utils/chat-resume.utils';
+import { PathUtils } from '../../core/utils/path.utils';
 
 export class AccountService {
   private _onAccountsChanged = new vscode.EventEmitter<void>();
@@ -322,6 +324,12 @@ export class AccountService {
 
       // Check if account is not registered yet
       if (!account) {
+        const config = ExtensionConfig.getInstance();
+        if (!config.isAutoCaptureAccountsEnabled()) {
+          Logger.getInstance().debug(`[Auto-Capture] Skipped saving unregistered account ${email} (autoCaptureAccounts is disabled)`);
+          return null;
+        }
+
         Logger.getInstance().info(`[Auto-Capture] Detected new account logged into Antigravity IDE: ${email}`);
 
         let name = email.split('@')[0];
@@ -414,6 +422,231 @@ export class AccountService {
     } catch (err) {
       Logger.getInstance().error('Error during syncActiveAccountFromDb', err);
       return null;
+    }
+  }
+
+  /**
+   * Reconciles accounts between SecretStorage and the accounts repository.
+   * If any accounts exist in SecretStorage with valid tokens but are missing from
+   * the repository list, restores them, generates device profiles, and fetches their initial balance.
+   */
+  async reconcileOrphanedSecretAccounts(): Promise<Account[]> {
+    try {
+      const secretEmails = await this.stateDbService.findSecretAccountEmails();
+      if (!secretEmails.length) return [];
+
+      const restored: Account[] = [];
+      for (const email of secretEmails) {
+        const existing = await this.accountRepo.getAccount(email);
+        if (existing) continue;
+
+        // Account has credentials in SecretStorage but is missing from repository list
+        const tokens = await this.accountRepo.getTokens(email);
+        if (!tokens || !tokens.refreshToken) continue;
+
+        Logger.getInstance().info(`[Reconcile] Restoring orphaned account found in SecretStorage: ${email}`);
+
+        let name = email.split('@')[0];
+        name = name.charAt(0).toUpperCase() + name.slice(1);
+        let avatarUrl: string | undefined;
+
+        // Try to fetch user info with access token if available
+        if (tokens.accessToken) {
+          try {
+            const userInfo = await ApiClient.request<{ name?: string; picture?: string }>(
+              OAUTH.USERINFO_URL,
+              { accessToken: tokens.accessToken, timeoutMs: 3000 }
+            );
+            if (userInfo.name) name = userInfo.name;
+            if (userInfo.picture) avatarUrl = userInfo.picture;
+          } catch { /* use defaults */ }
+        }
+
+        await this.accountRepo.saveAccount({
+          email,
+          name,
+          avatarUrl,
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          expiresAt: tokens.expiresAt || (Math.floor(Date.now() / 1000) + 3600)
+        });
+
+        // Ensure device profile exists
+        const deviceProfile = await this.accountRepo.getDeviceProfile(email);
+        if (!deviceProfile) {
+          await this.accountRepo.storeDeviceProfile(email, generateDeviceProfile());
+        }
+
+        // Fetch balance
+        if (tokens.accessToken) {
+          try {
+            const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken);
+            const preferredModel = await this.accountRepo.getPreferredModel();
+            const status = await this.determineAccountStatus(balanceInfo, preferredModel);
+            await this.accountRepo.updateAccount(email, {
+              balances: balanceInfo.balances,
+              plan: balanceInfo.plan,
+              projectId: balanceInfo.projectId,
+              status,
+              lastRefreshedAt: new Date().toISOString()
+            });
+          } catch (balErr) {
+            Logger.getInstance().warn(`[Reconcile] Failed balance fetch for restored account ${email}`);
+          }
+        }
+
+        const reloaded = await this.accountRepo.getAccount(email);
+        if (reloaded) restored.push(reloaded);
+      }
+
+      if (restored.length > 0) {
+        Logger.getInstance().info(`[Reconcile] Successfully restored ${restored.length} account(s) from SecretStorage!`);
+        this._onAccountsChanged.fire();
+      }
+
+      return restored;
+    } catch (err) {
+      Logger.getInstance().error('Error reconciling orphaned accounts from SecretStorage', err);
+      return [];
+    }
+  }
+
+  /**
+   * Scans VS Code's authentication sessions for any Google/Antigravity accounts that are logged in
+   * and auto-captures them into the extension repository if enabled.
+   */
+  async syncFromAuthenticationSessions(): Promise<void> {
+    try {
+      const config = ExtensionConfig.getInstance();
+      if (!config.isAutoCaptureAccountsEnabled()) return;
+
+      const providers = ['google'];
+      const scopesOptions = [
+        ['https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile'],
+        ['email', 'profile'],
+        []
+      ];
+
+      for (const providerId of providers) {
+        try {
+          let accounts: readonly vscode.AuthenticationSessionAccountInformation[] = [];
+          if (typeof (vscode.authentication as any).getAccounts === 'function') {
+            accounts = await (vscode.authentication as any).getAccounts(providerId);
+          }
+
+          // Also check default session without account specified
+          const sessionsToProcess: vscode.AuthenticationSession[] = [];
+          for (const scopes of scopesOptions) {
+            try {
+              const defaultSession = await vscode.authentication.getSession(providerId, scopes, { silent: true });
+              if (defaultSession) {
+                sessionsToProcess.push(defaultSession);
+                break;
+              }
+            } catch {}
+          }
+
+          // For each discovered account, query session
+          for (const acc of accounts) {
+            for (const scopes of scopesOptions) {
+              try {
+                const session = await vscode.authentication.getSession(providerId, scopes, {
+                  silent: true,
+                  account: acc
+                });
+                if (session && !sessionsToProcess.some(s => s.id === session.id || s.accessToken === session.accessToken)) {
+                  sessionsToProcess.push(session);
+                  break;
+                }
+              } catch {}
+            }
+          }
+
+          for (const session of sessionsToProcess) {
+            if (!session?.accessToken) continue;
+
+            // Resolve real email using Google UserInfo API
+            let email: string | undefined;
+            let name: string = session.account?.label || 'User';
+            let avatarUrl: string | undefined;
+
+            try {
+              const userInfo = await ApiClient.request<{ email?: string; name?: string; picture?: string }>(
+                OAUTH.USERINFO_URL,
+                { accessToken: session.accessToken, timeoutMs: 4000 }
+              );
+              if (userInfo.email) email = userInfo.email.trim().toLowerCase();
+              if (userInfo.name) name = userInfo.name;
+              if (userInfo.picture) avatarUrl = userInfo.picture;
+            } catch {
+              // Fallback to account label
+              if (session.account?.label) {
+                const raw = session.account.label.trim();
+                email = raw.includes('@') ? raw.toLowerCase() : `${raw.toLowerCase()}@gmail.com`;
+              }
+            }
+
+            if (!email || !email.includes('@')) continue;
+
+            const existing = await this.accountRepo.getAccount(email);
+            if (!existing) {
+              Logger.getInstance().info(`[Auth Monitor] Auto-capturing Google Auth account: ${email}`);
+
+              await this.accountRepo.saveAccount({
+                email,
+                name: name || email.split('@')[0],
+                avatarUrl,
+                accessToken: session.accessToken,
+                refreshToken: '',
+                expiresAt: Math.floor(Date.now() / 1000) + 3600
+              });
+
+              // Ensure device profile
+              const existingProfile = await this.accountRepo.getDeviceProfile(email);
+              if (!existingProfile) {
+                await this.accountRepo.storeDeviceProfile(email, generateDeviceProfile());
+              }
+
+              // Fetch initial balances
+              try {
+                const balanceInfo = await this.balanceService.getBalanceInfo(session.accessToken);
+                const preferredModel = await this.accountRepo.getPreferredModel();
+                const status = await this.determineAccountStatus(balanceInfo, preferredModel);
+                await this.accountRepo.updateAccount(email, {
+                  balances: balanceInfo.balances,
+                  plan: balanceInfo.plan,
+                  projectId: balanceInfo.projectId,
+                  status,
+                  lastRefreshedAt: new Date().toISOString()
+                });
+              } catch (balErr) {
+                Logger.getInstance().warn(`[Auth Monitor] Balance fetch failed for ${email}`, balErr);
+              }
+
+              this._onAccountsChanged.fire();
+              const i18n = I18nService.getInstance();
+              vscode.window.showInformationMessage(
+                i18n.t('service.autoCapturedAccount', { email })
+              );
+            } else {
+              // Existing account: ensure accessToken is current
+              const storedTokens = await this.accountRepo.getTokens(email);
+              if (storedTokens && storedTokens.accessToken !== session.accessToken) {
+                await this.accountRepo.storeTokens(email, {
+                  accessToken: session.accessToken,
+                  refreshToken: storedTokens.refreshToken,
+                  expiresAt: Math.floor(Date.now() / 1000) + 3600
+                });
+                Logger.getInstance().info(`[Auth Monitor] Updated access token for existing account: ${email}`);
+              }
+            }
+          }
+        } catch (provErr) {
+          Logger.getInstance().debug(`Error checking provider ${providerId}`, provErr);
+        }
+      }
+    } catch (e) {
+      Logger.getInstance().debug('syncFromAuthenticationSessions error', e);
     }
   }
 
@@ -1108,8 +1341,63 @@ export class AccountService {
     this._isSwitching = true;
     Logger.getInstance().info(`[Auto-Switch] Selected best candidate ${nextAccount.email} for depleted ${depletedEmail}`);
 
+    const config = ExtensionConfig.getInstance();
+
+    // 1. Detect if the AI was actively working and persist chat resume marker
+    if (config.isAutoResumeChatEnabled()) {
+      try {
+        const timeoutSec = config.getAutoResumeTimeoutSeconds();
+        const activity = ChatResumeUtils.detectRecentChatActivity(timeoutSec);
+        const storageDir = PathUtils.getAntigravityDataPath(config.getContext());
+        ChatResumeUtils.savePendingResume(storageDir, {
+          reason: 'depleted',
+          wasWorking: activity.wasWorking,
+          prompt: config.getAutoResumePrompt(),
+          targetEmail: nextAccount.email,
+          timestamp: Date.now(),
+          conversationId: activity.conversationId
+        });
+      } catch (resumeErr) {
+        Logger.getInstance().debug('[Auto-Switch] Could not save pending chat resume marker', resumeErr);
+      }
+    }
+
+    // 2. Configurable pre-switch notice countdown (default 0s = instant reload)
+    const noticeSeconds = config.getNoticeDurationSeconds();
+    if (noticeSeconds > 0) {
+      let isCancelled = false;
+      await new Promise<void>((resolve) => {
+        let remaining = noticeSeconds;
+        const msg = vscode.window.showInformationMessage(
+          `[Auto-Switch] Switching to ${nextAccount.email} in ${remaining}s...`,
+          'Cancel'
+        );
+        const timer = setInterval(() => {
+          remaining--;
+          if (remaining <= 0) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, 1000);
+
+        msg.then(choice => {
+          if (choice === 'Cancel') {
+            isCancelled = true;
+            clearInterval(timer);
+            resolve();
+          }
+        });
+      });
+
+      if (isCancelled) {
+        Logger.getInstance().info('Auto-rotation cancelled by user via notice countdown.');
+        this._isSwitching = false;
+        return;
+      }
+    }
+
     try {
-      // Immediate, non-blocking automatic switch and reload
+      // Immediate automatic switch and reload
       await this.switchAccountWorkflow(nextAccount.email, { skipPrompt: true });
     } finally {
       this._isSwitching = false;
