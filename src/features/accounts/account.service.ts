@@ -265,8 +265,9 @@ export class AccountService {
     const result = await this.stateDbService.injectAccountState(account, tokens, deviceProfile, options?.skipPrompt);
     
     if (result === 'success') {
-      // We no longer save the active account in the local DB.
-      // It will be dynamically detected from Antigravity's state.vscdb on next render.
+      try {
+        await this.accountRepo.setActiveAccountEmail(email.toLowerCase());
+      } catch {}
       this._onAccountsChanged.fire();
       // NOTE: Window reload is handled by StateDbService if user consents
       return 'success';
@@ -285,6 +286,17 @@ export class AccountService {
    */
   async getActiveAntigravityEmail(): Promise<string | null | undefined> {
     try {
+      // 1. Prioritize live native auth session in memory (antigravity_auth and google)
+      try {
+        const nativeEmail = await this.getNativeAuthEmail();
+        if (nativeEmail) {
+          return nativeEmail.toLowerCase();
+        }
+      } catch (err) {
+        Logger.getInstance().debug('Failed to get live native auth email', err);
+      }
+
+      // 2. Fallback to state.vscdb
       return await Promise.race([
         this.stateDbService.readCurrentEmailFromDb(),
         new Promise<undefined>(resolve => setTimeout(() => {

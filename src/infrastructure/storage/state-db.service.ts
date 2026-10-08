@@ -271,7 +271,7 @@ function getOtherAntigravityPids() {
         encoding: 'utf-8',
         stdio: ['ignore', 'pipe', 'ignore'],
       });
-      for (const line of out.split('\\n')) {
+      for (const line of out.split(String.fromCharCode(10))) {
         const parts = line.split(',');
         if (parts.length > 1) {
           const namePart = parts[0].replace(/"/g, '').trim();
@@ -288,7 +288,7 @@ function getOtherAntigravityPids() {
         encoding: 'utf-8',
         stdio: ['ignore', 'pipe', 'ignore'],
       });
-      for (const line of out.split('\\n')) {
+      for (const line of out.split(String.fromCharCode(10))) {
         const trimmed = line.trim();
         if (!trimmed) continue;
         const parts = trimmed.split(/\\s+/);
@@ -410,10 +410,11 @@ function findRelaunchExe() {
       if (p && fs.existsSync(p)) return p;
     }
     try {
-      const whichOut = execSync('which antigravity || which antigravity-ide || command -v antigravity || command -v antigravity-ide', {
+      const whichRaw = execSync('which antigravity || which antigravity-ide || command -v antigravity || command -v antigravity-ide', {
         encoding: 'utf-8',
         stdio: ['ignore', 'pipe', 'ignore'],
-      }).trim().split('\n')[0].trim();
+      }).trim();
+      const whichOut = whichRaw.split(String.fromCharCode(10))[0].trim();
       if (whichOut && fs.existsSync(whichOut)) {
         log('Found relaunch exe via which: ' + whichOut);
         return whichOut;
@@ -522,8 +523,8 @@ async function inject() {
 
         // Method 1: PowerShell Start-Process (creates a clean interactive GUI process with SW_SHOWNORMAL)
         try {
-          const psScript = 'Remove-Item Env:ELECTRON_RUN_AS_NODE -EA SilentlyContinue; Start-Process -FilePath \\"' + relaunchExe + '\\"';
-          execSync('powershell.exe -NoProfile -WindowStyle Hidden -Command "' + psScript + '"', {
+          const psCmd = "Remove-Item Env:ELECTRON_RUN_AS_NODE -EA SilentlyContinue; Start-Process -FilePath '" + relaunchExe + "'";
+          execSync('powershell.exe -NoProfile -WindowStyle Hidden -Command "' + psCmd + '"', {
             stdio: 'ignore'
           });
           log('Relaunch via PowerShell Start-Process succeeded.');

@@ -5,6 +5,17 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.16] - 2026-10-08
+
+### Fixed & Critical Fixes
+- **Corrección Crítica de Inyección y Relanzamiento en Windows**:
+  - Eliminado el fallo de sintaxis (`SyntaxError: Invalid or unexpected token`) en el worker generado `.inject-worker.js` debido a un escape roto de nueva línea (`split('\n')` en template literal). Ahora se utiliza `String.fromCharCode(10)`, eliminando por completo cualquier riesgo de escape en la compilación.
+  - El worker de inyección ahora se ejecuta siempre con éxito, realiza la escritura limpia en `state.vscdb` y relanza Antigravity sin quedarse cerrado.
+  - Normalizado el comando de relanzamiento en Windows con PowerShell `Start-Process` entrecomillado con comillas simples para soportar de manera infalible rutas con espacios (`Antigravity IDE.exe`) y desvinculación de `ELECTRON_RUN_AS_NODE`.
+- **Sincronización Inmediata de Cuenta Activa (Menú IDE vs Webview)**:
+  - `getActiveAntigravityEmail()` ahora consulta prioritariamente la sesión de autenticación nativa en vivo de VS Code / Antigravity (`getNativeAuthEmail()` comprobando proveedores `google` y `antigravity_auth`) antes de recurrir a la lectura estática de la base de datos `state.vscdb`.
+  - Persistencia y actualización instantánea de la cuenta activa en la caché del repositorio (`setActiveAccountEmail`) tanto al activar como durante `detectAndPinActiveAccount()`, evitando que se muestren cuentas anteriores desincronizadas en la interfaz webview.
+
 ## [0.3.15] - 2026-10-08
 
 ### Fixed & Improved

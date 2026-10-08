@@ -879,17 +879,27 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       if (captured) {
         matchedAccount = captured;
         this._pinnedActiveEmail = captured.email.toLowerCase();
+        await this.accountRepo.setActiveAccountEmail(captured.email.toLowerCase());
         Logger.getInstance().info(`Pinned newly auto-captured account: ${captured.email}`);
         return;
       }
     }
 
+    try {
+      const nativeAuthEmail = await this.accountService.getNativeAuthEmail();
+      if (nativeAuthEmail) {
+        this._cachedNativeAuthEmail = nativeAuthEmail;
+      }
+    } catch {}
+
     if (matchedAccount) {
       // Step 4: Pin this account — it will be moved to the top of the list
       this._pinnedActiveEmail = matchedAccount.email.toLowerCase();
+      await this.accountRepo.setActiveAccountEmail(matchedAccount.email.toLowerCase());
       Logger.getInstance().info(`Pinned active account: ${matchedAccount.email}`);
     } else {
       this._pinnedActiveEmail = null;
+      await this.accountRepo.setActiveAccountEmail(null);
     }
   }
 
