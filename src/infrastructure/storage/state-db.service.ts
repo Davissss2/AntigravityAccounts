@@ -294,9 +294,13 @@ function getOtherAntigravityPids() {
         const parts = trimmed.split(/\\s+/);
         if (parts.length >= 2) {
           const pid = parseInt(parts[0], 10);
-          const comm = parts.slice(1).join(' ');
-          if (comm.toLowerCase().includes(exeName.toLowerCase()) || exeName.toLowerCase().includes(comm.toLowerCase())) {
-            if (pid && pid !== ownPid) pids.push(pid);
+          const comm = parts.slice(1).join(' ').toLowerCase();
+          const exeLower = exeName.toLowerCase();
+          const isGenericRuntime = (exeLower === 'node' || exeLower === 'sh' || exeLower === 'bash');
+          const isAntigravity = comm.includes('antigravity');
+          const isExeMatch = !isGenericRuntime && (comm.includes(exeLower) || exeLower.includes(comm));
+          if ((isAntigravity || isExeMatch) && pid && pid !== ownPid) {
+            pids.push(pid);
           }
         }
       }
@@ -391,14 +395,30 @@ function findRelaunchExe() {
     const fallbacks = [
       '/usr/bin/antigravity-ide',
       '/usr/bin/antigravity',
+      '/usr/local/bin/antigravity-ide',
+      '/usr/local/bin/antigravity',
       '/usr/share/antigravity/antigravity',
       '/opt/Antigravity/antigravity',
+      '/opt/antigravity/antigravity',
+      '/opt/antigravity-ide/antigravity-ide',
+      '/snap/bin/antigravity',
+      '/snap/bin/antigravity-ide',
       path.join(homeDir, '.local', 'bin', 'antigravity-ide'),
       path.join(homeDir, '.local', 'bin', 'antigravity'),
     ];
     for (const p of fallbacks) {
       if (p && fs.existsSync(p)) return p;
     }
+    try {
+      const whichOut = execSync('which antigravity || which antigravity-ide || command -v antigravity || command -v antigravity-ide', {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim().split('\n')[0].trim();
+      if (whichOut && fs.existsSync(whichOut)) {
+        log('Found relaunch exe via which: ' + whichOut);
+        return whichOut;
+      }
+    } catch {}
   }
 
   log('No relaunch exe found in any candidate or fallback path.');
@@ -523,12 +543,22 @@ async function inject() {
         }
       } else {
         // Unix (Linux & macOS) Relauncher
+        const isRootOrContainer = (typeof process.getuid === 'function' && process.getuid() === 0) || fs.existsSync('/.dockerenv');
+        const extraArg = isRootOrContainer ? ' --no-sandbox' : '';
+        const spawnArgs = isRootOrContainer ? ['--no-sandbox'] : [];
         const shPath = path.join(path.dirname(payloadPath), '.relaunch-antigravity.sh');
         const shLines = [
           '#!/bin/sh',
           'unset ELECTRON_RUN_AS_NODE',
-          '"' + relaunchExe + '" &',
-          'rm "$0"'
+          'sleep 1',
+          'if command -v nohup >/dev/null 2>&1; then',
+          '  nohup "' + relaunchExe + '"' + extraArg + ' >/dev/null 2>&1 &',
+          'elif command -v setsid >/dev/null 2>&1; then',
+          '  setsid "' + relaunchExe + '"' + extraArg + ' >/dev/null 2>&1 &',
+          'else',
+          '  "' + relaunchExe + '"' + extraArg + ' &',
+          'fi',
+          'rm -f "$0"'
         ];
         fs.writeFileSync(shPath, shLines.join('\\n') + '\\n', { encoding: 'utf-8', mode: 0o755 });
         log('Wrote relaunch .sh to: ' + shPath);
@@ -542,20 +572,21 @@ async function inject() {
           log('Relaunch .sh spawned, PID: ' + child.pid);
         } catch (shErr) {
           log('Relaunch .sh failed: ' + String(shErr));
-          try {
-            // Direct spawn fallback with sanitized environment
-            const cleanEnv = { ...process.env };
-            delete cleanEnv.ELECTRON_RUN_AS_NODE;
-            const child = spawn(relaunchExe, [], {
-              detached: true,
-              stdio: 'ignore',
-              env: cleanEnv
-            });
-            child.unref();
-            log('Direct relaunch without ELECTRON_RUN_AS_NODE succeeded.');
-          } catch (spawnErr) {
-            log('ALL Unix relaunch methods failed: ' + String(spawnErr));
-          }
+        }
+
+        // Direct spawn backup with sanitized environment
+        try {
+          const cleanEnv = { ...process.env };
+          delete cleanEnv.ELECTRON_RUN_AS_NODE;
+          const directChild = spawn(relaunchExe, spawnArgs, {
+            detached: true,
+            stdio: 'ignore',
+            env: cleanEnv
+          });
+          directChild.unref();
+          log('Direct Node spawn executed with PID: ' + directChild.pid);
+        } catch (spawnErr) {
+          log('Direct spawn attempt error: ' + String(spawnErr));
         }
       }
     } else {
@@ -599,12 +630,30 @@ inject().catch((err) => {
       const candidates = [
         '/usr/bin/antigravity-ide',
         '/usr/bin/antigravity',
+        '/usr/local/bin/antigravity-ide',
+        '/usr/local/bin/antigravity',
         '/usr/share/antigravity/antigravity',
         '/opt/Antigravity/antigravity',
+        '/opt/antigravity/antigravity',
+        '/opt/antigravity-ide/antigravity-ide',
+        '/snap/bin/antigravity',
+        '/snap/bin/antigravity-ide',
         path.join(homeDir, '.local', 'bin', 'antigravity-ide'),
         path.join(homeDir, '.local', 'bin', 'antigravity'),
       ];
-      return candidates.find(c => fs.existsSync(c));
+      const found = candidates.find(c => fs.existsSync(c));
+      if (found) return found;
+
+      try {
+        const whichOut = execSync('which antigravity || which antigravity-ide || command -v antigravity || command -v antigravity-ide', {
+          encoding: 'utf-8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+        }).trim().split('\n')[0].trim();
+        if (whichOut && fs.existsSync(whichOut)) {
+          return whichOut;
+        }
+      } catch (e) {}
+      return undefined;
     }
   }
 

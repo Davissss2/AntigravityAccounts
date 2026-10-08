@@ -5,6 +5,20 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.14] - 2026-10-08
+
+### Fixed
+- **Resolución y Filtrado Estricto de Modelo Preferido (Gemini 3.8 Flash)**:
+  - Corregido el mapeo en `getFriendlyModelName` para reconocer y formatear de forma exhaustiva `gemini-3.8-flash-tiered`, `gemini-3.8-flash-high`, `gemini-3.8-flash-med` y prefijos `models/`.
+  - Eliminado el fallback arbitrario a `processedModels[0]` que reemplazaba silenciosamente el modelo preferido por Opus o Sonnet cuando una cuenta no tenía cuota disponible o la clave difería.
+  - Implementado `getModelBalanceEntry` para resolver con exactitud la cuota y tiempo de regeneración del modelo seleccionado en cada tarjeta.
+  - Sincronizado el algoritmo de ordenación `sortAccounts` y la estimación de recarga incorporando las claves primarias de Gemini 3.8 Flash.
+- **Relanzamiento Robusto en Linux y DGX Spark (NVIDIA DGX / Ubuntu)**:
+  - Corregido el script desacoplado `.relaunch-antigravity.sh` integrando `nohup` y `setsid` para evitar la terminación inmediata del proceso por `SIGHUP` cuando el subshell finaliza en Linux.
+  - Añadido soporte automático de flag `--no-sandbox` en entornos de ejecución con privilegios root o contenedores Docker en servidores DGX.
+  - Ampliadas las rutas de búsqueda del binario en Linux (`/opt/antigravity/antigravity`, `/usr/local/bin/antigravity`, `which antigravity`).
+  - Filtrado estricto en la detección de procesos para no confundir ni terminar procesos genéricos de Node en servidores compartidos.
+
 ## [0.3.13] - 2026-10-05
 
 ### Fixed

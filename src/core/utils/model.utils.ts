@@ -80,7 +80,11 @@ export function normalizeModelKey(key: string): string {
 }
 
 export function getFriendlyModelName(key: string): string | null {
-  const lower = key.toLowerCase();
+  if (!key) return null;
+  let lower = key.toLowerCase().trim();
+  if (lower.startsWith('models/')) {
+    lower = lower.substring('models/'.length);
+  }
   
   // Exclude known deprecated/unsupported/internal models in the IDE
   if (
@@ -96,8 +100,32 @@ export function getFriendlyModelName(key: string): string | null {
   }
   
   // Precise mapping of current active IDE models
-  if (lower === 'gemini-3.8-flash' || lower === 'gemini-3.8-flash-high' || lower === 'gemini 3.8 flash (high)' || lower === 'gemini 3.8 flash') return '3.8 Flash (High)';
-  if (lower === 'gemini-3.8-flash-medium' || lower === 'gemini-3.8-flash-extra-low') return '3.8 Flash (Med)';
+  if (
+    lower === 'gemini-3.8-flash' ||
+    lower === 'gemini-3.8-flash-high' ||
+    lower === 'gemini 3.8 flash (high)' ||
+    lower === 'gemini 3.8 flash' ||
+    lower === '3.8 flash' ||
+    lower === '3.8-flash' ||
+    lower === '3.8 flash (high)' ||
+    lower === 'gemini-3.8-flash-tiered' ||
+    lower === 'gemini 3.8 flash tiered' ||
+    lower === 'gemini 3.8 flash (tiered)' ||
+    lower.includes('3.8-flash-tiered') ||
+    lower.includes('3.8-flash-high')
+  ) {
+    return '3.8 Flash (High)';
+  }
+  if (
+    lower === 'gemini-3.8-flash-medium' ||
+    lower === 'gemini-3.8-flash-med' ||
+    lower === 'gemini 3.8 flash (med)' ||
+    lower === '3.8 flash (med)' ||
+    lower === 'gemini-3.8-flash-extra-low' ||
+    lower.includes('3.8-flash-med')
+  ) {
+    return '3.8 Flash (Med)';
+  }
   if (lower === 'gemini-3.7-flash' || lower === 'gemini-3.7-flash-tiered' || lower === 'gemini 3.7 flash' || lower === 'gemini 3.7 flash tiered') return '3.7 Flash';
   if (lower === 'gemini-3.5-flash-extra-low') return '3.5 Flash (Med)';
   if (lower === 'gemini-3.5-flash-low') return '3.5 Flash (High)';
@@ -196,3 +224,69 @@ export function getModelBalanceValue(balances: Record<string, any> | undefined, 
 
   return -1;
 }
+
+export function getModelBalanceEntry(
+  balances: Record<string, any> | undefined,
+  targetKey: string
+): { key: string; value: number; resetTime?: string } | null {
+  if (!balances || !targetKey) return null;
+  const normalizedTarget = normalizeModelKey(targetKey).toLowerCase();
+  const lowerTarget = targetKey.toLowerCase();
+
+  for (const [k, v] of Object.entries(balances)) {
+    if (!k) continue;
+    const friendlyName = getFriendlyModelName(k);
+    const normalizedK = normalizeModelKey(k);
+
+    if (
+      (friendlyName && friendlyName.toLowerCase() === normalizedTarget) ||
+      (friendlyName && friendlyName.toLowerCase() === lowerTarget) ||
+      normalizedK.toLowerCase() === normalizedTarget ||
+      k.toLowerCase() === lowerTarget ||
+      k.toLowerCase().includes(normalizedTarget) ||
+      normalizedTarget.includes(k.toLowerCase())
+    ) {
+      let value = 0;
+      let resetTime: string | undefined;
+      if (typeof v === 'object' && v !== null && 'value' in v) {
+        value = typeof v.value === 'number' ? v.value : Number(v.value);
+        resetTime = v.resetTime;
+      } else {
+        value = typeof v === 'number' ? v : Number(v);
+      }
+      return {
+        key: friendlyName || normalizeModelKey(targetKey),
+        value: isNaN(value) ? 0 : value,
+        resetTime
+      };
+    }
+  }
+
+  // Handle Claude version match (e.g. Claude 5.5, Sonnet 5.5, Opus 5.5)
+  if (normalizedTarget.includes('5.5') || lowerTarget.includes('5.5') || lowerTarget.includes('5-5')) {
+    const isSonnet = normalizedTarget.includes('sonnet') || lowerTarget.includes('sonnet');
+    const isOpus = normalizedTarget.includes('opus') || lowerTarget.includes('opus');
+    for (const [k, v] of Object.entries(balances)) {
+      if (!k) continue;
+      const lowerK = k.toLowerCase();
+      if ((lowerK.includes('5-5') || lowerK.includes('5.5')) && ((isSonnet && lowerK.includes('sonnet')) || (isOpus && lowerK.includes('opus')) || (!isSonnet && !isOpus && lowerK.includes('claude')))) {
+        let value = 0;
+        let resetTime: string | undefined;
+        if (typeof v === 'object' && v !== null && 'value' in v) {
+          value = typeof v.value === 'number' ? v.value : Number(v.value);
+          resetTime = v.resetTime;
+        } else {
+          value = typeof v === 'number' ? v : Number(v);
+        }
+        return {
+          key: getFriendlyModelName(k) || normalizeModelKey(targetKey),
+          value: isNaN(value) ? 0 : value,
+          resetTime
+        };
+      }
+    }
+  }
+
+  return null;
+}
+

@@ -18,7 +18,7 @@ import { DeviceProfile } from '../../core/domain/models/device-profile.model';
 import { Workflow } from '../../core/domain/models/workflow.model';
 import { CryptoUtils } from '../../core/utils/crypto.utils';
 import { ExtensionConfig } from '../../core/config/extension.config';
-import { getFriendlyModelName, normalizeModelKey, getModelBalanceValue } from '../../core/utils/model.utils';
+import { getFriendlyModelName, normalizeModelKey, getModelBalanceValue, getModelBalanceEntry } from '../../core/utils/model.utils';
 import { isEmailMatch } from '../../core/utils/account.utils';
 
 /** Shape of an individual account inside the backup */
@@ -5091,18 +5091,17 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
       // 1. If preferred model is set and matches an active model, return its value
       if (effectivePreferred) {
-        for (const [k, rawV] of Object.entries(acc.balances)) {
-          const lower = k.toLowerCase();
-          if (lower.startsWith('chat') || lower.startsWith('tab') || lower.startsWith('tap')) continue;
-          if (lower.includes(effectivePreferred.toLowerCase()) || effectivePreferred.toLowerCase().includes(lower)) {
-            const val = typeof rawV === 'object' && rawV !== null ? Number((rawV as any).value) : Number(rawV);
-            if (!isNaN(val)) return val;
-          }
-        }
+        const prefVal = getModelBalanceValue(acc.balances, effectivePreferred);
+        if (prefVal >= 0) return prefVal;
       }
 
       // 2. Primary Gemini model keys
       const primaryKeys = [
+        'gemini-3.8-flash-tiered',
+        'gemini-3.8-flash-high',
+        'gemini-3.8-flash',
+        'gemini-3.8-flash-med',
+        'gemini-3.8-flash-medium',
         'gemini-3.7-flash-tiered',
         'gemini-3.7-flash',
         'gemini-3.5-flash-high',
@@ -5128,6 +5127,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const getAccountNextRegenTime = (acc: any): number => {
       if (!acc.balances) return Infinity;
       const primaryKeys = [
+        'gemini-3.8-flash-tiered',
+        'gemini-3.8-flash-high',
+        'gemini-3.8-flash',
+        'gemini-3.8-flash-med',
+        'gemini-3.8-flash-medium',
         'gemini-3.7-flash-tiered',
         'gemini-3.7-flash',
         'gemini-3.5-flash-high',
@@ -5483,21 +5487,30 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     if (effectivePreferred) {
       const normalizedPref = normalizeModelKey(effectivePreferred).toLowerCase();
       let prefIdx = processedModels.findIndex(m =>
+        normalizeModelKey(m.key).toLowerCase() === normalizedPref ||
         m.key.toLowerCase() === normalizedPref ||
         m.key.toLowerCase() === effectivePreferred.toLowerCase()
       );
       if (prefIdx === -1) {
         prefIdx = processedModels.findIndex(m => {
           const k = m.key.toLowerCase();
+          const normK = normalizeModelKey(m.key).toLowerCase();
           return k.includes(normalizedPref) || normalizedPref.includes(k) ||
+                 normK.includes(normalizedPref) || normalizedPref.includes(normK) ||
                  k.replace(/\s+/g, '') === normalizedPref.replace(/\s+/g, '');
         });
       }
       if (prefIdx > -1) {
         const [prefModel] = processedModels.splice(prefIdx, 1);
         preferredModelData = prefModel;
-      } else if (processedModels.length > 0) {
-        preferredModelData = processedModels[0];
+      } else {
+        // Preferred model not in processedModels: check acc.balances directly
+        const balanceEntry = getModelBalanceEntry(acc.balances, effectivePreferred);
+        if (balanceEntry) {
+          preferredModelData = balanceEntry;
+        } else {
+          preferredModelData = { key: effectivePreferred, value: 0 };
+        }
       }
     } else if (processedModels.length > 0) {
       preferredModelData = processedModels[0];
