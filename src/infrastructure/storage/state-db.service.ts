@@ -17,7 +17,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { Logger } from '../../core/utils/logger';
 import { I18nService } from '../../i18n/i18n.service';
 import { ExtensionConfig } from '../../core/config/extension.config';
@@ -30,14 +30,18 @@ import { getAntigravityVersion, isVersionSupported, MIN_SUPPORTED_VERSION } from
 import { ChatResumeUtils } from '../../core/utils/chat-resume.utils';
 
 export class StateDbService {
-  private static sqlJsInstance: any = null;
+  private static sqlJsPromise: Promise<any> | null = null;
 
   private async getSqlJs(): Promise<any> {
-    if (!StateDbService.sqlJsInstance) {
+    if (!StateDbService.sqlJsPromise) {
       const initSqlJs = require('sql.js');
-      StateDbService.sqlJsInstance = await initSqlJs();
+      StateDbService.sqlJsPromise = initSqlJs();
     }
-    return StateDbService.sqlJsInstance;
+    return StateDbService.sqlJsPromise;
+  }
+
+  public preload(): void {
+    this.getSqlJs().catch(() => {});
   }
 
   constructor(private readonly context?: vscode.ExtensionContext) { }
@@ -997,6 +1001,17 @@ inject().catch((err) => {
 
       if (isValidEmail(emailField7)) return emailField7!.trim().toLowerCase();
       if (isValidEmail(emailField3)) return emailField3!.trim().toLowerCase();
+
+      // Fallback 1: scan inner userStatusBytes for any email address
+      const rawUserStatus = userStatusBytes.toString('utf-8');
+      const matchInner = rawUserStatus.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+      if (matchInner && isValidEmail(matchInner[0])) return matchInner[0].trim().toLowerCase();
+
+      // Fallback 2: scan outer topicBytes for any email address
+      const rawTopic = topicBytes.toString('utf-8');
+      const matchTopic = rawTopic.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+      if (matchTopic && isValidEmail(matchTopic[0])) return matchTopic[0].trim().toLowerCase();
+
       return null;
     } catch (e) {
       Logger.getInstance().error('Failed to parse userStatus protobuf', e);

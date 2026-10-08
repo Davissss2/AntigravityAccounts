@@ -5,6 +5,21 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.19] - 2026-10-08
+
+### Fixed & Stability
+- **Fijado Infalible de Cuenta Activa y Cero Lag en Deteccion**:
+  - Eliminado el timeout prematuro de 300ms en `getActiveAntigravityEmail()`, reemplazado por lectura asincrona protegida con resolucion segura a `undefined` (en vez de `null`), impidiendo que un retraso de inicializacion de sql.js borre la cuenta activa del estado en memoria o de la base de datos.
+  - Implementada precarga proactiva en memoria de `sql.js` en el arranque de la extension (`stateDbService.preload()`) y deduplicacion mediante Promise singleton para evitar inicializaciones paralelas.
+  - Añadido fallback de extraccion por expresiones regulares en `extractEmailFromUserStatus()` para decodificar correos en buffers no estandar de `userStatus`.
+  - Bloqueo de concurrencia single-flight (`_detectActivePromise`) en `detectAndPinActiveAccount()` para evitar llamadas simultaneas a `state.vscdb`.
+- **Correccion de Default Sort y Deteccion de Cuentas con Cuota**:
+  - Reestructurado el calculo de cuota en `getAccountQuotaValue()` y `sortAccounts()`: las cuentas con cuota disponible (>0%) ya no se descartan si su estado almacenado era stale `depleted` o si un modelo especifico tenia 0%, priorizando siempre el valor maximo utilizable entre los modelos principales.
+  - Las 13 cuentas con cuota se agrupan ordenadas al inicio de la lista por cuota descendente.
+- **Boton General de Recarga de Cuentas (REFRESH)**:
+  - El boton de la barra de herramientas `[ REFRESH ]` ahora ejecuta directamente la recarga global de cuentas (`handleRefresh()`) sin depender de un select desplegable oculto.
+  - Eliminado el re-renderizado destructivo previo de la webview en `handleProgressiveRefresh()`, evitando parpadeos y garantizando que el banner de progreso y los mensajes de actualizacion se muestren de inmediato.
+
 ## [0.3.18] - 2026-10-08
 
 ### Performance & Ultra-Fast Loading

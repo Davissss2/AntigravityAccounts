@@ -145,7 +145,7 @@ export class AccountService {
         progress.report({ message: i18n.t('common.loading') });
 
         // 2. Fetch Initial Balance (Decision 1: Fails gracefully)
-        const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, { projectId: account.projectId });
+        const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken);
         
         // 3. Save core account data and secure tokens
         const expiresAt = Math.floor(Date.now() / 1000) + tokens.expiresIn;
@@ -286,26 +286,40 @@ export class AccountService {
    */
   async getActiveAntigravityEmail(): Promise<string | null | undefined> {
     try {
-      // 1. FAST LOCAL READ: Read directly from state.vscdb (takes ~3ms, 0 network requests)
+      // 1. FAST LOCAL READ: Read directly from state.vscdb
       try {
         const dbEmail = await Promise.race([
           this.stateDbService.readCurrentEmailFromDb(),
-          new Promise<null>(r => setTimeout(() => r(null), 300))
+          new Promise<undefined>(r => setTimeout(() => r(undefined), 2500))
         ]);
         if (dbEmail) {
           return dbEmail.toLowerCase();
         }
-      } catch {}
+      } catch (err) {
+        Logger.getInstance().debug('Failed to read email from state.vscdb', err);
+      }
 
       // 2. FALLBACK: Native auth session (in-memory)
       try {
-        const nativeEmail = await this.getNativeAuthEmail();
+        const nativeEmail = await Promise.race([
+          this.getNativeAuthEmail(),
+          new Promise<undefined>(r => setTimeout(() => r(undefined), 1500))
+        ]);
         if (nativeEmail) {
           return nativeEmail.toLowerCase();
         }
       } catch (err) {
         Logger.getInstance().debug('Failed to get live native auth email', err);
       }
+
+      // 3. PERSISTENCE FALLBACK: If repository has an active account recorded, preserve it
+      // so temporary startup delays never wipe out the active account pin
+      try {
+        const repoActive = await this.accountRepo.getActiveAccountEmail();
+        if (repoActive) {
+          return repoActive.toLowerCase();
+        }
+      } catch {}
 
       return null;
     } catch (error) {

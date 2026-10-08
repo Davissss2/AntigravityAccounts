@@ -757,9 +757,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     await this.refresh();
 
     // Step 2: Background asynchronous active account detection & pinning from state.vscdb
+    const prevPinned = this._pinnedActiveEmail;
     this.detectAndPinActiveAccount().then(async () => {
-      // Re-render only if pinned account changed or to ensure active state is crisp
-      await this.refresh();
+      // Re-render if pinned account changed or was confirmed for the first time
+      if (this._pinnedActiveEmail !== prevPinned || !prevPinned) {
+        await this.refresh();
+      }
 
       const accounts = await this.accountRepo.getAllAccounts();
       if (accounts.length === 0) return;
@@ -853,19 +856,37 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
    *   5. If found → pin it (store in _pinnedActiveEmail)
    *   6. If not found → clear pin
    */
+  private _detectActivePromise: Promise<void> | null = null;
+
   private async detectAndPinActiveAccount(): Promise<void> {
+    if (this._detectActivePromise) {
+      return this._detectActivePromise;
+    }
+    this._detectActivePromise = this._doDetectAndPinActiveAccount().finally(() => {
+      this._detectActivePromise = null;
+    });
+    return this._detectActivePromise;
+  }
+
+  private async _doDetectAndPinActiveAccount(): Promise<void> {
     // Step 1: Check if active email is logged into Antigravity
     const activeEmail = await this.accountService.getActiveAntigravityEmail();
 
-    // Step 1.5: If error reading database, preserve current pin
+    // Step 1.5: If error reading database or timed out, preserve current pin
     if (activeEmail === undefined) {
       Logger.getInstance().info('Failed to read active email, preserving current pin.');
       return;
     }
 
-    // Step 2: If no account (Antigravity is logged out) → clear pin and stop
+    // Step 2: If no account (Antigravity is logged out)
     if (!activeEmail) {
+      const repoActive = await this.accountRepo.getActiveAccountEmail();
+      if (repoActive) {
+        this._pinnedActiveEmail = repoActive.toLowerCase();
+        return;
+      }
       this._pinnedActiveEmail = null;
+      await this.accountRepo.setActiveAccountEmail(null);
       return;
     }
 
@@ -915,7 +936,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     // Step 0: Detect and pin active account BEFORE starting the balance refresh.
     // This is an independent verification — it always runs regardless of cooldowns.
     await this.detectAndPinActiveAccount();
-    await this.refresh();
 
     // Step 1: Compute the display order so the refresh iterates accounts in
     // the same top-to-bottom sequence visible in the UI.
@@ -3526,15 +3546,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               <option value="quota-regen" ${configSortBy === 'quota-regen' ? 'selected' : ''}>${i18n.t('webview.sortQuotaRegen')}</option>
             </select>
           </label>
-          <label class="toolbar-scan" for="scanSelect" style="position: relative;">
-            <span class="toolbar-label" id="scanLabelDisplay">⚡ <span class="scan-text-long">${i18n.t('webview.scanSegment')}</span><span class="scan-text-short" style="display: none;">${i18n.t('common.refresh')}</span></span>
-            <select id="scanSelect" onchange="handleScanChange()" style="position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; -webkit-appearance: none; appearance: none;">
-              <option value="">⚡ ${i18n.t('webview.scanSegment')}</option>
-              <option value="all">${i18n.t('webview.scanAll')}</option>
-              <option value="with-quota">${i18n.t('webview.scanWithQuota')}</option>
-              <option value="without-quota">${i18n.t('webview.scanWithoutQuota')}</option>
-            </select>
-          </label>
+          <button type="button" class="toolbar-scan" onclick="handleRefresh()" title="${i18n.t('commands.refreshBalances.title')}">
+            <span class="toolbar-label" id="scanLabelDisplay">⚡ <span class="scan-text-long">${i18n.t('common.refresh')}</span><span class="scan-text-short" style="display: none;">${i18n.t('common.refresh')}</span></span>
+          </button>
           <button type="button" class="toolbar-autoswitch-btn ${configAutoRotate ? 'active' : ''}" id="btnToggleAutoSwitch" onclick="sendMessage('toggleAutoSwitch')" title="${configAutoRotate ? i18n.t('settings.autoSwitchEnabled') : i18n.t('settings.autoSwitchDisabled')}">
             <svg class="icon-svg" style="width:11px; height:11px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
             <span class="autoswitch-btn-text">Auto: ${configAutoRotate ? 'ON' : 'OFF'}</span>
@@ -5205,17 +5219,17 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     // Helper: compute remaining usable quota percentage (0-100)
     const getAccountQuotaValue = (acc: any): number => {
       if (!acc.balances) return 0;
-      if (acc.status === AccountStatus.DEPLETED || acc.status === AccountStatus.TOKEN_EXPIRED || acc.status === AccountStatus.ERROR || acc.status === AccountStatus.INELIGIBLE) {
+      if (acc.status === AccountStatus.TOKEN_EXPIRED || acc.status === AccountStatus.ERROR || acc.status === AccountStatus.INELIGIBLE) {
         return 0;
       }
 
-      // 1. If preferred model is set and matches an active model, return its value
+      // 1. If preferred model is set and matches an active model with quota > 0, return its value
       if (effectivePreferred) {
         const prefVal = getModelBalanceValue(acc.balances, effectivePreferred);
-        if (prefVal >= 0) return prefVal;
+        if (prefVal > 0) return prefVal;
       }
 
-      // 2. Primary Gemini model keys
+      // 2. Primary Gemini model keys: find highest available quota
       const primaryKeys = [
         'gemini-3.8-flash-tiered',
         'gemini-3.8-flash-high',
@@ -5232,15 +5246,29 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         'gemini-3.1-pro-low'
       ];
 
+      let maxQuota = 0;
       for (const pk of primaryKeys) {
         if (acc.balances[pk] !== undefined) {
           const rawV = acc.balances[pk];
           const val = typeof rawV === 'object' && rawV !== null ? Number((rawV as any).value) : Number(rawV);
-          if (!isNaN(val)) return val;
+          if (!isNaN(val) && val > maxQuota) {
+            maxQuota = val;
+          }
+        }
+      }
+      if (maxQuota > 0) return maxQuota;
+
+      // 3. Fallback: check ANY non-chat balance with value > 0
+      for (const [k, rawV] of Object.entries(acc.balances)) {
+        const lower = k.toLowerCase();
+        if (lower.startsWith('chat') || lower.startsWith('tab') || lower.startsWith('tap')) continue;
+        const val = typeof rawV === 'object' && rawV !== null ? Number((rawV as any).value) : Number(rawV);
+        if (!isNaN(val) && val > maxQuota) {
+          maxQuota = val;
         }
       }
 
-      return 0;
+      return maxQuota;
     };
 
     // Helper: compute soonest remaining time until renewal in ms (0 = ready now or already passed)
@@ -5380,8 +5408,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           // 1. Separate accounts with available quota (> 0%) from accounts with 0% / depleted
           const aQuota = getAccountQuotaValue(a);
           const bQuota = getAccountQuotaValue(b);
-          const aHasQuota = aQuota > 0 && (a.status === AccountStatus.ACTIVE || a.status === AccountStatus.LOW_BALANCE);
-          const bHasQuota = bQuota > 0 && (b.status === AccountStatus.ACTIVE || b.status === AccountStatus.LOW_BALANCE);
+          const aIsDead = a.status === AccountStatus.TOKEN_EXPIRED || a.status === AccountStatus.ERROR || a.status === AccountStatus.INELIGIBLE;
+          const bIsDead = b.status === AccountStatus.TOKEN_EXPIRED || b.status === AccountStatus.ERROR || b.status === AccountStatus.INELIGIBLE;
+          const aHasQuota = aQuota > 0 && !aIsDead;
+          const bHasQuota = bQuota > 0 && !bIsDead;
 
           if (aHasQuota && !bHasQuota) return -1;
           if (!aHasQuota && bHasQuota) return 1;

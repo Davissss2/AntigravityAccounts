@@ -137,6 +137,7 @@ function registerCommands(
   const balanceService = new BalanceService();
   const accountRepo = new AccountRepositoryImpl(context);
   const stateDbService = new StateDbService(context);
+  stateDbService.preload();
   const accountService = new AccountService(authService, balanceService, accountRepo, stateDbService);
 
   const disposables: vscode.Disposable[] = [];

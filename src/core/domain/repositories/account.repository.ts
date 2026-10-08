@@ -30,7 +30,10 @@ export interface IAccountRepository {
   getActiveAccountEmail(): Promise<string | null>;
 
   /** Set the active account */
-  setActiveAccount(email: string): Promise<void>;
+  setActiveAccount(email: string | null): Promise<void>;
+
+  /** Set the active account email (alias) */
+  setActiveAccountEmail(email: string | null): Promise<void>;
 
   /** Store tokens securely */
   storeTokens(email: string, tokens: AccountTokens): Promise<void>;

@@ -124,19 +124,23 @@ export class AccountRepositoryImpl implements IAccountRepository {
     return this.context.globalState.get<string | null>(STORAGE_KEYS.ACTIVE_ACCOUNT, null);
   }
 
-  async setActiveAccount(email: string): Promise<void> {
+  async setActiveAccount(email: string | null): Promise<void> {
     const accounts = await this.getAllAccounts();
     
     // Deactivate all, activate the target
     const updatedAccounts = accounts.map(a => ({
       ...a,
-      isActive: a.email === email
+      isActive: email !== null && a.email.toLowerCase() === email.toLowerCase()
     }));
 
     await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, updatedAccounts);
-    await this.context.globalState.update(STORAGE_KEYS.ACTIVE_ACCOUNT, email);
+    await this.context.globalState.update(STORAGE_KEYS.ACTIVE_ACCOUNT, email || undefined);
     
     Logger.getInstance().info(`Active account set to: ${email}`);
+  }
+
+  async setActiveAccountEmail(email: string | null): Promise<void> {
+    return this.setActiveAccount(email);
   }
 
   async storeTokens(email: string, tokens: AccountTokens): Promise<void> {
