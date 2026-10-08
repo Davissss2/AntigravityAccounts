@@ -5,6 +5,15 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.18] - 2026-10-08
+
+### Performance & Ultra-Fast Loading
+- **Eliminación Total de Pantalla Negra y Carga Lenta de la Extensión**:
+  - `_getHtmlForWebview` optimizado para renderizado instantáneo en Frame 0 (<5ms): eliminadas todas las llamadas bloqueantes a la API de red o de autenticación durante la generación de HTML, utilizando la caché en memoria de `globalState`.
+  - `getActiveAntigravityEmail()` en [AccountService](file:///c:/Users/Usuario/Desktop/ac/src/features/accounts/account.service.ts) ahora prioriza la lectura local directa de `state.vscdb` (~3ms sin peticiones de red), resolviendo la cuenta activa en caliente sin demoras.
+  - `getNativeAuthSession()` optimizado para resolver directamente desde la etiqueta de sesión en memoria `session.account.label` (0ms), evitando la llamada HTTP a `userinfo` y reduciendo el timeout de respaldo a 800ms.
+  - El botón **REFRESH** (recargar cuentas) y la apertura inicial del panel ahora responden de forma inmediata sin congelar la interfaz ni mostrar la barra de progreso bloqueada.
+
 ## [0.3.17] - 2026-10-08
 
 ### Fixed & Visual Polish

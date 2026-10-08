@@ -1685,9 +1685,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     // ── Use the cached pinned active account (set by detectAndPinActiveAccount) ──
     if (!this._pinnedActiveEmail) {
       try {
-        const liveActive = await this.accountService.getActiveAntigravityEmail();
-        if (liveActive) {
-          this._pinnedActiveEmail = liveActive.toLowerCase();
+        const cachedActive = await this.accountRepo.getActiveAccountEmail();
+        if (cachedActive) {
+          this._pinnedActiveEmail = cachedActive.toLowerCase();
         }
       } catch {}
     }
