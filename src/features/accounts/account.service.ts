@@ -399,7 +399,8 @@ export class AccountService {
 
           if (!email && session.account?.label) {
             const raw = session.account.label.trim().toLowerCase();
-            email = raw.includes('@') ? raw : `${raw}@gmail.com`;
+            const cleaned = raw.replace(/\s*\(.*?\)\s*/g, '').trim();
+            email = cleaned.includes('@') ? cleaned : `${cleaned}@gmail.com`;
           }
 
           if (email && email.includes('@')) {

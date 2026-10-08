@@ -1008,7 +1008,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
     // Find the actual email (preserving original case) from the account list
     const accounts = await this.accountRepo.getAllAccounts();
-    const activeAccount = accounts.find(a => a.email.toLowerCase() === this._pinnedActiveEmail);
+    const activeAccount = accounts.find(a => isEmailMatch(a.email, this._pinnedActiveEmail));
     if (!activeAccount) return;
 
     // Check if cooldownMs have passed since this account's last refresh
@@ -1073,7 +1073,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const pinnedEmailLower = this._pinnedActiveEmail;
 
     accounts.forEach(acc => {
-      acc.isActive = (pinnedEmailLower !== null && acc.email.toLowerCase() === pinnedEmailLower);
+      acc.isActive = (pinnedEmailLower !== null && isEmailMatch(acc.email, pinnedEmailLower));
     });
 
     const preferredModel = await this.accountRepo.getPreferredModel();
@@ -1683,14 +1683,19 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const availableModelKeys = Array.from(availableModelKeysSet);
 
     // ── Use the cached pinned active account (set by detectAndPinActiveAccount) ──
-    // This does NOT re-read from state.vscdb; it uses the result of the last
-    // independent verification process, ensuring the pinned account survives
-    // post-refresh re-sorting.
+    if (!this._pinnedActiveEmail) {
+      try {
+        const liveActive = await this.accountService.getActiveAntigravityEmail();
+        if (liveActive) {
+          this._pinnedActiveEmail = liveActive.toLowerCase();
+        }
+      } catch {}
+    }
     const pinnedEmailLower = this._pinnedActiveEmail;
     
     // Set isActive flag based on the pinned email
     accounts.forEach(acc => {
-      acc.isActive = (pinnedEmailLower !== null && acc.email.toLowerCase() === pinnedEmailLower);
+      acc.isActive = (pinnedEmailLower !== null && isEmailMatch(acc.email, pinnedEmailLower));
     });
 
     // Read stored preference (null = never set, "" = explicitly none)
@@ -1736,7 +1741,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
     // ── Set active state and sort accounts ──
     accounts.forEach(acc => {
-      acc.isActive = (this._pinnedActiveEmail !== null && acc.email.toLowerCase() === this._pinnedActiveEmail);
+      acc.isActive = (this._pinnedActiveEmail !== null && isEmailMatch(acc.email, this._pinnedActiveEmail));
     });
     this.sortAccounts(accounts, effectivePreferred, this._pinnedActiveEmail);
 
@@ -5310,8 +5315,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
     accounts.sort((a, b) => {
       // 1. Pinned active account always goes first
-      const aActive = pinnedEmailLower !== null && a.email.toLowerCase() === pinnedEmailLower;
-      const bActive = pinnedEmailLower !== null && b.email.toLowerCase() === pinnedEmailLower;
+      const aActive = pinnedEmailLower !== null && isEmailMatch(a.email, pinnedEmailLower);
+      const bActive = pinnedEmailLower !== null && isEmailMatch(b.email, pinnedEmailLower);
       if (aActive && !bActive) return -1;
       if (!aActive && bActive) return 1;
 

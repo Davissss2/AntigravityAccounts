@@ -5,6 +5,14 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.17] - 2026-10-08
+
+### Fixed & Visual Polish
+- **Activación Visual y Posicionamiento de Cuenta Activa en el Panel Webview**:
+  - Reemplazada la igualdad estricta de strings (`===`) por la utilidad de coincidencia flexible [isEmailMatch](file:///c:/Users/Usuario/Desktop/ac/src/core/utils/account.utils.ts) en todas las comprobaciones de cuenta activa en [AccountsWebviewProvider](file:///c:/Users/Usuario/Desktop/ac/src/presentation/providers/accounts-webview.provider.ts) (`acc.isActive`, `activeAccount`, `getDisplayOrderEmails` y [sortAccounts](file:///c:/Users/Usuario/Desktop/ac/src/presentation/providers/accounts-webview.provider.ts)). Esto garantiza que la cuenta activa reciba el badge verde **ACTIVE**, oculte el botón **Activate** y se posicione siempre como la primera tarjeta de la lista.
+  - Resolución inmediata en caliente de la cuenta activa en `_getHtmlForWebview`: si la variable en memoria `_pinnedActiveEmail` no está cargada aún al dibujar el frame, se consulta de inmediato [getActiveAntigravityEmail](file:///c:/Users/Usuario/Desktop/ac/src/features/accounts/account.service.ts), evitando que la webview dibuje las tarjetas sin estado activo.
+  - Sanitización de sufijos en etiquetas de cuentas nativas en [AccountService](file:///c:/Users/Usuario/Desktop/ac/src/features/accounts/account.service.ts): eliminación de terminaciones como ` (Google Auth)` o ` (Antigravity Auth)` para asegurar la resolución canónica del correo.
+
 ## [0.3.16] - 2026-10-08
 
 ### Fixed & Critical Fixes
