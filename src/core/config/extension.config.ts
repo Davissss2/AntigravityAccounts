@@ -164,12 +164,24 @@ export class ExtensionConfig {
   }
 
   /**
+   * Whether to show verbose/frequent notifications (Default: false, minimal notifications)
+   */
+  isNotificationsEnabled(): boolean {
+    return this.getConfig().get<boolean>('showNotifications', false);
+  }
+
+  async setNotificationsEnabled(enabled: boolean): Promise<void> {
+    await this.getConfig().update('showNotifications', enabled, true);
+  }
+
+  /**
    * Retrieves the entire extension settings object as a plain configuration record.
    */
   getFullConfig(): any {
     return {
       autoRotateEnabled: this.isAutoRotateEnabled(),
       autoCaptureAccounts: this.isAutoCaptureAccountsEnabled(),
+      showNotifications: this.isNotificationsEnabled(),
       confirmOnSwitch: this.isConfirmOnSwitchEnabled(),
       noticeDurationSeconds: this.getNoticeDurationSeconds(),
       autoResumeChat: this.isAutoResumeChatEnabled(),

@@ -18,16 +18,40 @@ export class AccountRepositoryImpl implements IAccountRepository {
   constructor(private context: vscode.ExtensionContext) {}
 
   async getAllAccounts(): Promise<Account[]> {
-    const accounts = this.context.globalState.get<Account[]>(STORAGE_KEYS.ACCOUNTS_LIST, []);
-    return accounts;
+    const raw = this.context.globalState.get<Account[]>(STORAGE_KEYS.ACCOUNTS_LIST, []);
+    const isValidEmail = (email: any): boolean =>
+      typeof email === 'string' && email.includes('@') && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+    const valid = raw.filter(a => a && isValidEmail(a.email));
+    if (valid.length !== raw.length) {
+      const removedCount = raw.length - valid.length;
+      Logger.getInstance().warn(`[AccountRepo] Purged ${removedCount} malformed/non-email account(s) from globalState.`);
+      await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, valid);
+
+      // Clean up orphaned secrets for invalid accounts
+      for (const invalidAcc of raw) {
+        if (!isValidEmail(invalidAcc?.email) && invalidAcc?.email) {
+          try {
+            await this.context.secrets.delete(SECRET_KEYS.REFRESH_TOKEN(invalidAcc.email));
+            await this.context.secrets.delete(SECRET_KEYS.ACCESS_TOKEN(invalidAcc.email));
+            await this.context.secrets.delete(SECRET_KEYS.METADATA(invalidAcc.email));
+          } catch {}
+        }
+      }
+    }
+    return valid;
   }
 
   async getAccount(email: string): Promise<Account | null> {
+    if (!email || !email.includes('@')) return null;
     const accounts = await this.getAllAccounts();
-    return accounts.find(a => a.email === email) || null;
+    return accounts.find(a => a.email.toLowerCase() === email.toLowerCase()) || null;
   }
 
   async saveAccount(data: AccountCreationData): Promise<Account> {
+    if (!data.email || !data.email.includes('@') || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email.trim())) {
+      throw new Error(`[AccountRepo] Cannot save account with invalid email: '${data.email}'`);
+    }
     const accounts = await this.getAllAccounts();
     
     // Check if exists

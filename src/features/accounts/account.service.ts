@@ -445,7 +445,11 @@ export class AccountService {
         return null;
       }
 
-      const email = activeInfo.email;
+      const email = activeInfo.email?.trim().toLowerCase();
+      if (!email || !email.includes('@') || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        Logger.getInstance().debug(`[Auto-Capture] Ignored non-email identifier from IDE: '${activeInfo.email}'`);
+        return null;
+      }
       let account = await this.accountRepo.getAccount(email);
 
       // Check if account is not registered yet
@@ -517,10 +521,12 @@ export class AccountService {
         account = await this.accountRepo.getAccount(email);
         this._onAccountsChanged.fire();
 
-        const i18n = I18nService.getInstance();
-        vscode.window.showInformationMessage(
-          i18n.t('service.autoCapturedAccount', { email })
-        );
+        if (config.isNotificationsEnabled()) {
+          const i18n = I18nService.getInstance();
+          vscode.window.showInformationMessage(
+            i18n.t('service.autoCapturedAccount', { email })
+          );
+        }
 
         return account;
       } else {
@@ -767,10 +773,12 @@ export class AccountService {
               }
 
               this._onAccountsChanged.fire();
-              const i18n = I18nService.getInstance();
-              vscode.window.showInformationMessage(
-                i18n.t('service.autoCapturedAccount', { email })
-              );
+              if (config.isNotificationsEnabled()) {
+                const i18n = I18nService.getInstance();
+                vscode.window.showInformationMessage(
+                  i18n.t('service.autoCapturedAccount', { email })
+                );
+              }
             } else {
               // Existing account: keep tokens up to date
               const storedTokens = await this.accountRepo.getTokens(email);
@@ -1006,7 +1014,7 @@ export class AccountService {
     // ── Guard: Prevent concurrent or rapid-fire refreshes ──
     if (this._isRefreshing) {
       Logger.getInstance().info('Refresh already in progress, ignoring duplicate request.');
-      if (notify) {
+      if (notify && ExtensionConfig.getInstance().isNotificationsEnabled()) {
         const i18n = I18nService.getInstance();
         vscode.window.showInformationMessage(i18n.t('service.refreshInProgress'));
       }
@@ -1022,7 +1030,7 @@ export class AccountService {
       
       this.cancelQueue();
       
-      if (notify) {
+      if (notify && ExtensionConfig.getInstance().isNotificationsEnabled()) {
         const i18n = I18nService.getInstance();
         vscode.window.showInformationMessage(
           i18n.t('service.refreshQueued', { seconds: remainingSec })
@@ -1232,7 +1240,7 @@ export class AccountService {
         const i18n = I18nService.getInstance();
         vscode.window.showInformationMessage(i18n.t('accounts.refreshCancelled'));
       }
-    } else if (notify && successCount > 0) {
+    } else if (notify && successCount > 0 && ExtensionConfig.getInstance().isNotificationsEnabled()) {
       const i18n = I18nService.getInstance();
       vscode.window.showInformationMessage(i18n.t('notifications.refreshComplete'));
     }

@@ -2,7 +2,7 @@
   "name": "antigravity-account",
   "displayName": "Antigravity Account",
   "description": "Manage multiple Antigravity accounts seamlessly - switch, monitor credits, and auto-rotate with one click.",
-  "version": "0.3.14",
+  "version": "0.3.15",
   "publisher": "Davissss2",
   "author": {
     "name": "Davissss2",
@@ -275,6 +275,11 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically detect and save accounts signed into Antigravity IDE without manual addition"
+        },
+        "antigravityAccount.showNotifications": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show verbose/frequent notifications (e.g. accounts auto-detected, refresh queues). When disabled, only essential manual action notices are shown."
         },
         "antigravityAccount.autoResumeChat": {
           "type": "boolean",

@@ -217,6 +217,8 @@
     "noticeDurationDescription": "Segundos de cuenta atrás antes de recargar la ventana al rotar cuenta (0 = Instantáneo).",
     "confirmOnSwitchLabel": "Confirmar antes de cambiar cuenta",
     "confirmOnSwitchDescription": "Muestra una ventana modal de confirmación antes de recargar el editor.",
+    "showNotificationsLabel": "Mostrar notificaciones completas",
+    "showNotificationsDescription": "Cuando está deshabilitado, silencia avisos repetitivos (cuentas detectadas, colas de refresco) para no molestar.",
     "refreshIntervalLabel": "Intervalo de actualización",
     "refreshIntervalDescription": "Los saldos se actualizarán si ha pasado más de este intervalo desde la última actualización.",
     "intervalImmediate": "Inmediatamente",

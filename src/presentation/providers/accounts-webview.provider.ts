@@ -85,6 +85,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
   /** Cached native auth email for the mismatch banner, avoids blocking HTML generation */
   private _cachedNativeAuthEmail: string | null = null;
 
+  /** Guard flags to prevent full HTML re-render from kicking the user out of active UI modals or input fields */
+  private _isSettingsOpen: boolean = false;
+  private _isEditingAlias: boolean = false;
+  private _pendingRefreshAfterInteraction: boolean = false;
+
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly accountRepo: IAccountRepository,
@@ -209,7 +214,28 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             }
           }
           break;
+        case 'settingsOpened':
+          this._isSettingsOpen = true;
+          break;
+        case 'settingsClosed':
+          this._isSettingsOpen = false;
+          if (this._pendingRefreshAfterInteraction) {
+            this._pendingRefreshAfterInteraction = false;
+            await this.refresh();
+          }
+          break;
+        case 'aliasEditingStarted':
+          this._isEditingAlias = true;
+          break;
+        case 'aliasEditingFinished':
+          this._isEditingAlias = false;
+          if (this._pendingRefreshAfterInteraction) {
+            this._pendingRefreshAfterInteraction = false;
+            await this.refresh();
+          }
+          break;
         case 'updateAlias':
+          this._isEditingAlias = false;
           if (message.email && message.alias !== undefined) {
             await this.accountRepo.updateAccount(message.email, { alias: message.alias.trim() || undefined });
             this.accountService.emitAccountsChanged();
@@ -684,6 +710,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             if (message.confirmOnSwitch !== undefined) {
               await config.update('confirmOnSwitch', message.confirmOnSwitch, vscode.ConfigurationTarget.Global);
             }
+            if (message.showNotifications !== undefined) {
+              await config.update('showNotifications', message.showNotifications, vscode.ConfigurationTarget.Global);
+            }
 
             Logger.getInstance().info('Settings saved successfully.');
             this.accountService.emitAccountsChanged();
@@ -697,6 +726,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             Logger.getInstance().error('Failed to save settings', err);
             vscode.window.showErrorMessage(`Failed to save settings: ${err?.message || err}`);
           } finally {
+            this._isSettingsOpen = false;
+            this._pendingRefreshAfterInteraction = false;
             await this.refresh();
             this._view?.webview.postMessage({ command: 'hideLoading' });
             this._view?.webview.postMessage({ command: 'settingsSavedToast' });
@@ -792,6 +823,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
    * Forces a re-render of the Webview HTML.
    */
   public async refresh() {
+    if (this._isSettingsOpen || this._isEditingAlias) {
+      this._pendingRefreshAfterInteraction = true;
+      Logger.getInstance().debug('Skipping full webview HTML re-render because user is interacting with settings or editing alias.');
+      return;
+    }
     if (this._view) {
       const html = await this._getHtmlForWebview(this._view.webview);
       this._view.webview.html = html;
@@ -1589,6 +1625,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const configAdaptivePolling = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('adaptiveQuotaPolling', true);
     const configNoticeDuration = vscode.workspace.getConfiguration('antigravityAccount').get<number>('noticeDurationSeconds', 0);
     const configConfirmOnSwitch = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('confirmOnSwitch', false);
+    const configShowNotifications = vscode.workspace.getConfiguration('antigravityAccount').get<boolean>('showNotifications', false);
     const nativeAuthEmail = this._cachedNativeAuthEmail;
     const accounts = await this.accountRepo.getAccountSummaries();
     this._workflows = await this.accountRepo.getWorkflows();
@@ -3724,6 +3761,17 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                 </label>
               </div>
               <p style="font-size:0.82em; opacity:0.65; margin:0 0 12px 0;">${i18n.t('webview.confirmOnSwitchDescription')}</p>
+
+              <!-- Verbose Notifications Toggle -->
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; margin-top:14px;">
+                <label for="showNotificationsToggle" style="font-weight:bold; cursor:pointer;">${i18n.t('webview.showNotificationsLabel')}</label>
+                <label style="position:relative; display:inline-block; width:40px; height:22px; cursor:pointer;">
+                  <input type="checkbox" id="showNotificationsToggle" ${configShowNotifications ? 'checked' : ''} onchange="onShowNotificationsToggle()" style="opacity:0; width:0; height:0;">
+                  <span id="showNotificationsTrack" style="position:absolute; inset:0; background:${configShowNotifications ? '#4caf50' : 'var(--glass-border)'}; border-radius:11px; transition:background 0.3s, box-shadow 0.3s; ${configShowNotifications ? 'box-shadow:0 0 6px rgba(76,175,80,0.4);' : ''}"></span>
+                  <span id="showNotificationsSlider" style="position:absolute; top:2px; ${isRtl ? 'right' : 'left'}:2px; width:18px; height:18px; background:var(--text-primary); border-radius:50%; transition:0.3s; ${configShowNotifications ? (isRtl ? 'right:20px' : 'left:20px') : ''}"></span>
+                </label>
+              </div>
+              <p style="font-size:0.82em; opacity:0.65; margin:0 0 12px 0;">${i18n.t('webview.showNotificationsDescription')}</p>
             </div>
 
             <!-- Immediate Mode Confirmation Dialog -->
@@ -3796,8 +3844,21 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           let currentAutoResumePrompt = ${JSON.stringify(configAutoResumePrompt)};
           let currentNoticeDuration = ${configNoticeDuration};
           let currentConfirmOnSwitch = ${configConfirmOnSwitch};
+          let currentShowNotifications = ${configShowNotifications};
           const isRtlDir = ${isRtl};
           const savedSearchQuery = ${JSON.stringify(this._searchQuery)};
+
+          let settingsInactivityTimer = null;
+          function resetSettingsInactivityTimer() {
+            if (settingsInactivityTimer) clearTimeout(settingsInactivityTimer);
+            // 3-minute inactivity timeout (resets on mouse/keyboard activity)
+            settingsInactivityTimer = setTimeout(() => {
+              const modal = document.getElementById('settingsModal');
+              if (modal && modal.style.display !== 'none') {
+                closeSettings();
+              }
+            }, 180000);
+          }
           
           // vscode is now defined in the first script tag globally to allow window.onerror logging before this script runs.
           let state = vscode.getState() || { activeModels: {} };
@@ -4487,6 +4548,22 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             }
           }
 
+          function onShowNotificationsToggle() {
+            const toggle = document.getElementById('showNotificationsToggle');
+            const slider = document.getElementById('showNotificationsSlider');
+            const track = document.getElementById('showNotificationsTrack');
+            if (!toggle) return;
+            if (toggle.checked) {
+              slider.style[isRtlDir ? 'right' : 'left'] = '20px';
+              track.style.background = '#4caf50';
+              track.style.boxShadow = '0 0 6px rgba(76,175,80,0.4)';
+            } else {
+              slider.style[isRtlDir ? 'right' : 'left'] = '2px';
+              track.style.background = 'var(--glass-border)';
+              track.style.boxShadow = 'none';
+            }
+          }
+
           function onIntervalChange() {
             const select = document.getElementById('refreshIntervalSelect');
             if (select.value === '0') {
@@ -4625,7 +4702,22 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               onConfirmOnSwitchToggle();
             }
 
+            const showNotificationsToggle = document.getElementById('showNotificationsToggle');
+            if (showNotificationsToggle) {
+              showNotificationsToggle.checked = currentShowNotifications;
+              onShowNotificationsToggle();
+            }
+
             modal.style.display = 'flex';
+            vscode.postMessage({ command: 'settingsOpened' });
+            resetSettingsInactivityTimer();
+            if (!modal._activityListenersAttached) {
+              const resetTimer = () => resetSettingsInactivityTimer();
+              modal.addEventListener('mousemove', resetTimer);
+              modal.addEventListener('keydown', resetTimer);
+              modal.addEventListener('click', resetTimer);
+              modal._activityListenersAttached = true;
+            }
             attachIntervalListener();
             } catch (err) {
               alert("Error in openSettings: " + err.message + "\\nStack:\\n" + err.stack);
@@ -4633,8 +4725,13 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           function closeSettingsModalOnly() {
+            if (settingsInactivityTimer) {
+              clearTimeout(settingsInactivityTimer);
+              settingsInactivityTimer = null;
+            }
             document.getElementById('settingsModal').style.display = 'none';
             document.getElementById('immediateConfirmOverlay').style.display = 'none';
+            vscode.postMessage({ command: 'settingsClosed' });
           }
 
           function closeSettings() {
@@ -4688,6 +4785,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               const confirmOnSwitchToggle = document.getElementById('confirmOnSwitchToggle');
               const confirmOnSwitch = confirmOnSwitchToggle ? confirmOnSwitchToggle.checked : false;
 
+              const showNotificationsToggle = document.getElementById('showNotificationsToggle');
+              const showNotificationsEnabled = showNotificationsToggle ? showNotificationsToggle.checked : false;
+
               currentLanguage = selectedLang;
               currentPreferredModel = selectedModel;
               currentAutoRefresh = autoRefreshEnabled;
@@ -4702,6 +4802,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               currentAutoResumePrompt = autoResumePrompt;
               currentNoticeDuration = noticeDuration;
               currentConfirmOnSwitch = confirmOnSwitch;
+              currentShowNotifications = showNotificationsEnabled;
 
               closeSettingsModalOnly();
               vscode.postMessage({ command: 'showLoading' });
@@ -4722,7 +4823,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                 autoResumeChat: autoResumeChatEnabled,
                 autoResumePrompt: autoResumePrompt,
                 noticeDurationSeconds: noticeDuration,
-                confirmOnSwitch: confirmOnSwitch
+                confirmOnSwitch: confirmOnSwitch,
+                showNotifications: showNotificationsEnabled
               });
             } catch (err) {
               console.error('Error in saveSettings:', err);
@@ -4743,6 +4845,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             const refreshBtn = document.getElementById('refresh-btn-' + safeId);
             
             if (displayEl && inputEl && editBtn) {
+              vscode.postMessage({ command: 'aliasEditingStarted', email });
               displayEl.style.display = 'none';
               editBtn.style.display = 'none';
               if (refreshBtn) refreshBtn.style.display = 'none';
@@ -4753,6 +4856,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           function cancelEditAlias(email) {
+            vscode.postMessage({ command: 'aliasEditingFinished', email });
             const safeId = email.replace(/[@.]/g, '-');
             const displayEl = document.getElementById('name-display-' + safeId);
             const inputEl = document.getElementById('name-input-' + safeId);
@@ -4772,6 +4876,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           function saveAlias(email) {
+            vscode.postMessage({ command: 'aliasEditingFinished', email });
             const safeId = email.replace(/[@.]/g, '-');
             const displayEl = document.getElementById('name-display-' + safeId);
             const inputEl = document.getElementById('name-input-' + safeId);

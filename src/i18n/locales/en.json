@@ -217,6 +217,8 @@
     "noticeDurationDescription": "Seconds shown in countdown before reloading the window on switch (0 = Instantaneous).",
     "confirmOnSwitchLabel": "Confirm Before Account Switch",
     "confirmOnSwitchDescription": "Show a confirmation dialog before closing and reloading window on account switch.",
+    "showNotificationsLabel": "Show Verbose Notifications",
+    "showNotificationsDescription": "When disabled, silences repetitive notifications (auto-captured accounts, refresh queues) for a distraction-free experience.",
     "refreshIntervalLabel": "Refresh Interval",
     "refreshIntervalDescription": "Balances will refresh if more than this interval has passed since the last update.",
     "intervalImmediate": "Immediately",

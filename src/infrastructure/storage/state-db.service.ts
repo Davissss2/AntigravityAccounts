@@ -515,30 +515,49 @@ async function inject() {
       log('Relaunching Antigravity: ' + relaunchExe);
 
       if (process.platform === 'win32') {
-        // Windows Relauncher
-        const batPath = path.join(path.dirname(payloadPath), '.relaunch-antigravity.bat');
-        const batLines = ['@echo off', 'set ELECTRON_RUN_AS_NODE=', 'start "" "' + relaunchExe + '"', 'del "%~f0"'];
-        fs.writeFileSync(batPath, batLines.join(String.fromCharCode(13, 10)) + String.fromCharCode(13, 10), 'utf-8');
-        log('Wrote relaunch .bat to: ' + batPath);
+        // Windows Relauncher: allow safety margin for database lock release
+        await new Promise(r => setTimeout(r, 1200));
 
+        let relaunchSuccess = false;
+
+        // Method 1: PowerShell Start-Process (creates a clean interactive GUI process with SW_SHOWNORMAL)
         try {
-          const child = spawn('cmd.exe', ['/c', batPath], {
-            detached: true,
-            stdio: 'ignore',
-            windowsHide: true,
+          const psScript = 'Remove-Item Env:ELECTRON_RUN_AS_NODE -EA SilentlyContinue; Start-Process -FilePath \\"' + relaunchExe + '\\"';
+          execSync('powershell.exe -NoProfile -WindowStyle Hidden -Command "' + psScript + '"', {
+            stdio: 'ignore'
           });
-          child.unref();
-          log('Relaunch .bat spawned, PID: ' + child.pid);
-        } catch (batErr) {
-          log('Relaunch .bat failed: ' + String(batErr));
+          log('Relaunch via PowerShell Start-Process succeeded.');
+          relaunchSuccess = true;
+        } catch (psErr) {
+          log('PowerShell Start-Process failed: ' + String(psErr));
+        }
+
+        // Method 2: Fallback via explorer.exe (completely independent shell launch)
+        if (!relaunchSuccess) {
           try {
-            execSync(
-              'powershell -NoProfile -Command "Remove-Item Env:ELECTRON_RUN_AS_NODE -EA SilentlyContinue; Start-Process ' + relaunchExe + '"',
-              { stdio: 'ignore', windowsHide: true }
-            );
-            log('Relaunch via PowerShell succeeded.');
-          } catch (psErr) {
-            log('ALL Windows relaunch methods failed: ' + String(psErr));
+            execSync('explorer.exe "' + relaunchExe + '"', { stdio: 'ignore' });
+            log('Relaunch via explorer.exe succeeded.');
+            relaunchSuccess = true;
+          } catch (expErr) {
+            log('explorer.exe relaunch failed: ' + String(expErr));
+          }
+        }
+
+        // Method 3: Direct spawn with windowsHide: false and cleaned environment
+        if (!relaunchSuccess) {
+          try {
+            const cleanEnv = { ...process.env };
+            delete cleanEnv.ELECTRON_RUN_AS_NODE;
+            const directChild = spawn(relaunchExe, [], {
+              detached: true,
+              stdio: 'ignore',
+              windowsHide: false,
+              env: cleanEnv
+            });
+            directChild.unref();
+            log('Direct Windows relaunch spawned successfully, PID: ' + directChild.pid);
+          } catch (spawnErr) {
+            log('ALL Windows relaunch methods failed: ' + String(spawnErr));
           }
         }
       } else {
@@ -965,11 +984,19 @@ inject().catch((err) => {
       // Level 5: Decode inner payload (base64 → UserStatus protobuf)
       const userStatusBytes = Buffer.from(innerBase64, 'base64');
 
-      // Level 6: Extract email from UserStatus (field 3 or field 7)
-      const emailField3 = this.extractStringField(userStatusBytes, 3);
+      // Level 6: Extract email from UserStatus (field 7 is canonical email, field 3 can be name or ID)
       const emailField7 = this.extractStringField(userStatusBytes, 7);
+      const emailField3 = this.extractStringField(userStatusBytes, 3);
       
-      return emailField3 || emailField7 || null;
+      const isValidEmail = (val: string | null): boolean => {
+        if (!val) return false;
+        const s = val.trim().toLowerCase();
+        return s.includes('@') && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+      };
+
+      if (isValidEmail(emailField7)) return emailField7!.trim().toLowerCase();
+      if (isValidEmail(emailField3)) return emailField3!.trim().toLowerCase();
+      return null;
     } catch (e) {
       Logger.getInstance().error('Failed to parse userStatus protobuf', e);
       return null;

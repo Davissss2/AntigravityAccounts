@@ -5,6 +5,26 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.15] - 2026-10-08
+
+### Fixed & Improved
+- **Eliminación de Cuenta Fantasma y Validación Estricta de Correo ("146" vs Email)**:
+  - Corregido `extractEmailFromUserStatus` en `state-db.service.ts` dando prioridad estricta al campo 7 del Protobuf (email canónico) sobre el campo 3 (ID numérico o nombre corto como "146").
+  - Validación con expresión regular en `account.repository.impl.ts` y auto-purga transparente de cualquier cuenta sin formato de email válido (`@`) en `getAllAccounts()`.
+- **Estabilidad de UI en Webview (Persistencia de Modal de Settings y Edición de Alias)**:
+  - Implementados flags de control de interacción (`_isSettingsOpen`, `_isEditingAlias`) en `AccountsWebviewProvider` para suspender re-renders destructivos del HTML completo mientras el usuario está modificando ajustes o renombrando cuentas.
+  - Eventos de ciclo de vida bidireccionales (`settingsOpened`, `settingsClosed`, `aliasEditingStarted`, `aliasEditingFinished`).
+  - Temporizador de inactividad de 3 minutos (180s) para el modal de configuración con reseteo automático ante cualquier movimiento o pulsación del usuario.
+- **Minimización y Control de Notificaciones**:
+  - Añadido el ajuste `antigravityAccount.showNotifications` (desactivado por defecto para una experiencia silenciosa y sin distracciones).
+  - Silenciadas las notificaciones intrusivas de auto-captura en segundo plano, colas de refresco y finalización de escaneo cuando el modo verboso está desactivado.
+  - Toggle configurable en la interfaz gráfica del modal de ajustes con soporte multiidioma (es/en).
+- **Restaura Robusta de Conversación ("continua")**:
+  - Ampliado el tiempo de estabilización post-reinicio a 4.5 segundos para permitir la inicialización completa del Language Server y la carga de la conversación previa.
+  - Reemplazado el enfoque de panel por `antigravity.openChatView` con cooldown adicional de 2.5 segundos para evitar que el prompt de reanudación se envíe a un borrador vacío.
+- **Relanzamiento Directo en Windows**:
+  - Añadido retardo de liberación de bloqueo de base de datos de 1.2 segundos y lanzamiento desacoplado directo sin scripts `.bat` intermediarios defectuosos.
+
 ## [0.3.14] - 2026-10-08
 
 ### Fixed
