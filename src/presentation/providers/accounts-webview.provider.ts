@@ -877,15 +877,17 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    // Step 2: If no account (Antigravity is logged out)
+    // Step 2: If no account (Antigravity is logged out or check was silent)
     if (!activeEmail) {
+      if (this._pinnedActiveEmail) {
+        Logger.getInstance().info(`Active email check returned empty; preserving existing active account pin: ${this._pinnedActiveEmail}`);
+        return;
+      }
       const repoActive = await this.accountRepo.getActiveAccountEmail();
       if (repoActive) {
         this._pinnedActiveEmail = repoActive.toLowerCase();
         return;
       }
-      this._pinnedActiveEmail = null;
-      await this.accountRepo.setActiveAccountEmail(null);
       return;
     }
 
@@ -991,6 +993,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           this._isRefreshingProgress.currentIndex = currentIndex;
           this._isRefreshingProgress.currentEmail = email;
           this._view?.webview.postMessage({ command: 'accountRefreshStart', email, currentIndex, totalAccounts });
+        },
+        onAntiBanWait: (seconds: number, nextEmail: string) => {
+          this._view?.webview.postMessage({ command: 'accountAntiBanWait', seconds, nextEmail, currentIndex, totalAccounts });
         },
         onAccountDone: async (email: string, updatedBalances?: Record<string, any>, updatedStatus?: string) => {
           const doneEmailLower = email.toLowerCase();
@@ -3014,18 +3019,31 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             display: none !important;
           }
 
-          /* ── Top progress banner for refresh ── */
+          /* ── Premium Top progress banner for refresh ── */
           .refresh-progress-banner {
             display: none;
             flex-direction: column;
-            gap: 6px;
-            padding: 10px 12px;
+            gap: 8px;
+            padding: 12px 14px;
             margin-bottom: 14px;
-            background: var(--surface-subtle);
-            border: 1px solid var(--focus-border);
-            border-radius: 8px;
-            animation: fadeIn 0.2s ease;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.04) 50%, rgba(20, 20, 28, 0.6) 100%), var(--surface-color);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(139, 92, 246, 0.35);
+            border-radius: 10px;
+            box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.35), 0 0 15px -3px rgba(139, 92, 246, 0.18);
+            animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
             position: relative;
+            overflow: hidden;
+          }
+          .refresh-progress-banner::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent 0%, rgba(167, 139, 250, 0.6) 50%, transparent 100%);
           }
           .refresh-progress-banner.visible {
             display: flex;
@@ -3034,58 +3052,141 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             min-width: 0;
           }
-          .refresh-progress-stats {
+          .refresh-progress-leading {
             display: flex;
             align-items: center;
             gap: 8px;
-            flex-shrink: 0;
+            min-width: 0;
+            flex: 1;
           }
-          .refresh-progress-count {
-            font-size: 0.72rem;
-            color: var(--text-secondary);
-            font-weight: 600;
-            background: var(--surface-color);
-            padding: 2px 6px;
-            border-radius: 4px;
-            border: 1px solid var(--border-color);
-            white-space: nowrap;
+          .refresh-pulse-glow {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #8b5cf6;
+            box-shadow: 0 0 8px #8b5cf6, 0 0 16px rgba(139, 92, 246, 0.6);
+            flex-shrink: 0;
+            animation: pulseGlow 1.8s infinite ease-in-out;
+          }
+          .refresh-pulse-glow.paused {
+            background: #f59e0b;
+            box-shadow: 0 0 8px #f59e0b, 0 0 16px rgba(245, 158, 11, 0.6);
+            animation: pulseGlowAmber 1.4s infinite ease-in-out;
+          }
+          @keyframes pulseGlow {
+            0%, 100% { transform: scale(0.9); opacity: 0.7; }
+            50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 12px #a78bfa, 0 0 20px rgba(167, 139, 250, 0.8); }
+          }
+          @keyframes pulseGlowAmber {
+            0%, 100% { transform: scale(0.9); opacity: 0.7; }
+            50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 12px #fbbf24, 0 0 20px rgba(251, 191, 36, 0.8); }
           }
           .refresh-progress-email {
-            font-size: 0.8rem;
-            color: var(--primary-light);
+            font-size: 0.82rem;
+            color: var(--text-primary);
             font-weight: 500;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
             min-width: 0;
-            flex-shrink: 1;
+            display: flex;
+            align-items: center;
+            gap: 6px;
           }
-          .refresh-progress-email .refresh-label {
-            color: var(--text-secondary);
-            font-weight: 400;
-          }
-          .refresh-progress-percent {
-            font-size: 0.8rem;
+          .refresh-status-badge {
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
             font-weight: 700;
-            color: var(--primary-light);
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(139, 92, 246, 0.2);
+            color: #c4b5fd;
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            white-space: nowrap;
             flex-shrink: 0;
+          }
+          .refresh-status-badge.scanning {
+            background: rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+            border-color: rgba(99, 102, 241, 0.4);
+          }
+          .refresh-status-badge.paused {
+            background: rgba(245, 158, 11, 0.18);
+            color: #fcd34d;
+            border-color: rgba(245, 158, 11, 0.45);
+          }
+          .refresh-email-highlight {
+            color: var(--primary-light, #a78bfa);
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .refresh-status-text {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .refresh-progress-stats {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+          }
+          .refresh-progress-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.74rem;
+            font-weight: 700;
+            color: #c4b5fd;
+            background: rgba(139, 92, 246, 0.15);
+            padding: 3px 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(139, 92, 246, 0.35);
+            white-space: nowrap;
+          }
+          .refresh-progress-pill-sep {
+            opacity: 0.4;
           }
           .refresh-progress-bar-track {
             width: 100%;
-            height: 5px;
-            background: rgba(128, 128, 128, 0.15);
-            border-radius: 3px;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 999px;
             overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
           }
           .refresh-progress-bar-fill {
             height: 100%;
-            border-radius: 3px;
-            background: var(--primary-color);
-            transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+            border-radius: 999px;
+            background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+            transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+            overflow: hidden;
             width: 0%;
+          }
+          .refresh-progress-bar-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.35) 50%, transparent 100%);
+            animation: progressShimmer 1.8s infinite linear;
+          }
+          @keyframes progressShimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
           }
 
           /* Toast notification */
@@ -3587,14 +3688,24 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           <!-- Refresh Progress Banner -->
           <div id="refreshProgressBanner" class="refresh-progress-banner ${this._isRefreshingProgress.isRefreshing ? 'visible' : ''}">
             <div class="refresh-progress-info">
-              <span class="refresh-progress-email" id="refreshProgressEmail">${this._isRefreshingProgress.isRefreshing && this._isRefreshingProgress.currentEmail ? `<span class="refresh-label">${i18n.t('accounts.refreshingAccount')}: </span>${this._isRefreshingProgress.currentEmail}` : ''}</span>
+              <div class="refresh-progress-leading">
+                <span id="refreshPulseDot" class="refresh-pulse-glow"></span>
+                <span class="refresh-progress-email" id="refreshProgressEmail">
+                  ${this._isRefreshingProgress.isRefreshing && this._isRefreshingProgress.currentEmail 
+                    ? `<span class="refresh-status-badge scanning">${i18n.t('accounts.refreshingAccount')}</span> <span class="refresh-email-highlight">${this._isRefreshingProgress.currentEmail}</span>` 
+                    : `<span class="refresh-status-badge">Activo</span> <span class="refresh-status-text">Iniciando escaneo seguro...</span>`}
+                </span>
+              </div>
               <div class="refresh-progress-stats">
-                <span class="refresh-progress-count" id="refreshProgressCount">${this._isRefreshingProgress.currentIndex} / ${this._isRefreshingProgress.totalAccounts}</span>
-                <span class="refresh-progress-percent" id="refreshProgressPercent">${this._isRefreshingProgress.totalAccounts > 0 ? Math.round((this._isRefreshingProgress.currentIndex / this._isRefreshingProgress.totalAccounts) * 100) : 0}%</span>
+                <div class="refresh-progress-pill">
+                  <span id="refreshProgressCount">${this._isRefreshingProgress.currentIndex} / ${this._isRefreshingProgress.totalAccounts}</span>
+                  <span class="refresh-progress-pill-sep">•</span>
+                  <span id="refreshProgressPercent">${this._isRefreshingProgress.totalAccounts > 0 ? Math.round((this._isRefreshingProgress.currentIndex / this._isRefreshingProgress.totalAccounts) * 100) : 0}%</span>
+                </div>
               </div>
             </div>
             <div class="refresh-progress-bar-track">
-              <div class="refresh-progress-bar-fill" id="refreshProgressBar" style="width: ${this._isRefreshingProgress.totalAccounts > 0 ? Math.round((this._isRefreshingProgress.currentIndex / this._isRefreshingProgress.totalAccounts) * 100) : 0}%;"></div>
+              <div class="refresh-progress-bar-fill" id="refreshProgressBar" style="width: ${this._isRefreshingProgress.totalAccounts > 0 ? Math.max(2, Math.round((this._isRefreshingProgress.currentIndex / this._isRefreshingProgress.totalAccounts) * 100)) : 0}%;"></div>
             </div>
           </div>
           <!-- Refresh Toast -->
@@ -5017,6 +5128,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             if (toast) { toast.classList.remove('visible'); }
             if (refreshToastTimeout) { clearTimeout(refreshToastTimeout); refreshToastTimeout = null; }
             
+            const dot = document.getElementById('refreshPulseDot');
+            if (dot) {
+              dot.className = 'refresh-pulse-glow';
+            }
+
             // Initialize count and percentage display
             const countEl = document.getElementById('refreshProgressCount');
             if (countEl) countEl.textContent = '0 / ' + totalAccounts;
@@ -5025,10 +5141,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             if (percentEl) percentEl.textContent = '0%';
 
             const barEl = document.getElementById('refreshProgressBar');
-            if (barEl) barEl.style.width = '0%';
+            if (barEl) barEl.style.width = '2%'; // Initial visual activity cue
 
             const emailEl = document.getElementById('refreshProgressEmail');
-            if (emailEl) emailEl.innerHTML = '';
+            if (emailEl) {
+              emailEl.innerHTML = '<span class="refresh-status-badge">Iniciando</span> <span class="refresh-status-text">Preparando escaneo seguro de cuentas...</span>';
+            }
             
             const banner = document.getElementById('refreshProgressBanner');
             if (banner) banner.classList.add('visible');
@@ -5039,13 +5157,33 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             const percentEl = document.getElementById('refreshProgressPercent');
             const countEl = document.getElementById('refreshProgressCount');
             const barEl = document.getElementById('refreshProgressBar');
+            const dot = document.getElementById('refreshPulseDot');
             
-            const percent = totalAccounts > 0 ? Math.round((currentIndex / totalAccounts) * 100) : 0;
+            if (dot) {
+              dot.className = 'refresh-pulse-glow';
+            }
+
+            const rawPercent = totalAccounts > 0 ? Math.round((currentIndex / totalAccounts) * 100) : 0;
+            const visualWidth = Math.max(rawPercent === 0 ? 0 : 2, rawPercent);
             
-            if (emailEl) emailEl.innerHTML = '<span class="refresh-label">${i18n.t('accounts.refreshingAccount')}: </span>' + email;
-            if (percentEl) percentEl.textContent = percent + '%';
+            if (emailEl) {
+              emailEl.innerHTML = '<span class="refresh-status-badge scanning">${i18n.t('accounts.refreshingAccount')}</span> <span class="refresh-email-highlight">' + email + '</span>';
+            }
+            if (percentEl) percentEl.textContent = rawPercent + '%';
             if (countEl) countEl.textContent = currentIndex + ' / ' + totalAccounts;
-            if (barEl) barEl.style.width = percent + '%';
+            if (barEl) barEl.style.width = visualWidth + '%';
+          }
+
+          function showAntiBanWait(seconds, nextEmail, currentIndex, totalAccounts) {
+            const emailEl = document.getElementById('refreshProgressEmail');
+            const dot = document.getElementById('refreshPulseDot');
+            if (dot) {
+              dot.className = 'refresh-pulse-glow paused';
+            }
+            if (emailEl) {
+              const nextTxt = nextEmail ? ' · Siguiente: <span class="refresh-email-highlight">' + nextEmail + '</span>' : '';
+              emailEl.innerHTML = '<span class="refresh-status-badge paused">Protección</span> <span class="refresh-status-text">Pausa anti-ban (' + seconds + 's)' + nextTxt + '</span>';
+            }
           }
 
           function hideProgressBanner(wasCancelled) {
@@ -5081,6 +5219,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               if (card) {
                 card.classList.add('refreshing');
               }
+
+            } else if (msg.command === 'accountAntiBanWait') {
+              showAntiBanWait(msg.seconds, msg.nextEmail, msg.currentIndex, msg.totalAccounts);
 
             } else if (msg.command === 'accountRefreshDone') {
               const oldCard = document.querySelector('.account-card[data-email="' + msg.email + '"]');

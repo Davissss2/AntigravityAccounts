@@ -290,7 +290,7 @@ export class AccountService {
       try {
         const nativeEmail = await Promise.race([
           this.getNativeAuthEmail(),
-          new Promise<undefined>(r => setTimeout(() => r(undefined), 1000))
+          new Promise<undefined>(r => setTimeout(() => r(undefined), 2500))
         ]);
         if (nativeEmail) {
           return nativeEmail.toLowerCase();
@@ -1059,6 +1059,7 @@ export class AccountService {
     options?: {
       onAccountStart?: (email: string) => void;
       onAccountDone?: (email: string, updatedBalances?: Record<string, any>, updatedStatus?: AccountStatus) => void;
+      onAntiBanWait?: (seconds: number, nextEmail: string) => void;
       onComplete?: () => void;
       signal?: AbortSignal;
       orderedEmails?: string[];
@@ -1151,6 +1152,7 @@ export class AccountService {
           const cacheDurationMs = cacheDurationDays * 24 * 60 * 60 * 1000;
           if (Date.now() - lastRefreshed < cacheDurationMs) {
             Logger.getInstance().info(`Skipping refresh for cached account: ${account.email}`);
+            options?.onAccountStart?.(account.email);
             options?.onAccountDone?.(account.email, account.balances, account.status);
             continue;
           }
@@ -1176,7 +1178,9 @@ export class AccountService {
           delay += extraPause;
         }
 
+        const delaySec = Math.max(1, Math.round(delay / 1000));
         Logger.getInstance().info(`Anti-ban: Esperando ${(delay / 1000).toFixed(1)}s antes de consultar ${account.email}...`);
+        options?.onAntiBanWait?.(delaySec, account.email);
         
         await new Promise<void>(resolve => {
           if (options?.signal?.aborted) {

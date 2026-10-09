@@ -5,6 +5,23 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.22] - 2026-10-09
+
+### Fixed & UI/UX Redesign
+- **Rediseño Premium del Banner de Progreso de Cuotas**:
+  - Transformación visual completa con glassmorphism, desenfoque de fondo (`backdrop-filter: blur(12px)`), borde sutil púrpura y brillo reactivo.
+  - Añadido punto de actividad dinámico con animación de pulso neón (`.refresh-pulse-glow`) que pulsa en violeta durante escaneo y en ámbar durante pausas de protección.
+  - Chip unificado para estadísticas de escaneo (`.refresh-progress-pill`) con conteo (`N / Total`) y porcentaje separados limpiamente.
+  - Barra de progreso estilizada (6px, redondeada completa a 999px) con gradiente tricromático (`#6366f1` a `#8b5cf6` a `#ec4899`) y animación continua de brillo deslizante (`progressShimmer`) que garantiza visibilidad de actividad constante.
+  - Indicador visual inicial mínimo del 2% al iniciar escaneo para evitar barras vacías o imperceptibles al arrancar.
+- **Transparencia en Tiempo Real durante la Protección Anti-Ban**:
+  - Incorporado evento en vivo `accountAntiBanWait` que notifica a la interfaz webview los segundos exactos de la pausa anti-ban obligatoria (4s a 8s) y la cuenta próxima a verificar.
+  - La interfaz muestra explícitamente el distintivo de protección con cuenta regresiva, eliminando la falsa impresión de bloqueo o lentitud del sistema.
+  - Corrección de avance de índice en cuentas evaluadas desde caché, garantizando que la barra y el porcentaje progresen con exactitud sin quedar varados en 0%.
+- **Persistencia Robusta de la Cuenta Activa (Active Pin Guard)**:
+  - Protegido `_pinnedActiveEmail` en `_doDetectAndPinActiveAccount()` para evitar que un retraso temporal de lectura o sesión vacía en Antigravity sobrescriba con `null` la cuenta activa establecida.
+  - Incrementado el timeout de resolución de sesión nativa de 1000ms a 2500ms, evitando pérdidas de estado en momentos de alta carga en el sistema.
+
 ## [0.3.21] - 2026-10-09
 
 ### Fixed & Responsiveness
