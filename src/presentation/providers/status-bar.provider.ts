@@ -53,7 +53,10 @@ export class StatusBarProvider implements vscode.Disposable {
       a => isEmailMatch(a.email, activeEmail)
     ) || null;
     if (!activeAccount) {
-      this.statusBarItem.hide();
+      this.statusBarItem.text = `$(account) ${activeEmail}`;
+      this.statusBarItem.tooltip = i18n.t('statusBar.tooltip');
+      this.statusBarItem.backgroundColor = undefined;
+      this.statusBarItem.show();
       return;
     }
 

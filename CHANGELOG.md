@@ -5,6 +5,19 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.20] - 2026-10-09
+
+### Fixed & Performance
+- **Detección Instantánea de Cuenta Activa y Auto-Captura Habilitada**:
+  - Habilitada por defecto la auto-captura de cuentas (`autoCaptureAccounts: true`) tanto en `extension.config.ts` como en `package.json`, asegurando que cualquier cuenta iniciada directamente en Antigravity IDE se registre automáticamente en el pool de cuentas con sus cuotas y tokens.
+  - Priorizada la sesión de autenticación nativa en vivo (`antigravity_auth` y `google`) en memoria en `getActiveAntigravityEmail()` y `getActiveAntigravityAccountInfo()`, eliminando los retrasos de 2.5s al leer disco `state.vscdb` y resolviendo la cuenta activa en <5ms sin congelar la interfaz.
+  - Asegurado que `_pinnedActiveEmail` permanezca fijado con la cuenta activa de Antigravity incluso antes de registrarse en base de datos, garantizando que siempre se marque con el distintivo verde **Activa**.
+  - El elemento de la barra de estado (`StatusBarItem`) ahora muestra el correo activo directamente en vez de ocultarse si la cuenta aún no figuraba en la base de datos local.
+- **Corrección de Recarga de Cuotas y Respuesta Táctil Inmediata**:
+  - En `refreshSingleAccountBalance` y `refreshBalancesWorkflow`, las cuentas activas utilizan directamente el token de acceso válido de la sesión nativa de Antigravity en vivo, evitando llamadas erróneas a `refreshAccessToken` que provocaban errores `invalid_grant` (400) y marcaban la cuenta como falsamente expirada.
+  - Pase obligatorio de `{ projectId: account.projectId }` en `refreshBalancesWorkflow` a `balanceService.getBalanceInfo`, asegurando la detección precisa de cuotas por proyecto o el fallback canónico `aicode-consumers`.
+  - El botón de recarga (`handleRefresh` y `handleSingleRefresh`) ahora proporciona respuesta visual instantánea: activación de spinner (`spinning`), deshabilitación de acciones y despliegue del banner de progreso sin demora perceptible.
+
 ## [0.3.19] - 2026-10-08
 
 ### Fixed & Stability

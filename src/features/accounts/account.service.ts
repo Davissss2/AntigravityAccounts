@@ -282,34 +282,34 @@ export class AccountService {
 
   /**
    * Get the currently active account email directly from Antigravity's live session or state database.
-   * Prioritizes ultra-fast local state.vscdb read (~3ms), with in-memory native auth session as fallback.
+   * Prioritizes live native auth session (antigravity_auth / google) in memory (~0ms) before disk state.vscdb.
    */
   async getActiveAntigravityEmail(): Promise<string | null | undefined> {
     try {
-      // 1. FAST LOCAL READ: Read directly from state.vscdb
-      try {
-        const dbEmail = await Promise.race([
-          this.stateDbService.readCurrentEmailFromDb(),
-          new Promise<undefined>(r => setTimeout(() => r(undefined), 2500))
-        ]);
-        if (dbEmail) {
-          return dbEmail.toLowerCase();
-        }
-      } catch (err) {
-        Logger.getInstance().debug('Failed to read email from state.vscdb', err);
-      }
-
-      // 2. FALLBACK: Native auth session (in-memory)
+      // 1. FAST IN-MEMORY LIVE AUTH: Query Antigravity native session directly
       try {
         const nativeEmail = await Promise.race([
           this.getNativeAuthEmail(),
-          new Promise<undefined>(r => setTimeout(() => r(undefined), 1500))
+          new Promise<undefined>(r => setTimeout(() => r(undefined), 1000))
         ]);
         if (nativeEmail) {
           return nativeEmail.toLowerCase();
         }
       } catch (err) {
         Logger.getInstance().debug('Failed to get live native auth email', err);
+      }
+
+      // 2. FALLBACK: Read directly from state.vscdb
+      try {
+        const dbEmail = await Promise.race([
+          this.stateDbService.readCurrentEmailFromDb(),
+          new Promise<undefined>(r => setTimeout(() => r(undefined), 1500))
+        ]);
+        if (dbEmail) {
+          return dbEmail.toLowerCase();
+        }
+      } catch (err) {
+        Logger.getInstance().debug('Failed to read email from state.vscdb', err);
       }
 
       // 3. PERSISTENCE FALLBACK: If repository has an active account recorded, preserve it
@@ -333,6 +333,10 @@ export class AccountService {
    */
   async getActiveAntigravityTokens(): Promise<{ accessToken: string; refreshToken: string; expiresAt: number } | null> {
     try {
+      const activeInfo = await this.getActiveAntigravityAccountInfo();
+      if (activeInfo?.tokens) {
+        return activeInfo.tokens;
+      }
       return await this.stateDbService.readActiveTokensFromDb();
     } catch (error) {
       Logger.getInstance().error('Failed to read active tokens from Antigravity', error);
@@ -342,9 +346,21 @@ export class AccountService {
 
   /**
    * Get the active account's email and tokens from live IDE session or Antigravity's state database.
+   * Prioritizes live in-memory native auth session to guarantee valid, non-expired tokens.
    */
   async getActiveAntigravityAccountInfo(): Promise<{ email: string | null; tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null; avatarUrl?: string | null } | null> {
     try {
+      // 1. LIVE IN-MEMORY NATIVE SESSION
+      const nativeSession = await this.getNativeAuthSession();
+      if (nativeSession && nativeSession.tokens?.accessToken) {
+        return {
+          email: nativeSession.email,
+          tokens: nativeSession.tokens,
+          avatarUrl: nativeSession.avatarUrl
+        };
+      }
+
+      // 2. FALLBACK: Static state.vscdb read
       return await this.stateDbService.readActiveAccountInfoFromDb();
     } catch (error) {
       Logger.getInstance().error('Failed to read active account info from Antigravity', error);
@@ -1184,25 +1200,27 @@ export class AccountService {
 
       const now = Math.floor(Date.now() / 1000);
       
-      // Auto-refresh token if needed before API call (unless it's the active IDE account and not fully expired yet)
-      if (tokens.expiresAt < (now + 300)) {
-         const isActive = activeEmail && isEmailMatch(account.email, activeEmail);
-         const isExpired = tokens.expiresAt < now;
-         if (isActive && !isExpired) {
-           Logger.getInstance().info(`Skipping background token refresh for active account ${account.email} to prevent session invalidation.`);
-         } else {
-           try {
-             const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
-             tokens.accessToken = newTokens.accessToken;
-             tokens.expiresAt = now + newTokens.expiresIn;
-             await this.accountRepo.storeTokens(account.email, tokens);
-           } catch(e) {
-             Logger.getInstance().warn(`Skipping balance fetch for ${account.email} due to expired token.`);
-             await this.accountRepo.updateAccount(account.email, { status: AccountStatus.TOKEN_EXPIRED });
-             options?.onAccountDone?.(account.email, undefined, AccountStatus.TOKEN_EXPIRED);
-             continue; 
-           }
-         }
+      // Auto-refresh token if needed before API call (for active account, sync live native session)
+      const isActive = activeEmail && isEmailMatch(account.email, activeEmail);
+      if (isActive) {
+        const activeInfo = await this.getActiveAntigravityAccountInfo();
+        if (activeInfo?.tokens?.accessToken) {
+          tokens.accessToken = activeInfo.tokens.accessToken;
+          tokens.expiresAt = activeInfo.tokens.expiresAt;
+          await this.accountRepo.storeTokens(account.email, tokens);
+        }
+      } else if (tokens.expiresAt < (now + 300)) {
+        try {
+          const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
+          tokens.accessToken = newTokens.accessToken;
+          tokens.expiresAt = now + newTokens.expiresIn;
+          await this.accountRepo.storeTokens(account.email, tokens);
+        } catch(e) {
+          Logger.getInstance().warn(`Skipping balance fetch for ${account.email} due to expired token.`);
+          await this.accountRepo.updateAccount(account.email, { status: AccountStatus.TOKEN_EXPIRED });
+          options?.onAccountDone?.(account.email, undefined, AccountStatus.TOKEN_EXPIRED);
+          continue; 
+        }
       }
 
       // Check cancellation again before API call
@@ -1212,7 +1230,7 @@ export class AccountService {
       }
 
       // Fetch Balance
-      const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken);
+      const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, { projectId: account.projectId });
       
       // Safety Guard: Detect Google API rate limit (429) and abort workflow immediately to protect all accounts
       if (balanceInfo.isRateLimited && !balanceInfo.isDepleted) {
@@ -1235,7 +1253,8 @@ export class AccountService {
 
       await this.accountRepo.updateAccount(account.email, {
         balances: balanceInfo.balances,
-        plan: balanceInfo.plan,
+        plan: balanceInfo.plan !== AccountPlan.UNKNOWN ? balanceInfo.plan : account.plan,
+        projectId: balanceInfo.projectId || account.projectId,
         status: status,
         lastRefreshedAt: new Date().toISOString()
       });
@@ -1346,8 +1365,8 @@ export class AccountService {
 
     const now = Math.floor(Date.now() / 1000);
 
-    // Auto-refresh token if needed before API call
-    if (tokens.refreshToken && (tokens.expiresAt < (now + 120) || !tokens.accessToken)) {
+    // Auto-refresh token if needed before API call (only for non-active accounts)
+    if (!isActive && tokens.refreshToken && (tokens.expiresAt < (now + 120) || !tokens.accessToken)) {
       try {
         const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
         tokens.accessToken = newTokens.accessToken;

@@ -919,8 +919,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       await this.accountRepo.setActiveAccountEmail(matchedAccount.email.toLowerCase());
       Logger.getInstance().info(`Pinned active account: ${matchedAccount.email}`);
     } else {
-      this._pinnedActiveEmail = null;
-      await this.accountRepo.setActiveAccountEmail(null);
+      this._pinnedActiveEmail = activeEmail.toLowerCase();
+      await this.accountRepo.setActiveAccountEmail(activeEmail.toLowerCase());
+      Logger.getInstance().info(`Pinned active Antigravity account: ${activeEmail}`);
     }
   }
 
@@ -933,6 +934,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
    * a full-screen overlay.
    */
   private async handleProgressiveRefresh(notify: boolean = true, onlyEmails?: string[], force: boolean = false): Promise<void> {
+    // Immediately tell webview to show progress banner and disable buttons
+    this._view?.webview.postMessage({ command: 'refreshStarted', totalAccounts: onlyEmails?.length || 0 });
+
     // Step 0: Detect and pin active account BEFORE starting the balance refresh.
     // This is an independent verification — it always runs regardless of cooldowns.
     await this.detectAndPinActiveAccount();
@@ -2170,6 +2174,15 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             animation: spin 1s linear infinite;
             pointer-events: none;
             opacity: 1;
+          }
+          .btn-card-refresh.spinning .icon-svg,
+          .btn-icon.spinning .icon-svg,
+          .toolbar-scan.loading .icon-svg {
+            animation: spin 0.8s linear infinite !important;
+          }
+          .toolbar-scan.loading {
+            opacity: 0.75;
+            pointer-events: none;
           }
 
           /* ── Toolbar ── */
@@ -3955,13 +3968,30 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               applySearchFilter(query);
             }
 
+            // Immediately provide visual feedback in the UI
+            isRefreshing = true;
+            setActionsDisabled(true);
+            const refreshBtn = document.getElementById('refreshBtn');
+            if (refreshBtn) refreshBtn.classList.add('spinning');
+            const scanBtn = document.querySelector('.toolbar-scan');
+            if (scanBtn) scanBtn.classList.add('loading');
+
             // If a specific workflow is active (or search query is active), refresh only visible accounts!
             if (currentWorkflowFilter !== 'all' || query) {
               const visibleCards = document.querySelectorAll('.account-card:not(.workflow-hidden):not(.search-hidden)');
-              if (visibleCards.length === 0) return; // No visible results, do nothing
+              if (visibleCards.length === 0) {
+                isRefreshing = false;
+                setActionsDisabled(false);
+                if (refreshBtn) refreshBtn.classList.remove('spinning');
+                if (scanBtn) scanBtn.classList.remove('loading');
+                return;
+              }
+              showProgressBanner(visibleCards.length);
               const filteredEmails = Array.from(visibleCards).map(c => c.dataset.email);
               vscode.postMessage({ command: 'refreshAccounts', filteredEmails });
             } else {
+              const allCards = document.querySelectorAll('.account-card');
+              showProgressBanner(allCards.length);
               sendMessage('refreshAccounts');
             }
           }
@@ -4058,9 +4088,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
           function handleSingleRefresh(btn, email) {
             // Find the closest account-card element
-            const card = btn.closest('.account-card');
+            const card = btn ? btn.closest('.account-card') : null;
             if (card) {
               card.classList.add('refreshing');
+            }
+            if (btn) {
+              btn.classList.add('spinning');
             }
             vscode.postMessage({
               command: 'refreshSingleAccount',
@@ -5088,6 +5121,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               isRefreshing = false;
               setActionsDisabled(false);
               setSearchDisabled(false);
+              const rBtn = document.getElementById('refreshBtn');
+              if (rBtn) rBtn.classList.remove('spinning');
+              const sBtn = document.querySelector('.toolbar-scan');
+              if (sBtn) sBtn.classList.remove('loading');
+              document.querySelectorAll('.btn-card-refresh.spinning').forEach(b => b.classList.remove('spinning'));
               // Dismiss cancel dialog if still open (refresh finished naturally)
               dismissCancelConfirm();
               hideProgressBanner(!!msg.wasCancelled);

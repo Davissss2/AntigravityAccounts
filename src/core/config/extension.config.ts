@@ -153,7 +153,7 @@ export class ExtensionConfig {
    * Whether automatic capture and saving of newly detected Antigravity accounts is enabled (Default: true)
    */
   isAutoCaptureAccountsEnabled(): boolean {
-    return this.getConfig().get<boolean>('autoCaptureAccounts', false);
+    return this.getConfig().get<boolean>('autoCaptureAccounts', true);
   }
 
   /**
