@@ -1065,6 +1065,7 @@ export class AccountService {
       orderedEmails?: string[];
       onlyEmails?: string[];
       force?: boolean;
+      activeEmail?: string;
     }
   ): Promise<boolean> {
     // ── Guard: Prevent concurrent or rapid-fire refreshes ──
@@ -1134,7 +1135,7 @@ export class AccountService {
     let successCount = 0;
     const config = ExtensionConfig.getInstance();
     let accountsProcessed = 0;
-    const activeEmail = await this.getActiveAntigravityEmail();
+    const activeEmail = options?.activeEmail || await this.getActiveAntigravityEmail();
 
     for (const account of accounts) {
       // ── Check for cancellation ──

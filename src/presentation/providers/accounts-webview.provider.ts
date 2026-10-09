@@ -940,8 +940,16 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     this._refreshAbortController = new AbortController();
     const signal = this._refreshAbortController.signal;
 
-    // Step 0: Detect and pin active account BEFORE starting the balance refresh.
-    await this.detectAndPinActiveAccount();
+    // Step 0: Fast active account resolution from local DB cache
+    if (!this._pinnedActiveEmail) {
+      const cachedActive = await this.accountRepo.getActiveAccountEmail();
+      if (cachedActive) {
+        this._pinnedActiveEmail = cachedActive.toLowerCase();
+      }
+      this.detectAndPinActiveAccount().catch(() => {});
+    } else {
+      this.detectAndPinActiveAccount().catch(() => {});
+    }
 
     if (signal.aborted) {
       this._view?.webview.postMessage({ command: 'refreshFinished', wasCancelled: true });
@@ -988,6 +996,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         orderedEmails,
         onlyEmails,
         force,
+        activeEmail: this._pinnedActiveEmail || undefined,
         onAccountStart: (email: string) => {
           currentIndex++;
           this._isRefreshingProgress.currentIndex = currentIndex;
@@ -1029,7 +1038,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       const wasCancelled = !!signal.aborted || !didRun;
       this._view?.webview.postMessage({ command: 'refreshFinished', wasCancelled });
       this._refreshAbortController = null;
-      await this.refresh();
+      if (!wasCancelled) {
+        await this.refresh();
+      }
     }
   }
 
@@ -4481,10 +4492,20 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             if (spinnerView) spinnerView.style.display = 'none';
           }
           function confirmCancel() {
-            const promptView = document.getElementById('cancelPromptView');
-            const spinnerView = document.getElementById('cancelSpinnerView');
-            if (promptView) promptView.style.display = 'none';
-            if (spinnerView) spinnerView.style.display = 'flex';
+            dismissCancelConfirm();
+            isRefreshing = false;
+            hideProgressBanner(true);
+            setActionsDisabled(false);
+            setSearchDisabled(false);
+            const rBtn = document.getElementById('refreshBtn');
+            if (rBtn) rBtn.classList.remove('spinning');
+            const sBtn = document.querySelector('.toolbar-scan');
+            if (sBtn) sBtn.classList.remove('loading');
+            document.querySelectorAll('.btn-card-refresh.spinning').forEach(b => b.classList.remove('spinning'));
+            document.querySelectorAll('.account-card.refreshing').forEach(c => c.classList.remove('refreshing'));
+            if (typeof clearAntiBanTimer === 'function') {
+              clearAntiBanTimer();
+            }
             sendMessage('cancelRefresh');
           }
 
@@ -5121,8 +5142,17 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
           // ── Progress Banner Management ──
           let refreshToastTimeout = null;
+          let antiBanTimer = null;
+
+          function clearAntiBanTimer() {
+            if (antiBanTimer) {
+              clearInterval(antiBanTimer);
+              antiBanTimer = null;
+            }
+          }
 
           function showProgressBanner(totalAccounts = 0) {
+            clearAntiBanTimer();
             // Clear any existing toast
             const toast = document.getElementById('refreshToast');
             if (toast) { toast.classList.remove('visible'); }
@@ -5153,6 +5183,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           function updateProgressBanner(email, currentIndex, totalAccounts) {
+            clearAntiBanTimer();
             const emailEl = document.getElementById('refreshProgressEmail');
             const percentEl = document.getElementById('refreshProgressPercent');
             const countEl = document.getElementById('refreshProgressCount');
@@ -5175,18 +5206,35 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           function showAntiBanWait(seconds, nextEmail, currentIndex, totalAccounts) {
+            clearAntiBanTimer();
             const emailEl = document.getElementById('refreshProgressEmail');
             const dot = document.getElementById('refreshPulseDot');
             if (dot) {
               dot.className = 'refresh-pulse-glow paused';
             }
-            if (emailEl) {
-              const nextTxt = nextEmail ? ' · Siguiente: <span class="refresh-email-highlight">' + nextEmail + '</span>' : '';
-              emailEl.innerHTML = '<span class="refresh-status-badge paused">Protección</span> <span class="refresh-status-text">Pausa anti-ban (' + seconds + 's)' + nextTxt + '</span>';
-            }
+            let remaining = seconds;
+            const updateWaitText = () => {
+              if (emailEl) {
+                const nextTxt = nextEmail ? ' · Siguiente: <span class="refresh-email-highlight">' + nextEmail + '</span>' : '';
+                emailEl.innerHTML = '<span class="refresh-status-badge paused">Protección</span> <span class="refresh-status-text">Pausa anti-ban (' + remaining + 's)' + nextTxt + '</span>';
+              }
+            };
+            updateWaitText();
+            antiBanTimer = setInterval(() => {
+              remaining--;
+              if (remaining <= 0) {
+                clearAntiBanTimer();
+                if (emailEl && nextEmail) {
+                  emailEl.innerHTML = '<span class="refresh-status-badge scanning">${i18n.t('accounts.refreshingAccount')}</span> <span class="refresh-email-highlight">' + nextEmail + '</span>';
+                }
+              } else {
+                updateWaitText();
+              }
+            }, 1000);
           }
 
           function hideProgressBanner(wasCancelled) {
+            clearAntiBanTimer();
             const banner = document.getElementById('refreshProgressBanner');
             if (banner) banner.classList.remove('visible');
 
@@ -5215,7 +5263,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
             } else if (msg.command === 'accountRefreshStart') {
               updateProgressBanner(msg.email, msg.currentIndex, msg.totalAccounts);
-              const card = document.querySelector('.account-card[data-email="' + msg.email + '"]');
+              const targetEmail = (msg.email || '').toLowerCase();
+              let card = document.querySelector('.account-card[data-email="' + msg.email + '" i]');
+              if (!card && targetEmail) {
+                card = Array.from(document.querySelectorAll('.account-card')).find(c => (c.dataset.email || '').toLowerCase() === targetEmail);
+              }
               if (card) {
                 card.classList.add('refreshing');
               }
@@ -5224,7 +5276,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               showAntiBanWait(msg.seconds, msg.nextEmail, msg.currentIndex, msg.totalAccounts);
 
             } else if (msg.command === 'accountRefreshDone') {
-              const oldCard = document.querySelector('.account-card[data-email="' + msg.email + '"]');
+              const targetEmail = (msg.email || '').toLowerCase();
+              let oldCard = document.querySelector('.account-card[data-email="' + msg.email + '" i]');
+              if (!oldCard && targetEmail) {
+                oldCard = Array.from(document.querySelectorAll('.account-card')).find(c => (c.dataset.email || '').toLowerCase() === targetEmail);
+              }
               if (oldCard && msg.html) {
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(msg.html, 'text/html');
@@ -5287,6 +5343,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               }
 
             } else if (msg.command === 'refreshFinished') {
+              clearAntiBanTimer();
               isRefreshing = false;
               setActionsDisabled(false);
               setSearchDisabled(false);

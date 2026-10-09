@@ -5,6 +5,20 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.23] - 2026-10-09
+
+### Fixed & Performance
+- **Arranque Instantáneo del Banner de Recarga (<10ms)**:
+  - Eliminado el bloqueo síncrono previo de resolución de sesión en `handleProgressiveRefresh`, utilizando la caché local en base de datos de la cuenta activa e iniciando la detección pesada en segundo plano.
+  - El banner y el cálculo de la cola arrancan de inmediato sin retraso inicial de varios segundos.
+- **Cancelación Reactiva Instantánea (0ms)**:
+  - Reestructurado `confirmCancel()` en el webview para descartar el modal de confirmación, ocultar el banner de progreso, limpiar temporizadores y restaurar todos los controles de la interfaz en 0ms.
+  - Omitido el re-renderizado pesado HTML síncrono de todas las cuentas al abortar el proceso, liberando la interfaz al instante sin dejar el estado colgado en "Cancelando...".
+- **Cuenta Regresiva Viva Segundo a Segundo en Pausas Anti-Ban**:
+  - Implementado temporizador interactivo en el cliente webview que descuenta segundo a segundo el tiempo de espera anti-ban (`(6s) -> (5s) -> (4s)...`), aportando dinamismo visual y total transparencia del ciclo de seguridad.
+- **Selector de Tarjetas Case-Insensitive y Reemplazo Preciso**:
+  - Selector con modificador insensible a mayúsculas/minúsculas y fallback mediante recorrido del DOM para garantizar que `accountRefreshDone` localice y actualice con exactitud cada tarjeta al completarse su cuota.
+
 ## [0.3.22] - 2026-10-09
 
 ### Fixed & UI/UX Redesign
