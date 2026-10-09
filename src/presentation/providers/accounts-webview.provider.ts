@@ -270,7 +270,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           this.accountService.cancelQueue();
           if (this._refreshAbortController) {
             this._refreshAbortController.abort();
-            this._refreshAbortController = null;
             Logger.getInstance().info('Refresh abort signal sent by user.');
           }
           break;
@@ -896,7 +895,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     // Step 3: If not in repository, auto-capture it immediately!
     if (!matchedAccount) {
       Logger.getInstance().info(`[Auto-Capture] Active Antigravity account "${activeEmail}" not in repository. Auto-capturing...`);
-      const captured = await this.accountService.syncActiveAccountFromDb(true);
+      const captured = await this.accountService.syncActiveAccountFromDb(false);
       if (captured) {
         matchedAccount = captured;
         this._pinnedActiveEmail = captured.email.toLowerCase();
@@ -934,12 +933,19 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
    * a full-screen overlay.
    */
   private async handleProgressiveRefresh(notify: boolean = true, onlyEmails?: string[], force: boolean = false): Promise<void> {
-    // Immediately tell webview to show progress banner and disable buttons
-    this._view?.webview.postMessage({ command: 'refreshStarted', totalAccounts: onlyEmails?.length || 0 });
+    // Instantiate AbortController immediately so any cancel click is captured without lag
+    this._refreshAbortController?.abort();
+    this._refreshAbortController = new AbortController();
+    const signal = this._refreshAbortController.signal;
 
     // Step 0: Detect and pin active account BEFORE starting the balance refresh.
-    // This is an independent verification — it always runs regardless of cooldowns.
     await this.detectAndPinActiveAccount();
+
+    if (signal.aborted) {
+      this._view?.webview.postMessage({ command: 'refreshFinished', wasCancelled: true });
+      this._refreshAbortController = null;
+      return;
+    }
 
     // Step 1: Compute the display order so the refresh iterates accounts in
     // the same top-to-bottom sequence visible in the UI.
@@ -963,12 +969,15 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     };
     this._pendingQueueEmails = [...orderedEmails];
 
-    // Create abort controller for this refresh cycle
-    this._refreshAbortController = new AbortController();
-    const signal = this._refreshAbortController.signal;
-
-    // Tell webview to disable all buttons and show progress banner
+    // Tell webview the REAL total count immediately so banner displays "0 / N 0%"
     this._view?.webview.postMessage({ command: 'refreshStarted', totalAccounts });
+
+    if (totalAccounts === 0 || signal.aborted) {
+      this._isRefreshingProgress.isRefreshing = false;
+      this._view?.webview.postMessage({ command: 'refreshFinished', wasCancelled: !!signal.aborted });
+      this._refreshAbortController = null;
+      return;
+    }
 
     let didRun = false;
     try {
@@ -1012,9 +1021,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         currentEmail: '',
       };
       this._pendingQueueEmails = [];
-      this._refreshAbortController = null;
       const wasCancelled = !!signal.aborted || !didRun;
       this._view?.webview.postMessage({ command: 'refreshFinished', wasCancelled });
+      this._refreshAbortController = null;
       await this.refresh();
     }
   }
@@ -3618,12 +3627,18 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
         <!-- Cancel Confirmation Dialog -->
         <div id="cancelConfirmOverlay" class="cancel-confirm-overlay">
-          <div class="cancel-confirm-box">
-            <h4>${i18n.t('accounts.confirmCancelTitle')}</h4>
-            <p>${i18n.t('accounts.confirmCancelMessage')}</p>
-            <div class="cancel-confirm-actions">
-              <button class="btn btn-danger" onclick="confirmCancel()">${i18n.t('accounts.confirmCancelYes')}</button>
-              <button class="btn btn-primary" onclick="dismissCancelConfirm()">${i18n.t('accounts.confirmCancelNo')}</button>
+          <div class="cancel-confirm-box" id="cancelConfirmBox">
+            <div id="cancelPromptView">
+              <h4>${i18n.t('accounts.confirmCancelTitle')}</h4>
+              <p>${i18n.t('accounts.confirmCancelMessage')}</p>
+              <div class="cancel-confirm-actions">
+                <button class="btn btn-danger" onclick="confirmCancel()">${i18n.t('accounts.confirmCancelYes')}</button>
+                <button class="btn btn-primary" onclick="dismissCancelConfirm()">${i18n.t('accounts.confirmCancelNo')}</button>
+              </div>
+            </div>
+            <div id="cancelSpinnerView" style="display:none;flex-direction:column;align-items:center;gap:12px;padding:8px 0;">
+              <div style="width:22px;height:22px;border:2px solid var(--glass-border);border-top-color:var(--primary-color);border-radius:50%;animation:spin 0.7s linear infinite;"></div>
+              <span style="font-size:0.85rem;color:var(--text-secondary);">${i18n.t('accounts.cancellingRefresh')}</span>
             </div>
           </div>
         </div>
@@ -4341,20 +4356,24 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
           // ── Cancel confirmation ──
           function showCancelConfirm() {
+            const promptView = document.getElementById('cancelPromptView');
+            const spinnerView = document.getElementById('cancelSpinnerView');
+            if (promptView) promptView.style.display = 'block';
+            if (spinnerView) spinnerView.style.display = 'none';
             document.getElementById('cancelConfirmOverlay').style.display = 'flex';
           }
           function dismissCancelConfirm() {
             document.getElementById('cancelConfirmOverlay').style.display = 'none';
+            const promptView = document.getElementById('cancelPromptView');
+            const spinnerView = document.getElementById('cancelSpinnerView');
+            if (promptView) promptView.style.display = 'block';
+            if (spinnerView) spinnerView.style.display = 'none';
           }
           function confirmCancel() {
-            // Transform dialog to "cancelling" state with loading spinner
-            const box = document.querySelector('.cancel-confirm-box');
-            if (box) {
-              box.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 0;">' +
-                '<div style="width:22px;height:22px;border:2px solid var(--glass-border);border-top-color:var(--primary-color);border-radius:50%;animation:spin 0.7s linear infinite;"></div>' +
-                '<span style="font-size:0.85rem;color:var(--text-secondary);">${i18n.t('accounts.cancellingRefresh')}</span>' +
-                '</div>';
-            }
+            const promptView = document.getElementById('cancelPromptView');
+            const spinnerView = document.getElementById('cancelSpinnerView');
+            if (promptView) promptView.style.display = 'none';
+            if (spinnerView) spinnerView.style.display = 'flex';
             sendMessage('cancelRefresh');
           }
 
@@ -4998,9 +5017,18 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             if (toast) { toast.classList.remove('visible'); }
             if (refreshToastTimeout) { clearTimeout(refreshToastTimeout); refreshToastTimeout = null; }
             
-            // Initialize count display
+            // Initialize count and percentage display
             const countEl = document.getElementById('refreshProgressCount');
             if (countEl) countEl.textContent = '0 / ' + totalAccounts;
+
+            const percentEl = document.getElementById('refreshProgressPercent');
+            if (percentEl) percentEl.textContent = '0%';
+
+            const barEl = document.getElementById('refreshProgressBar');
+            if (barEl) barEl.style.width = '0%';
+
+            const emailEl = document.getElementById('refreshProgressEmail');
+            if (emailEl) emailEl.innerHTML = '';
             
             const banner = document.getElementById('refreshProgressBanner');
             if (banner) banner.classList.add('visible');

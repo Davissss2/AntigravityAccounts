@@ -56,7 +56,7 @@ export class BalanceService {
    * Orchestrates the fetching of credits and plan type for an account.
    * Supports an ultra-fast path for active account quota polling.
    */
-  async getBalanceInfo(accessToken: string, options?: { fast?: boolean; projectId?: string }): Promise<BalanceResult> {
+  async getBalanceInfo(accessToken: string, options?: { fast?: boolean; projectId?: string; signal?: AbortSignal }): Promise<BalanceResult> {
     const result: BalanceResult = {
       balances: {},
       plan: AccountPlan.UNKNOWN,
@@ -65,13 +65,22 @@ export class BalanceService {
       projectId: options?.projectId
     };
 
+    if (options?.signal?.aborted) {
+      result.hasError = true;
+      return result;
+    }
+
     try {
       // ── Strategy 1 (Primary & Fastest): Direct fetchAvailableModels ──
       // This is the active, high-speed API that returns Gemini model quotas and timers in ~300ms.
       const effectiveProjectId = options?.projectId || result.projectId || 'aicode-consumers';
       result.projectId = effectiveProjectId;
       Logger.getInstance().debug(`Querying available model quotas directly for project ${effectiveProjectId} (Primary Strategy)...`);
-      const modelBalances = await this.tryFetchAvailableModels(accessToken, effectiveProjectId);
+      const modelBalances = await this.tryFetchAvailableModels(accessToken, effectiveProjectId, options?.signal);
+      if (options?.signal?.aborted) {
+        result.hasError = true;
+        return result;
+      }
       if (modelBalances && (modelBalances as any).__isDepleted) {
         delete (modelBalances as any).__isDepleted;
         result.isDepleted = true;
@@ -92,7 +101,7 @@ export class BalanceService {
       // ── Strategy 2 (Fallback): Only try loadCodeAssist if fetchAvailableModels failed or returned empty ──
       if (!options?.fast) {
         Logger.getInstance().debug('Attempting fallback primary loadCodeAssist...');
-        const codeAssist = await this.tryLoadCodeAssist(accessToken);
+        const codeAssist = await this.tryLoadCodeAssist(accessToken, options?.signal);
         
         if (codeAssist) {
           if (codeAssist.isRateLimited) {
@@ -117,7 +126,7 @@ export class BalanceService {
         // Strategy 3: Absolute fallback - try daily environment loadCodeAssist
         if (Object.keys(result.balances).length === 0) {
           Logger.getInstance().debug('Attempting fallback daily loadCodeAssist...');
-          const fallbackCodeAssist = await this.tryFallbackLoadCodeAssist(accessToken);
+          const fallbackCodeAssist = await this.tryFallbackLoadCodeAssist(accessToken, options?.signal);
           if (fallbackCodeAssist) {
             if (fallbackCodeAssist.isRateLimited) {
               result.isRateLimited = true;
@@ -161,12 +170,14 @@ export class BalanceService {
 
   // ─── Internal Strategies & Parsers ──────────────────────────────────────────
 
-  private async tryLoadCodeAssist(accessToken: string): Promise<{ balances?: Record<string, number>, planName?: string, projectId?: string, ineligible?: boolean, isRateLimited?: boolean } | null> {
+  private async tryLoadCodeAssist(accessToken: string, signal?: AbortSignal): Promise<{ balances?: Record<string, number>, planName?: string, projectId?: string, ineligible?: boolean, isRateLimited?: boolean } | null> {
+    if (signal?.aborted) return null;
     try {
       const data = await ApiClient.request<any>(API.LOAD_CODE_ASSIST, {
         method: 'POST',
         body: { metadata: { ideType: 'ANTIGRAVITY' } },
-        accessToken
+        accessToken,
+        signal
       });
       
       const parsedData = this.parseCodeAssistData(data);
@@ -179,6 +190,9 @@ export class BalanceService {
       
       return parsedData;
     } catch (e: any) {
+      if (signal?.aborted || (e instanceof ApiError && e.status === 499)) {
+        return null;
+      }
       if (e instanceof ApiError && e.status === 429) {
         Logger.getInstance().warn('Primary loadCodeAssist hit rate limit (429)!');
         return { isRateLimited: true };
@@ -193,7 +207,8 @@ export class BalanceService {
   }
 
 
-  private async tryFallbackLoadCodeAssist(accessToken: string): Promise<{ balances?: Record<string, number>, planName?: string, projectId?: string, ineligible?: boolean, isRateLimited?: boolean } | null> {
+  private async tryFallbackLoadCodeAssist(accessToken: string, signal?: AbortSignal): Promise<{ balances?: Record<string, number>, planName?: string, projectId?: string, ineligible?: boolean, isRateLimited?: boolean } | null> {
+    if (signal?.aborted) return null;
     try {
       // Note the difference in body payload structure for the daily API
       const data = await ApiClient.request<any>(API.DAILY_LOAD_CODE_ASSIST, {
@@ -205,10 +220,14 @@ export class BalanceService {
             ide_name: 'antigravity'
           }
         },
-        accessToken
+        accessToken,
+        signal
       });
       return this.parseCodeAssistData(data);
     } catch (e: any) {
+      if (signal?.aborted || (e instanceof ApiError && e.status === 499)) {
+        return null;
+      }
       if (e instanceof ApiError && e.status === 429) {
         Logger.getInstance().warn('Fallback loadCodeAssist hit rate limit (429)!');
         return { isRateLimited: true };
@@ -222,18 +241,20 @@ export class BalanceService {
     }
   }
 
-  private async tryFetchAvailableModels(accessToken: string, projectId?: string): Promise<Record<string, any>> {
+  private async tryFetchAvailableModels(accessToken: string, projectId?: string, signal?: AbortSignal): Promise<Record<string, any>> {
     const balances: Record<string, any> = {};
     const effectiveProject = projectId || 'aicode-consumers';
     const body = { project: effectiveProject };
 
     for (const url of API.FETCH_MODELS_URLS) {
+      if (signal?.aborted) return balances;
       try {
         Logger.getInstance().debug(`Attempting fetchAvailableModels at ${url} with project ${effectiveProject}...`);
         const data = await ApiClient.request<any>(url, {
           method: 'POST',
           body,
-          accessToken
+          accessToken,
+          signal
         });
 
         if (data && data.models) {
@@ -276,6 +297,9 @@ export class BalanceService {
           }
         }
       } catch (e: any) {
+        if (signal?.aborted || (e instanceof ApiError && e.status === 499)) {
+          return balances;
+        }
         if (e instanceof ApiError && e.status === 429) {
           const isExhausted = e.message && (
             e.message.includes('RESOURCE_EXHAUSTED') ||

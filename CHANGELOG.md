@@ -5,6 +5,19 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.21] - 2026-10-09
+
+### Fixed & Responsiveness
+- **Cancelación Instantánea de Recarga de Cuotas**:
+  - Instanciación inmediata de `AbortController` al pulsar el botón de recarga, evitando que una cancelación temprana quede ignorada por llegar mientras se detectaba la cuenta activa.
+  - El retardo anti-ban de 4s a 8s ahora evalúa el estado de aborto de forma inmediata (`options?.signal?.aborted`), despertando en 0ms en vez de esperar el timeout completo.
+  - Propagación de `AbortSignal` a `ApiClient.request` y `balanceService.getBalanceInfo`, cancelando peticiones HTTP en vuelo instantáneamente al confirmar la cancelación.
+  - El diálogo modal de confirmación de cancelación ahora alterna vistas limpiamente (`cancelPromptView` y `cancelSpinnerView`) sin destruir el DOM con `innerHTML`.
+- **Corrección de Conteo en Banner de Progreso (0/0 a 0/N)**:
+  - Eliminado mensaje prematuro con conteo cero; la barra de progreso ahora se inicializa directamente con el número total real de cuentas a escanear (ej. `0 / 87 0%`).
+  - `showProgressBanner` inicializa explícitamente porcentaje, barra de ancho y etiqueta de correo a estado limpio.
+  - Optimizado `_doDetectAndPinActiveAccount()` para auto-capturar sin forzar refresco pesado síncrono previo al flujo progresivo.
+
 ## [0.3.20] - 2026-10-09
 
 ### Fixed & Performance

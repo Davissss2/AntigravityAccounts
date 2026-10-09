@@ -1159,6 +1159,11 @@ export class AccountService {
 
       // ── Anti-Ban: Dynamic randomized delay ("medio medio": 4s a 8s) ──
       if (accountsProcessed > 0) {
+        if (options?.signal?.aborted) {
+          Logger.getInstance().info('Refresh cancelled before anti-ban delay.');
+          break;
+        }
+
         // Base delay: random entre 4,000ms (4s) y 8,000ms (8s)
         const minDelay = 4000;
         const maxDelay = 8000;
@@ -1173,12 +1178,21 @@ export class AccountService {
 
         Logger.getInstance().info(`Anti-ban: Esperando ${(delay / 1000).toFixed(1)}s antes de consultar ${account.email}...`);
         
-        await new Promise(resolve => {
-          const timer = setTimeout(resolve, delay);
-          options?.signal?.addEventListener('abort', () => {
-            clearTimeout(timer);
-            resolve(undefined);
-          }, { once: true });
+        await new Promise<void>(resolve => {
+          if (options?.signal?.aborted) {
+            resolve();
+            return;
+          }
+          let timer: NodeJS.Timeout | null = null;
+          const onAbort = () => {
+            if (timer) clearTimeout(timer);
+            resolve();
+          };
+          timer = setTimeout(() => {
+            options?.signal?.removeEventListener('abort', onAbort);
+            resolve();
+          }, delay);
+          options?.signal?.addEventListener('abort', onAbort, { once: true });
         });
 
         if (options?.signal?.aborted) {
@@ -1230,7 +1244,10 @@ export class AccountService {
       }
 
       // Fetch Balance
-      const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, { projectId: account.projectId });
+      const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, { 
+        projectId: account.projectId,
+        signal: options?.signal 
+      });
       
       // Safety Guard: Detect Google API rate limit (429) and abort workflow immediately to protect all accounts
       if (balanceInfo.isRateLimited && !balanceInfo.isDepleted) {

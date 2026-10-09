@@ -22,6 +22,7 @@ interface ApiRequestOptions {
   body?: any;
   accessToken?: string;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export class ApiClient {
@@ -71,6 +72,19 @@ export class ApiClient {
     const timeoutMs = options.timeoutMs ?? 7000;
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
+    let onCallerAbort: (() => void) | undefined;
+    if (options.signal) {
+      if (options.signal.aborted) {
+        clearTimeout(timer);
+        throw new ApiError(499, 'Client Closed Request', 'Request cancelled by user');
+      }
+      onCallerAbort = () => {
+        clearTimeout(timer);
+        controller.abort();
+      };
+      options.signal.addEventListener('abort', onCallerAbort, { once: true });
+    }
+
     const fetchOptions: RequestInit = {
       method: options.method || 'GET',
       headers,
@@ -95,6 +109,9 @@ export class ApiClient {
       
       return JSON.parse(text) as T;
     } catch (error: any) {
+      if (options.signal?.aborted) {
+        throw new ApiError(499, 'Client Closed Request', 'Request cancelled by user');
+      }
       if (error?.name === 'AbortError') {
         Logger.getInstance().warn(`API Request timed out after ${timeoutMs}ms for ${url}`);
         throw new ApiError(408, 'Request Timeout', `Request timed out after ${timeoutMs}ms`);
@@ -107,6 +124,9 @@ export class ApiClient {
       throw error;
     } finally {
       clearTimeout(timer);
+      if (options.signal && onCallerAbort) {
+        options.signal.removeEventListener('abort', onCallerAbort);
+      }
     }
   }
 }
