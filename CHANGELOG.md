@@ -5,6 +5,15 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.24] - 2026-10-14
+
+### Fixed & Packaging
+- **Empaquetado Universal Cross-Platform (.vsix universal)**:
+  - Generación de paquete VSIX universal (`antigravity-account-0.3.24.vsix`) sin restricción de plataforma (`--target win32-x64`).
+  - Corrige el problema de actualización e instalación en distribuciones Linux (Ubuntu/Debian) y macOS, que ignoraban o marcaban como incompatible el paquete exclusivo de Windows.
+- **Limpieza de Eventos de Activación en Manifest**:
+  - Eliminado el evento de activación redundante `onView:antigravity-account.accountsView` en `package.json`, eliminando el warning de validación del IDE dado que Antigravity/VS Code registra automáticamente la activación de las vistas declaradas en `contributes.views`.
+
 ## [0.3.23] - 2026-10-09
 
 ### Fixed & Performance
