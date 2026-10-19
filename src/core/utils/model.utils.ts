@@ -7,14 +7,20 @@
 
 export function normalizeModelKey(key: string): string {
   if (!key) return '';
-  const lower = key.toLowerCase().trim();
+  let lower = key.toLowerCase().trim();
+  if (lower.startsWith('models/')) {
+    lower = lower.substring('models/'.length);
+  }
 
   // Explicit mappings for all known aliases and legacy strings
-  if (lower === 'gemini-3.8-flash' || lower === 'gemini 3.8 flash' || lower === '3.8 flash' || lower === '3.8-flash' || lower === 'gemini-3.8-flash-high' || lower === 'gemini 3.8 flash (high)' || lower === '3.8 flash (high)' || lower === 'gemini-3.8-flash-tiered' || lower === 'gemini 3.8 flash tiered' || lower === 'gemini 3.8 flash (tiered)' || lower.includes('3.8-flash-tiered')) {
+  if (lower === 'gemini-3.8-flash' || lower === 'gemini 3.8 flash' || lower === '3.8 flash' || lower === '3.8-flash' || lower === 'gemini-3.8-flash-high' || lower === 'gemini 3.8 flash (high)' || lower === '3.8 flash (high)' || lower === 'gemini-3.8-flash-tiered' || lower === 'gemini 3.8 flash tiered' || lower === 'gemini 3.8 flash (tiered)' || lower.includes('3.8-flash-tiered') || lower.includes('3.8-flash-high')) {
     return '3.8 Flash (High)';
   }
-  if (lower === 'gemini-3.8-flash-medium' || lower === 'gemini 3.8 flash (med)' || lower === '3.8 flash (med)' || lower === 'gemini-3.8-flash-extra-low') {
+  if (lower === 'gemini-3.8-flash-medium' || lower === 'gemini 3.8 flash (med)' || lower === '3.8 flash (med)' || lower === 'gemini-3.8-flash-extra-low' || lower.includes('3.8-flash-med')) {
     return '3.8 Flash (Med)';
+  }
+  if (lower === 'gemini-3.8-flash-low' || lower === 'gemini 3.8 flash (low)' || lower === '3.8 flash (low)' || lower.includes('3.8-flash-low')) {
+    return '3.8 Flash (Low)';
   }
   if (lower === 'gemini-3.7-flash' || lower === 'gemini-3.7-flash-tiered' || lower === 'gemini 3.7 flash' || lower === 'gemini 3.7 flash tiered' || lower === 'gemini 3.7 flash (tiered)' || lower === '3.7 flash' || lower === '3.7-flash') {
     return '3.7 Flash';
@@ -125,6 +131,14 @@ export function getFriendlyModelName(key: string): string | null {
     lower.includes('3.8-flash-med')
   ) {
     return '3.8 Flash (Med)';
+  }
+  if (
+    lower === 'gemini-3.8-flash-low' ||
+    lower === 'gemini 3.8 flash (low)' ||
+    lower === '3.8 flash (low)' ||
+    lower.includes('3.8-flash-low')
+  ) {
+    return '3.8 Flash (Low)';
   }
   if (lower === 'gemini-3.7-flash' || lower === 'gemini-3.7-flash-tiered' || lower === 'gemini 3.7 flash' || lower === 'gemini 3.7 flash tiered') return '3.7 Flash';
   if (lower === 'gemini-3.5-flash-extra-low') return '3.5 Flash (Med)';

@@ -34,8 +34,8 @@ export const API = {
   FETCH_CREDITS: 'https://cloudcode-pa.googleapis.com/v1internal:fetchCredits',
   DAILY_LOAD_CODE_ASSIST: 'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
   FETCH_MODELS_URLS: [
-    'https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',
     'https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',
+    'https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',
   ],
   DEFAULT_VERSION: '1.22.2',
 } as const;

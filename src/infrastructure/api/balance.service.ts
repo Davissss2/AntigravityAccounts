@@ -19,6 +19,7 @@ export interface BalanceResult {
   hasError: boolean;
   isRateLimited?: boolean;
   isDepleted?: boolean;
+  isAuthError?: boolean;
   status?: AccountStatus;
 }
 
@@ -86,6 +87,12 @@ export class BalanceService {
         result.isDepleted = true;
         result.status = AccountStatus.DEPLETED;
         result.balances = modelBalances;
+        return result;
+      }
+      if (modelBalances && (modelBalances as any).__isAuthError) {
+        result.isAuthError = true;
+        result.hasError = true;
+        result.status = AccountStatus.TOKEN_EXPIRED;
         return result;
       }
       if (modelBalances && (modelBalances as any).__isRateLimited) {
@@ -245,6 +252,8 @@ export class BalanceService {
     const balances: Record<string, any> = {};
     const effectiveProject = projectId || 'aicode-consumers';
     const body = { project: effectiveProject };
+    let authErrorCount = 0;
+    let rateLimitCount = 0;
 
     for (const url of API.FETCH_MODELS_URLS) {
       if (signal?.aborted) return balances;
@@ -300,6 +309,11 @@ export class BalanceService {
         if (signal?.aborted || (e instanceof ApiError && e.status === 499)) {
           return balances;
         }
+        if (e instanceof ApiError && e.status === 401) {
+          Logger.getInstance().warn(`fetchAvailableModels received 401 Unauthorized at ${url}`);
+          authErrorCount++;
+          continue;
+        }
         if (e instanceof ApiError && e.status === 429) {
           const isExhausted = e.message && (
             e.message.includes('RESOURCE_EXHAUSTED') ||
@@ -312,10 +326,18 @@ export class BalanceService {
             return { __isDepleted: true };
           }
           Logger.getInstance().warn(`fetchAvailableModels hit rate limit (429) at ${url}`);
-          return { __isRateLimited: true };
+          rateLimitCount++;
+          continue;
         }
-        Logger.getInstance().debug(`Failed to fetch models from ${url}`);
+        Logger.getInstance().debug(`Failed to fetch models from ${url}`, e?.message || e);
       }
+    }
+
+    if (authErrorCount > 0 && Object.keys(balances).length === 0) {
+      return { __isAuthError: true };
+    }
+    if (rateLimitCount > 0 && rateLimitCount >= API.FETCH_MODELS_URLS.length) {
+      return { __isRateLimited: true };
     }
     
     return balances;

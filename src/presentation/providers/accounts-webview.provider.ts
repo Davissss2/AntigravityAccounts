@@ -783,26 +783,31 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       const config = ExtensionConfig.getInstance();
 
       if (config.isAutoRefreshEnabled()) {
-        // Auto-refresh ENABLED:
-        // 1. Refresh the active account if it hasn't been refreshed in the last 5 minutes (300 seconds)
-        await this.handleActiveAccountRefresh(5 * 60 * 1000);
+        const refreshIntervalMinutes = config.getRefreshIntervalMinutes();
+        const intervalMs = refreshIntervalMinutes > 0 ? refreshIntervalMinutes * 60 * 1000 : 15 * 60 * 1000;
 
-        // 2. Identify inactive accounts that have never been refreshed or have no balance data
+        // 1. Refresh active account if its cooldown has passed
+        await this.handleActiveAccountRefresh(Math.min(intervalMs, 5 * 60 * 1000));
+
+        // 2. Identify accounts that have never been refreshed, have no balance data, or exceeded the interval
         const accounts = await this.accountRepo.getAllAccounts();
         const inactiveEmailsToRefresh: string[] = [];
+        const now = Date.now();
         
         for (const account of accounts) {
           const isPinned = this._pinnedActiveEmail && isEmailMatch(account.email, this._pinnedActiveEmail);
           if (!isPinned) {
             if (!account.lastRefreshedAt || Object.keys(account.balances || {}).length === 0) {
               inactiveEmailsToRefresh.push(account.email);
+            } else if (now - new Date(account.lastRefreshedAt).getTime() >= intervalMs) {
+              inactiveEmailsToRefresh.push(account.email);
             }
           }
         }
 
-        // 3. Trigger progressive refresh only for those specific accounts without balance data
+        // 3. Trigger progressive refresh for accounts needing update
         if (inactiveEmailsToRefresh.length > 0) {
-          Logger.getInstance().info(`Auto-refreshing ${inactiveEmailsToRefresh.length} new inactive accounts without balance: ${inactiveEmailsToRefresh.join(', ')}`);
+          Logger.getInstance().info(`Auto-refreshing ${inactiveEmailsToRefresh.length} accounts whose interval elapsed: ${inactiveEmailsToRefresh.join(', ')}`);
           await this.handleProgressiveRefresh(false, inactiveEmailsToRefresh);
         }
       }
@@ -5760,10 +5765,15 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
     if (acc.balances) {
       const primaryKeys = [
+        'gemini-3.8-flash-high',
+        'gemini-3.8-flash-tiered',
+        'gemini-3.8-flash-medium',
+        'gemini-3.8-flash-low',
+        'gemini-3.7-flash-high',
         'gemini-3.7-flash-tiered',
         'gemini-3.7-flash',
-        'gemini-3.5-flash-high',
         'gemini-3.6-flash-high',
+        'gemini-3.5-flash-high',
         'gemini-3.5-flash-medium',
         'gemini-3.5-flash-low',
         'gemini-3.1-pro-high',

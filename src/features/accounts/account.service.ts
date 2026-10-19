@@ -940,10 +940,26 @@ export class AccountService {
     if (!tokens?.accessToken) return account;
 
     try {
-      const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
+      let balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
         fast: true,
         projectId: account.projectId
       });
+
+      if (balanceInfo.isAuthError && tokens.refreshToken) {
+        Logger.getInstance().info(`401 Unauthorized during fast refresh for ${activeEmail}. Attempting token refresh recovery...`);
+        try {
+          const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
+          tokens.accessToken = newTokens.accessToken;
+          tokens.expiresAt = Math.floor(Date.now() / 1000) + newTokens.expiresIn;
+          await this.accountRepo.storeTokens(activeEmail, tokens);
+          balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
+            fast: true,
+            projectId: account.projectId
+          });
+        } catch (authErr) {
+          Logger.getInstance().warn(`Fast token recovery failed for ${activeEmail}`);
+        }
+      }
 
       if (balanceInfo.isRateLimited && !balanceInfo.isDepleted) {
         Logger.getInstance().warn(`Rate limit (429) detected during fast refresh for ${activeEmail}`);
@@ -1149,8 +1165,10 @@ export class AccountService {
         const isActive = activeEmail && isEmailMatch(account.email, activeEmail);
         if (!isActive && account.lastRefreshedAt) {
           const lastRefreshed = new Date(account.lastRefreshedAt).getTime();
-          const cacheDurationDays = ExtensionConfig.getInstance().getCacheDurationDays();
-          const cacheDurationMs = cacheDurationDays * 24 * 60 * 60 * 1000;
+          const refreshIntervalMinutes = config.getRefreshIntervalMinutes();
+          const cacheDurationMs = refreshIntervalMinutes > 0
+            ? refreshIntervalMinutes * 60 * 1000
+            : config.getCacheDurationDays() * 24 * 60 * 60 * 1000;
           if (Date.now() - lastRefreshed < cacheDurationMs) {
             Logger.getInstance().info(`Skipping refresh for cached account: ${account.email}`);
             options?.onAccountStart?.(account.email);
@@ -1219,16 +1237,22 @@ export class AccountService {
 
       const now = Math.floor(Date.now() / 1000);
       
-      // Auto-refresh token if needed before API call (for active account, sync live native session)
+      // Auto-refresh token if needed before API call (for active account, sync live native session first)
       const isActive = activeEmail && isEmailMatch(account.email, activeEmail);
       if (isActive) {
         const activeInfo = await this.getActiveAntigravityAccountInfo();
         if (activeInfo?.tokens?.accessToken) {
           tokens.accessToken = activeInfo.tokens.accessToken;
           tokens.expiresAt = activeInfo.tokens.expiresAt;
+          if (activeInfo.tokens.refreshToken) {
+            tokens.refreshToken = activeInfo.tokens.refreshToken;
+          }
           await this.accountRepo.storeTokens(account.email, tokens);
         }
-      } else if (tokens.expiresAt < (now + 300)) {
+      }
+
+      // Check if access token is expiring or missing and refresh it using refreshToken
+      if (tokens.refreshToken && (tokens.expiresAt < (now + 300) || !tokens.accessToken)) {
         try {
           const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
           tokens.accessToken = newTokens.accessToken;
@@ -1249,10 +1273,27 @@ export class AccountService {
       }
 
       // Fetch Balance
-      const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, { 
+      let balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, { 
         projectId: account.projectId,
         signal: options?.signal 
       });
+
+      // Automatic 401 recovery: if token was rejected by Google, refresh with refreshToken and retry immediately
+      if (balanceInfo.isAuthError && tokens.refreshToken && !options?.signal?.aborted) {
+        Logger.getInstance().info(`401 Unauthorized for ${account.email}. Attempting immediate token refresh recovery...`);
+        try {
+          const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
+          tokens.accessToken = newTokens.accessToken;
+          tokens.expiresAt = Math.floor(Date.now() / 1000) + newTokens.expiresIn;
+          await this.accountRepo.storeTokens(account.email, tokens);
+          balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
+            projectId: account.projectId,
+            signal: options?.signal
+          });
+        } catch (authErr) {
+          Logger.getInstance().warn(`Token recovery failed for ${account.email}`);
+        }
+      }
       
       // Safety Guard: Detect Google API rate limit (429) and abort workflow immediately to protect all accounts
       if (balanceInfo.isRateLimited && !balanceInfo.isDepleted) {
@@ -1387,8 +1428,8 @@ export class AccountService {
 
     const now = Math.floor(Date.now() / 1000);
 
-    // Auto-refresh token if needed before API call (only for non-active accounts)
-    if (!isActive && tokens.refreshToken && (tokens.expiresAt < (now + 120) || !tokens.accessToken)) {
+    // Auto-refresh token if needed before API call
+    if (tokens.refreshToken && (tokens.expiresAt < (now + 120) || !tokens.accessToken)) {
       try {
         const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
         tokens.accessToken = newTokens.accessToken;
@@ -1403,7 +1444,21 @@ export class AccountService {
     }
 
     const config = ExtensionConfig.getInstance();
-    const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, { projectId: account.projectId });
+    let balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, { projectId: account.projectId });
+
+    // Automatic 401 recovery: if token was rejected, refresh with refreshToken and retry immediately
+    if (balanceInfo.isAuthError && tokens.refreshToken) {
+      Logger.getInstance().info(`401 Unauthorized for single account ${email}. Attempting immediate token refresh recovery...`);
+      try {
+        const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
+        tokens.accessToken = newTokens.accessToken;
+        tokens.expiresAt = Math.floor(Date.now() / 1000) + newTokens.expiresIn;
+        await this.accountRepo.storeTokens(email, tokens);
+        balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, { projectId: account.projectId });
+      } catch (authErr) {
+        Logger.getInstance().warn(`Token recovery failed for ${email}`);
+      }
+    }
 
     // Safety Guard: Detect Google API rate limit (429) ONLY if not depleted
     if (balanceInfo.isRateLimited && !balanceInfo.isDepleted) {

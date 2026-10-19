@@ -5,6 +5,24 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.25] - 2026-10-19
+
+### Fixed & Core Engine
+- **Priorización del Endpoint de Cuotas Vivas (daily-cloudcode-pa)**:
+  - Establecido `daily-cloudcode-pa.googleapis.com` como endpoint primario en `FETCH_MODELS_URLS` con fallback transparente a `cloudcode-pa.googleapis.com`.
+  - Corrige la discrepancia introducida tras la actualización de Antigravity donde `cloudcode-pa` devolvía un `remainingFraction: 1` (100% estático ficticio), restaurando la lectura en tiempo real de los porcentajes y reseteos de Gemini 3.8 Flash y modelos asociados.
+- **Recuperación Automática de Token ante Errores 401 (Auth Recovery)**:
+  - Implementado reintento y refresco transparente con `refreshToken` ante respuestas HTTP 401 Unauthorized en `refreshBalancesWorkflow`, `refreshSingleAccountBalance` y `refreshActiveAccountFast`.
+  - Eliminada la restricción que impedía refrescar el access token de la cuenta activa cuando su sesión expiraba en memoria o disco.
+- **Sincronización de Auto-Refresh con Intervalo Configurado (Cache TTL Fix)**:
+  - Corregido el conflicto en el ciclo de escaneo periódico y apertura del webview: cuando el usuario define un intervalo de refresco automático (e.g. 15m), el TTL de comprobación se acopla dinámicamente a dicho intervalo en vez del límite de 7 días.
+  - Al abrir el panel con auto-refresh habilitado, se evalúan y actualizan progresivamente las cuentas cuyo tiempo transcurrido supere el intervalo fijado.
+- **Normalización y Priorización de Modelos Gemini 3.8 Flash**:
+  - Incorporados `gemini-3.8-flash-high`, `gemini-3.8-flash-tiered`, `gemini-3.8-flash-medium` y `gemini-3.8-flash-low` en `primaryKeys` de tarjetas para priorizar su cuenta regresiva y reseteo.
+  - Limpieza de prefijos `models/` en `normalizeModelKey` y adición de mapeos consistentes para `3.8 Flash (Low)`.
+- **Resiliencia ante Rate Limits Multi-URL**:
+  - Manejo adaptativo en `tryFetchAvailableModels` que evalúa todos los endpoints configurados antes de activar salvaguardas de rate-limiting (429), evitando detenciones prematuras de la cola de actualización.
+
 ## [0.3.24] - 2026-10-14
 
 ### Fixed & Packaging
