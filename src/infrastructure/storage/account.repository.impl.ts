@@ -152,14 +152,23 @@ export class AccountRepositoryImpl implements IAccountRepository {
 
   async getTokens(email: string): Promise<AccountTokens | null> {
     try {
-      const refreshToken = await this.context.secrets.get(SECRET_KEYS.REFRESH_TOKEN(email));
-      const accessToken = await this.context.secrets.get(SECRET_KEYS.ACCESS_TOKEN(email));
-      const metaStr = await this.context.secrets.get(SECRET_KEYS.METADATA(email));
-      
+      let refreshToken = await this.context.secrets.get(SECRET_KEYS.REFRESH_TOKEN(email));
+      let accessToken = await this.context.secrets.get(SECRET_KEYS.ACCESS_TOKEN(email));
+      let metaStr = await this.context.secrets.get(SECRET_KEYS.METADATA(email));
+
+      if (!refreshToken || !accessToken) {
+        const lower = email.toLowerCase();
+        if (lower !== email) {
+          refreshToken = await this.context.secrets.get(SECRET_KEYS.REFRESH_TOKEN(lower));
+          accessToken = await this.context.secrets.get(SECRET_KEYS.ACCESS_TOKEN(lower));
+          metaStr = await this.context.secrets.get(SECRET_KEYS.METADATA(lower));
+        }
+      }
+
       if (!refreshToken || !accessToken) return null;
-      
+
       const meta = metaStr ? JSON.parse(metaStr) : { expiresAt: 0 };
-      
+
       return {
         refreshToken,
         accessToken,

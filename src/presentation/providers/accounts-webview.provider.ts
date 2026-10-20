@@ -186,29 +186,23 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           break;
         case 'switchAccount':
           if (message.email) {
+            Logger.getInstance().info(`[Webview] Account switch requested for: ${message.email}`);
             // If a refresh is running, save remaining pending emails to repository so we resume on relaunch!
             if (this._isRefreshingProgress.isRefreshing && this._pendingQueueEmails.length > 0) {
               Logger.getInstance().info(`Account switch requested during refresh. Saving ${this._pendingQueueEmails.length} pending accounts to resume upon reload.`);
               await this.accountRepo.setPendingRefreshEmails(this._pendingQueueEmails);
               this._refreshAbortController?.abort();
             }
-            const confirm = await vscode.window.showWarningMessage(
-              i18n.t('accounts.confirmSwitch', { email: message.email }),
-              { modal: true },
-              i18n.t('common.yes')
-            );
-            if (confirm === i18n.t('common.yes')) {
-              try {
-                const result = await this.accountService.switchAccountWorkflow(message.email);
-                if (result !== 'success') {
-                  await this.accountRepo.setPendingRefreshEmails([]);
-                  this._view?.webview.postMessage({ command: 'accountSwitchCancelled', email: message.email });
-                }
-              } catch (err) {
+            try {
+              const config = ExtensionConfig.getInstance();
+              const skipPrompt = !config.isConfirmOnSwitchEnabled();
+              const result = await this.accountService.switchAccountWorkflow(message.email, { skipPrompt });
+              if (result !== 'success') {
                 await this.accountRepo.setPendingRefreshEmails([]);
                 this._view?.webview.postMessage({ command: 'accountSwitchCancelled', email: message.email });
               }
-            } else {
+            } catch (err) {
+              Logger.getInstance().error(`Account switch failed for ${message.email}`, err);
               await this.accountRepo.setPendingRefreshEmails([]);
               this._view?.webview.postMessage({ command: 'accountSwitchCancelled', email: message.email });
             }
@@ -5543,6 +5537,21 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     // Helper: compute soonest remaining time until renewal in ms (0 = ready now or already passed)
     const getAccountNextRegenTime = (acc: any): number => {
       if (!acc.balances) return Infinity;
+
+      // 1. If preferred model is set and has resetTime AND its quota is depleted/used (< 100)
+      if (effectivePreferred) {
+        const prefEntry = getModelBalanceEntry(acc.balances, effectivePreferred);
+        if (prefEntry && prefEntry.resetTime && prefEntry.value < 100) {
+          const date = new Date(prefEntry.resetTime);
+          const time = date.getTime();
+          if (!isNaN(time)) {
+            const diffMs = time - Date.now();
+            return diffMs <= 0 ? 0 : diffMs;
+          }
+        }
+      }
+
+      // 2. Primary keys: only consider models that need renewal (< 100%)
       const primaryKeys = [
         'gemini-3.8-flash-tiered',
         'gemini-3.8-flash-high',
@@ -5561,16 +5570,19 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
       let minTime = Infinity;
       for (const pk of primaryKeys) {
-        const rawV = acc.balances[pk];
+        const rawV = acc.balances[pk] ?? acc.balances[`models/${pk}`];
         if (typeof rawV === 'object' && rawV !== null && (rawV as any).resetTime) {
-          const resetTimeStr = (rawV as any).resetTime;
-          const date = new Date(resetTimeStr);
-          const time = date.getTime();
-          if (!isNaN(time)) {
-            const diffMs = time - Date.now();
-            const effectiveDiff = diffMs <= 0 ? 0 : diffMs;
-            if (effectiveDiff < minTime) {
-              minTime = effectiveDiff;
+          const val = typeof (rawV as any).value === 'number' ? (rawV as any).value : Number((rawV as any).value);
+          if (isNaN(val) || val < 100) {
+            const resetTimeStr = (rawV as any).resetTime;
+            const date = new Date(resetTimeStr);
+            const time = date.getTime();
+            if (!isNaN(time)) {
+              const diffMs = time - Date.now();
+              const effectiveDiff = diffMs <= 0 ? 0 : diffMs;
+              if (effectiveDiff < minTime) {
+                minTime = effectiveDiff;
+              }
             }
           }
         }
@@ -5578,18 +5590,22 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
       if (minTime !== Infinity) return minTime;
 
+      // 3. Fallback across all balances (excluding chat/tab/etc and models at 100%)
       for (const [k, rawV] of Object.entries(acc.balances)) {
         const lower = k.toLowerCase();
         if (lower.startsWith('chat') || lower.startsWith('tab') || lower.startsWith('tap') || lower.includes('claude') || lower.includes('gpt')) continue;
         if (typeof rawV === 'object' && rawV !== null && (rawV as any).resetTime) {
-          const resetTimeStr = (rawV as any).resetTime;
-          const date = new Date(resetTimeStr);
-          const time = date.getTime();
-          if (!isNaN(time)) {
-            const diffMs = time - Date.now();
-            const effectiveDiff = diffMs <= 0 ? 0 : diffMs;
-            if (effectiveDiff < minTime) {
-              minTime = effectiveDiff;
+          const val = typeof (rawV as any).value === 'number' ? (rawV as any).value : Number((rawV as any).value);
+          if (isNaN(val) || val < 100) {
+            const resetTimeStr = (rawV as any).resetTime;
+            const date = new Date(resetTimeStr);
+            const time = date.getTime();
+            if (!isNaN(time)) {
+              const diffMs = time - Date.now();
+              const effectiveDiff = diffMs <= 0 ? 0 : diffMs;
+              if (effectiveDiff < minTime) {
+                minTime = effectiveDiff;
+              }
             }
           }
         }
@@ -5759,76 +5775,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
        return i18n.t('webview.renewsInHoursMins', { hours: totalHours, mins });
     };
 
-    // Find the next reset time among primary models (Gemini Flash/Pro)
-    let nextResetTime: string | undefined = undefined;
-    let minDiffMs = Infinity;
-
-    if (acc.balances) {
-      const primaryKeys = [
-        'gemini-3.8-flash-high',
-        'gemini-3.8-flash-tiered',
-        'gemini-3.8-flash-medium',
-        'gemini-3.8-flash-low',
-        'gemini-3.7-flash-high',
-        'gemini-3.7-flash-tiered',
-        'gemini-3.7-flash',
-        'gemini-3.6-flash-high',
-        'gemini-3.5-flash-high',
-        'gemini-3.5-flash-medium',
-        'gemini-3.5-flash-low',
-        'gemini-3.1-pro-high',
-        'gemini-3.1-pro-low'
-      ];
-
-      for (const pk of primaryKeys) {
-        const rawV = acc.balances[pk];
-        if (typeof rawV === 'object' && rawV !== null && (rawV as any).resetTime) {
-          const resetTimeStr = (rawV as any).resetTime as string;
-          if (resetTimeStr) {
-            const date = new Date(resetTimeStr);
-            const time = date.getTime();
-            if (!isNaN(time)) {
-              const diffMs = time - Date.now();
-              const effDiff = diffMs <= 0 ? 0 : diffMs;
-              if (effDiff < minDiffMs) {
-                minDiffMs = effDiff;
-                nextResetTime = resetTimeStr;
-              }
-            }
-          }
-        }
-      }
-
-      if (!nextResetTime) {
-        for (const [k, rawV] of Object.entries(acc.balances)) {
-          const lower = k.toLowerCase();
-          if (lower.startsWith('chat') || lower.startsWith('tab') || lower.startsWith('tap') || lower.includes('claude') || lower.includes('gpt')) continue;
-          if (typeof rawV === 'object' && rawV !== null && 'resetTime' in rawV) {
-            const resetTimeStr = (rawV as any).resetTime as string;
-            if (resetTimeStr) {
-              const date = new Date(resetTimeStr);
-              const time = date.getTime();
-              if (!isNaN(time)) {
-                const diffMs = time - Date.now();
-                const effDiff = diffMs <= 0 ? 0 : diffMs;
-                if (effDiff < minDiffMs) {
-                  minDiffMs = effDiff;
-                  nextResetTime = resetTimeStr;
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    const nextResetHtml = nextResetTime 
-      ? `<div class="quota-countdown" style="font-size:0.75rem; color:var(--text-secondary); opacity:0.85; margin-top:3px; display:flex; align-items:center; gap:4px;">
-           <svg class="icon-svg" style="width:11px; height:11px; stroke-width:2.5;" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-           <span>${formatTime(nextResetTime)}</span>
-         </div>`
-      : '';
-
     // Process balances according to display rules
     let processedModels: Array<{ key: string, value: number, resetTime?: string }> = [];
     let creditBalances: Array<{ key: string, value: number }> = [];
@@ -5939,6 +5885,37 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     } else if (processedModels.length > 0) {
       preferredModelData = processedModels[0];
     }
+
+    // Determine the next reset time for countdown display in card header:
+    // 1. If preferred model is set, has resetTime, and is used/depleted (< 100%), prioritize it strictly
+    let nextResetTime: string | undefined = undefined;
+    let minDiffMs = Infinity;
+
+    if (preferredModelData && preferredModelData.resetTime && preferredModelData.value < 100) {
+      nextResetTime = preferredModelData.resetTime;
+    } else {
+      // 2. Otherwise find the earliest resetTime among models that actually need renewal (< 100%)
+      const candidates = processedModels.filter(m => m.resetTime && m.value < 100);
+      for (const m of candidates) {
+        const date = new Date(m.resetTime!);
+        const time = date.getTime();
+        if (!isNaN(time)) {
+          const diffMs = time - Date.now();
+          const effDiff = diffMs <= 0 ? 0 : diffMs;
+          if (effDiff < minDiffMs) {
+            minDiffMs = effDiff;
+            nextResetTime = m.resetTime;
+          }
+        }
+      }
+    }
+
+    const nextResetHtml = nextResetTime 
+      ? `<div class="quota-countdown" style="font-size:0.75rem; color:var(--text-secondary); opacity:0.85; margin-top:3px; display:flex; align-items:center; gap:4px;">
+           <svg class="icon-svg" style="width:11px; height:11px; stroke-width:2.5;" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+           <span>${formatTime(nextResetTime)}</span>
+         </div>`
+      : '';
 
     // Generate Credits HTML
     const creditsHtml = creditBalances.length > 0 

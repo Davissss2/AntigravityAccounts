@@ -5,6 +5,21 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.26] - 2026-10-20
+
+### Fixed & Core Engine
+- **Switch de Cuentas Fluido y Universal (Fix "Amago" de Activación)**:
+  - Eliminado el diálogo modal bloqueante incondicional en el webview provider que cancelaba la activación de cuenta de forma silenciosa e instantánea en máquinas con diferentes locales o cuando la confirmación previa estaba deshabilitada por configuración.
+  - Delegación fluida en `switchAccountWorkflow` respetando la preferencia `isConfirmOnSwitchEnabled()`.
+- **Búsqueda Insensible a Mayúsculas/Minúsculas en Tokens (Cross-Platform Compatibility)**:
+  - Implementada búsqueda insensible a mayúsculas/minúsculas en `getTokens` de `AccountRepositoryImpl`, garantizando compatibilidad total al cambiar de cuenta en cualquier instalación de Windows o Linux sin importar diferencias en la capitalización del email almacenado en SQLite.
+- **Rendimiento Ultrarrápido en Refresh de Saldos (Eliminación de Cuelgues por Timeout)**:
+  - Priorizado el endpoint de producción `cloudcode-pa.googleapis.com` en `FETCH_MODELS_URLS` con fallback secundario a `daily-cloudcode-pa`.
+  - Añadido timeout adaptativo (2.5s para endpoints inestables/daily y 4.5s para producción) en `tryFetchAvailableModels`, eliminando los congelamientos de 7 segundos y errores 503 que bloqueaban la cola de actualización.
+- **Fijación Precisa del Temporizador de Renovación (Fix Salto Falso a 7 Días)**:
+  - Corregido el cálculo del contador de renovación (`nextResetTime` en cabecera de tarjeta y `getAccountNextRegenTime` en ordenamiento): se prioriza estrictamente el tiempo de reseteo del modelo preferido consumido (`< 100%`).
+  - Excluidos los modelos con cuota al 100% que informan fechas de expiración a 7 días vista, impidiendo que el contador de renovación salte erróneamente a 7 días al pulsar refresh.
+
 ## [0.3.25] - 2026-10-19
 
 ### Fixed & Core Engine
