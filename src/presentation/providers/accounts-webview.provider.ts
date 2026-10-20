@@ -5855,36 +5855,40 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     // Determine the next reset time for countdown display in card header:
-    // If an account has 100% quota, Google returns a floating "now + 7 days" timestamp that jumps
-    // back to 59m on every single refresh. Only display the renewal countdown when quota is actually consumed (< 100%).
+    // Prioritize the soonest renewal among models that need recharge (< 100%).
+    // If all models are 100%, fall back to all models with resetTime so countdown is always visible.
     let nextResetTime: string | undefined = undefined;
     let minDiffMs = Infinity;
 
-    const depletedCandidates = processedModels.filter(m => m.resetTime && m.value < 100);
+    const withReset = processedModels.filter(m => m.resetTime);
+    const depletedCandidates = withReset.filter(m => m.value < 100);
+    const targetPool = depletedCandidates.length > 0 ? depletedCandidates : withReset;
 
-    if (depletedCandidates.length > 0) {
-      for (const m of depletedCandidates) {
-        const date = new Date(m.resetTime!);
-        const time = date.getTime();
-        if (!isNaN(time)) {
-          const diffMs = time - Date.now();
-          const effDiff = diffMs <= 0 ? 0 : diffMs;
-          if (effDiff > 0 && effDiff < minDiffMs) {
-            minDiffMs = effDiff;
-            nextResetTime = m.resetTime;
-          }
+    for (const m of targetPool) {
+      const date = new Date(m.resetTime!);
+      const time = date.getTime();
+      if (!isNaN(time)) {
+        const diffMs = time - Date.now();
+        const effDiff = diffMs <= 0 ? 0 : diffMs;
+        if (effDiff > 0 && effDiff < minDiffMs) {
+          minDiffMs = effDiff;
+          nextResetTime = m.resetTime;
         }
       }
+    }
 
-      if (preferredModelData && preferredModelData.resetTime && preferredModelData.value < 100) {
-        const prefDate = new Date(preferredModelData.resetTime);
-        const prefTime = prefDate.getTime();
-        if (!isNaN(prefTime)) {
-          const prefDiff = prefTime - Date.now();
-          const effPrefDiff = prefDiff <= 0 ? 0 : prefDiff;
+    if (preferredModelData && preferredModelData.resetTime) {
+      const prefDate = new Date(preferredModelData.resetTime);
+      const prefTime = prefDate.getTime();
+      if (!isNaN(prefTime)) {
+        const prefDiff = prefTime - Date.now();
+        const effPrefDiff = prefDiff <= 0 ? 0 : prefDiff;
+        if (preferredModelData.value < 100) {
           if (effPrefDiff <= minDiffMs || minDiffMs === Infinity) {
             nextResetTime = preferredModelData.resetTime;
           }
+        } else if (!nextResetTime) {
+          nextResetTime = preferredModelData.resetTime;
         }
       }
     }

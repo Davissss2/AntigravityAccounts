@@ -971,7 +971,9 @@ export class AccountService {
       const newStatus = await this.determineAccountStatus(balanceInfo, preferredModel);
 
       const oldBalances = account.balances || {};
-      const newBalances = balanceInfo.isDepleted ? balanceInfo.balances : { ...oldBalances, ...balanceInfo.balances };
+      const newBalances = balanceInfo.isDepleted 
+        ? balanceInfo.balances 
+        : this.mergeBalancesPreservingResetTime(oldBalances, balanceInfo.balances);
       const hasChanged = JSON.stringify(oldBalances) !== JSON.stringify(newBalances) || account.status !== newStatus;
 
       await this.accountRepo.updateAccount(activeEmail, {
@@ -998,6 +1000,36 @@ export class AccountService {
       Logger.getInstance().error(`Fast refresh failed for active account ${activeEmail}`, err);
       return account;
     }
+  }
+
+  /**
+   * Merges fresh balance info with existing balances.
+   * If a model is at 100% and already has a valid future resetTime, preserves the existing
+   * resetTime so that clicking refresh does not jump the countdown back to 59 minutes due
+   * to Google's dynamic relative "now + 7 days" window.
+   */
+  private mergeBalancesPreservingResetTime(
+    oldBalances: Record<string, any>,
+    freshBalances: Record<string, any>
+  ): Record<string, any> {
+    const merged: Record<string, any> = { ...oldBalances, ...freshBalances };
+    const now = Date.now();
+    for (const [key, freshEntry] of Object.entries(freshBalances)) {
+      if (typeof freshEntry === 'object' && freshEntry !== null && freshEntry.value === 100) {
+        const oldEntry = oldBalances[key];
+        if (oldEntry && typeof oldEntry === 'object' && oldEntry.resetTime) {
+          const oldTime = new Date(oldEntry.resetTime).getTime();
+          // If the old resetTime is still valid and in the future, preserve it
+          if (!isNaN(oldTime) && oldTime > now) {
+            merged[key] = {
+              ...freshEntry,
+              resetTime: oldEntry.resetTime
+            };
+          }
+        }
+      }
+    }
+    return merged;
   }
 
   /**
@@ -1311,8 +1343,13 @@ export class AccountService {
         successCount++;
       }
 
+      const oldBalances = account.balances || {};
+      const mergedBalances = balanceInfo.isDepleted 
+        ? balanceInfo.balances 
+        : this.mergeBalancesPreservingResetTime(oldBalances, balanceInfo.balances);
+
       await this.accountRepo.updateAccount(account.email, {
-        balances: balanceInfo.balances,
+        balances: mergedBalances,
         plan: balanceInfo.plan !== AccountPlan.UNKNOWN ? balanceInfo.plan : account.plan,
         projectId: balanceInfo.projectId || account.projectId,
         status: status,
@@ -1320,7 +1357,7 @@ export class AccountService {
       });
 
       // Notify UI: this account is done with updated data
-      options?.onAccountDone?.(account.email, balanceInfo.balances, status);
+      options?.onAccountDone?.(account.email, mergedBalances, status);
 
       // Trigger low balance warning native notification if enabled
       if (config.isLowCreditNotificationsEnabled() && !balanceInfo.hasError) {

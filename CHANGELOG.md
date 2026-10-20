@@ -5,6 +5,16 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.30] - 2026-10-20
+
+### Fixed & Core Engine
+- **Restauración de Visualización del Tiempo de Renovación en Todas las Cuentas**:
+  - Restaurada la visualización del tiempo de renovación (`Renews in ...`) en las tarjetas de todas las cuentas, incluidas aquellas con cuota al 100%, manteniendo la visibilidad completa del ciclo en el panel.
+- **Preservación de Fecha Fija en Cuentas al 100% (Prevención de Salto a 59 Minutos)**:
+  - Implementado `mergeBalancesPreservingResetTime` en `AccountService`: cuando una cuenta o modelo sigue al 100%, se preserva la fecha de expiración/renovación futura que ya tenía asignada en lugar de sobreescribirla con la ventana deslizante `now + 7 days` que Google genera en cada llamada a la API.
+  - La cuenta atrás sigue corriendo de manera fluida y continua sin reiniciarse arbitrariamente a 59 minutos al pulsar refrescar.
+  - Se mantiene la prioridad visual inmediata para modelos con cuota consumida (`< 100%`) o que renuevan en lapsos cortos (ej. pocas horas).
+
 ## [0.3.29] - 2026-10-20
 
 ### Fixed & Core Engine
