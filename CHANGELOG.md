@@ -5,6 +5,18 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.29] - 2026-10-20
+
+### Fixed & Core Engine
+- **Supresión de Contador Flotante en Cuentas al 100% (Fix Salto Recurrente a 59 Minutos)**:
+  - Para cuentas con saldo completo (100%), la API de Google devuelve un timestamp dinámico relativo (`now + 7 days`). Al pulsar refresh tras unos minutos, Google recalculaba `now + 7d`, haciendo que el contador saltara erráticamente de vuelta a 59 minutos.
+  - El temporizador de cabecera en `renderAccountCard` ahora se restringe estrictamente a cuentas con consumo real (`value < 100%`), donde la fecha de expiración y regeneración es fija y verídica.
+- **Eliminación del Escaneo Progresivo Automático Invasivo**:
+  - Eliminado el auto-disparo incondicional de `handleProgressiveRefresh` al abrir el webview (`resolveWebviewView`) y la reanudación automática tras un cambio de cuenta (`pendingRefreshEmails`).
+  - El escaneo masivo de cuentas con barra de progreso morada ahora solo se ejecuta bajo demanda explícita del usuario mediante el botón manual de refresco de la cabecera.
+- **Limpieza del Estado de Cola en SQLite**:
+  - Vaciada la clave `pendingRefreshEmails` en `state.vscdb` al iniciar la vista, impidiendo bucles de refresco residuales entre recargas de la extensión.
+
 ## [0.3.28] - 2026-10-20
 
 ### Fixed & Core Engine

@@ -187,10 +187,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         case 'switchAccount':
           if (message.email) {
             Logger.getInstance().info(`[Webview] Account switch requested for: ${message.email}`);
-            // If a refresh is running, save remaining pending emails to repository so we resume on relaunch!
-            if (this._isRefreshingProgress.isRefreshing && this._pendingQueueEmails.length > 0) {
-              Logger.getInstance().info(`Account switch requested during refresh. Saving ${this._pendingQueueEmails.length} pending accounts to resume upon reload.`);
-              await this.accountRepo.setPendingRefreshEmails(this._pendingQueueEmails);
+            // If a refresh is running, abort it cleanly on switch
+            if (this._isRefreshingProgress.isRefreshing) {
               this._refreshAbortController?.abort();
             }
             try {
@@ -760,19 +758,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       const accounts = await this.accountRepo.getAllAccounts();
       if (accounts.length === 0) return;
 
-      // Resume pending refresh if saved before an account switch
-      const pendingToResume = await this.accountRepo.getPendingRefreshEmails();
-      if (pendingToResume && pendingToResume.length > 0) {
-        Logger.getInstance().info(`Found ${pendingToResume.length} pending accounts to resume refresh after account switch.`);
-        await this.accountRepo.setPendingRefreshEmails([]);
-        setTimeout(() => {
-          vscode.window.showInformationMessage(
-            `Reanudando la actualización de ${pendingToResume.length} cuentas pendientes tras el cambio de cuenta...`
-          );
-          this.handleProgressiveRefresh(false, pendingToResume);
-        }, 1500);
-        return;
-      }
+      // Clear any pending queue from previous switches to avoid unwanted auto-refresh loops
+      await this.accountRepo.setPendingRefreshEmails([]);
 
       const config = ExtensionConfig.getInstance();
 
@@ -780,30 +767,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         const refreshIntervalMinutes = config.getRefreshIntervalMinutes();
         const intervalMs = refreshIntervalMinutes > 0 ? refreshIntervalMinutes * 60 * 1000 : 15 * 60 * 1000;
 
-        // 1. Refresh active account if its cooldown has passed
+        // Refresh active account only if its cooldown has passed (fast, non-intrusive)
         await this.handleActiveAccountRefresh(Math.min(intervalMs, 5 * 60 * 1000));
-
-        // 2. Identify accounts that have never been refreshed, have no balance data, or exceeded the interval
-        const accounts = await this.accountRepo.getAllAccounts();
-        const inactiveEmailsToRefresh: string[] = [];
-        const now = Date.now();
-        
-        for (const account of accounts) {
-          const isPinned = this._pinnedActiveEmail && isEmailMatch(account.email, this._pinnedActiveEmail);
-          if (!isPinned) {
-            if (!account.lastRefreshedAt || Object.keys(account.balances || {}).length === 0) {
-              inactiveEmailsToRefresh.push(account.email);
-            } else if (now - new Date(account.lastRefreshedAt).getTime() >= intervalMs) {
-              inactiveEmailsToRefresh.push(account.email);
-            }
-          }
-        }
-
-        // 3. Trigger progressive refresh for accounts needing update
-        if (inactiveEmailsToRefresh.length > 0) {
-          Logger.getInstance().info(`Auto-refreshing ${inactiveEmailsToRefresh.length} accounts whose interval elapsed: ${inactiveEmailsToRefresh.join(', ')}`);
-          await this.handleProgressiveRefresh(false, inactiveEmailsToRefresh);
-        }
       }
     }).catch(err => {
       Logger.getInstance().error('Error during background active account detection', err);
@@ -5541,10 +5506,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const getAccountNextRegenTime = (acc: any): number => {
       if (!acc.balances) return Infinity;
 
-      // 1. If preferred model is set and has resetTime, use it as primary renewal time
+      // 1. If preferred model is set, has resetTime and is depleted (< 100)
       if (effectivePreferred) {
         const prefEntry = getModelBalanceEntry(acc.balances, effectivePreferred);
-        if (prefEntry && prefEntry.resetTime) {
+        if (prefEntry && prefEntry.resetTime && prefEntry.value < 100) {
           const date = new Date(prefEntry.resetTime);
           const time = date.getTime();
           if (!isNaN(time)) {
@@ -5890,42 +5855,36 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     // Determine the next reset time for countdown display in card header:
-    // Prioritize the soonest renewal among models that need recharge (< 100%).
-    // If an account recharges in 6.3 hours, the user will see that earliest recharge!
+    // If an account has 100% quota, Google returns a floating "now + 7 days" timestamp that jumps
+    // back to 59m on every single refresh. Only display the renewal countdown when quota is actually consumed (< 100%).
     let nextResetTime: string | undefined = undefined;
     let minDiffMs = Infinity;
 
-    // 1. Search across processedModels for the earliest renewal (preferring models < 100%)
-    const withReset = processedModels.filter(m => m.resetTime);
-    const depletedCandidates = withReset.filter(m => m.value < 100);
-    const targetPool = depletedCandidates.length > 0 ? depletedCandidates : withReset;
+    const depletedCandidates = processedModels.filter(m => m.resetTime && m.value < 100);
 
-    for (const m of targetPool) {
-      const date = new Date(m.resetTime!);
-      const time = date.getTime();
-      if (!isNaN(time)) {
-        const diffMs = time - Date.now();
-        const effDiff = diffMs <= 0 ? 0 : diffMs;
-        if (effDiff > 0 && effDiff < minDiffMs) {
-          minDiffMs = effDiff;
-          nextResetTime = m.resetTime;
+    if (depletedCandidates.length > 0) {
+      for (const m of depletedCandidates) {
+        const date = new Date(m.resetTime!);
+        const time = date.getTime();
+        if (!isNaN(time)) {
+          const diffMs = time - Date.now();
+          const effDiff = diffMs <= 0 ? 0 : diffMs;
+          if (effDiff > 0 && effDiff < minDiffMs) {
+            minDiffMs = effDiff;
+            nextResetTime = m.resetTime;
+          }
         }
       }
-    }
 
-    // 2. If preferred model is set and also recharges soon, or if no other model was found
-    if (preferredModelData && preferredModelData.resetTime) {
-      const prefDate = new Date(preferredModelData.resetTime);
-      const prefTime = prefDate.getTime();
-      if (!isNaN(prefTime)) {
-        const prefDiff = prefTime - Date.now();
-        const effPrefDiff = prefDiff <= 0 ? 0 : prefDiff;
-        if (preferredModelData.value < 100) {
+      if (preferredModelData && preferredModelData.resetTime && preferredModelData.value < 100) {
+        const prefDate = new Date(preferredModelData.resetTime);
+        const prefTime = prefDate.getTime();
+        if (!isNaN(prefTime)) {
+          const prefDiff = prefTime - Date.now();
+          const effPrefDiff = prefDiff <= 0 ? 0 : prefDiff;
           if (effPrefDiff <= minDiffMs || minDiffMs === Infinity) {
             nextResetTime = preferredModelData.resetTime;
           }
-        } else if (!nextResetTime) {
-          nextResetTime = preferredModelData.resetTime;
         }
       }
     }
