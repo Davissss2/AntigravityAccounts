@@ -5,6 +5,21 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.31] - 2026-10-20
+
+### Fixed & Core Engine
+- **Resolución Canónica de Modelos y Purga de Claves Zombi (Fix Discrepancia 100% vs Cuota Real)**:
+  - En la API de Google Cloud Code PA (`daily-cloudcode-pa.googleapis.com`), la clave oficial canónica para Gemini 3.8 Flash es `gemini-3.8-flash-tiered`. La clave `gemini-3.8-flash-high` era un alias heredado que quedaba obsoleto congelado al 100% en el almacenamiento.
+  - Actualizado `getModelBalanceValue` y `getModelBalanceEntry` en `model.utils.ts` para evaluar y priorizar las claves canónicas con sufijo `-tiered` sobre alias heredados (`-high`, `-med`).
+  - Añadida deduplicación canónica en `accounts-webview.provider.ts` y `status-bar.provider.ts`: ante múltiples entradas para un mismo modelo amigable, se toma siempre el valor dinámico real.
+  - Migración v4 automática en arranque (`migrateAndSanitizeStorage` en `extension.ts`): purga de forma transparente las claves zombi obsoletas de todas las cuentas guardadas en cualquier ordenador o dispositivo.
+- **Corrección Definitiva del Temporizador de Renovación al Refrescar Cuentas Individuales**:
+  - Enlazado `mergeBalancesPreservingResetTime` en `refreshSingleAccountBalance`: al pulsar el botón de recarga de una tarjeta individual, se conserva la fecha fija de renovación futura previamente calculada para modelos al 100%, evitando que la ventana deslizante relativa de Google reinicie la cuenta atrás de forma errática.
+- **Fijación Determinista del Tiempo de Renovación al Modelo Preferido**:
+  - El temporizador de cabecera de la tarjeta vincula su cálculo al `preferredModelData.resetTime`. Si todos los modelos están al 100%, se muestra la renovación del modelo preferido en lugar de tiempos aleatorios de modelos secundarios (como `gpt-oss-120b-medium`).
+- **Sincronización Total de la Barra de Estado**:
+  - La barra de estado en el pie del editor ahora refleja con precisión la cuota del modelo preferido activo (ej. `3.8 Flash (High): 7%`), en perfecta concordancia con lo que muestra la tarjeta del panel.
+
 ## [0.3.30] - 2026-10-20
 
 ### Fixed & Core Engine

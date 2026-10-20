@@ -186,6 +186,7 @@ export function getModelBalanceValue(balances: Record<string, any> | undefined, 
   const normalizedTarget = normalizeModelKey(targetKey).toLowerCase();
   const lowerTarget = targetKey.toLowerCase();
   
+  const candidateValues: Array<{ rawKey: string; value: number }> = [];
   for (const [k, v] of Object.entries(balances)) {
     if (!k) continue;
     const friendlyName = getFriendlyModelName(k);
@@ -199,82 +200,99 @@ export function getModelBalanceValue(balances: Record<string, any> | undefined, 
       k.toLowerCase().includes(normalizedTarget) ||
       normalizedTarget.includes(k.toLowerCase())
     ) {
+      const val = typeof v === 'object' && v !== null && 'value' in v
+        ? (typeof v.value === 'number' ? v.value : Number(v.value))
+        : (typeof v === 'number' ? v : Number(v));
+      candidateValues.push({ rawKey: k, value: isNaN(val) ? 0 : val });
+    }
+  }
+
+  if (candidateValues.length > 0) {
+    const canonical = candidateValues.find(c => c.rawKey.includes('tiered'));
+    if (canonical) return canonical.value;
+    return candidateValues[0].value;
+  }
+
+  // Handle Claude version match (e.g. Claude 5.5, Sonnet 5.5, Opus 5.5, Claude 4.6 (Thinking))
+if (normalizedTarget.includes('5.5') || lowerTarget.includes('5.5') || lowerTarget.includes('5-5')) {
+  const isSonnet = normalizedTarget.includes('sonnet') || lowerTarget.includes('sonnet');
+  const isOpus = normalizedTarget.includes('opus') || lowerTarget.includes('opus');
+  for (const [k, v] of Object.entries(balances)) {
+    if (!k) continue;
+    const lowerK = k.toLowerCase();
+    if ((lowerK.includes('5-5') || lowerK.includes('5.5')) && ((isSonnet && lowerK.includes('sonnet')) || (isOpus && lowerK.includes('opus')) || (!isSonnet && !isOpus && lowerK.includes('claude')))) {
       if (typeof v === 'object' && v !== null && 'value' in v) {
         return v.value;
       }
       return typeof v === 'number' ? v : Number(v);
     }
   }
+}
 
-  // Handle Claude version match (e.g. Claude 5.5, Sonnet 5.5, Opus 5.5, Claude 4.6 (Thinking))
-  if (normalizedTarget.includes('5.5') || lowerTarget.includes('5.5') || lowerTarget.includes('5-5')) {
-    const isSonnet = normalizedTarget.includes('sonnet') || lowerTarget.includes('sonnet');
-    const isOpus = normalizedTarget.includes('opus') || lowerTarget.includes('opus');
-    for (const [k, v] of Object.entries(balances)) {
-      if (!k) continue;
-      const lowerK = k.toLowerCase();
-      if ((lowerK.includes('5-5') || lowerK.includes('5.5')) && ((isSonnet && lowerK.includes('sonnet')) || (isOpus && lowerK.includes('opus')) || (!isSonnet && !isOpus && lowerK.includes('claude')))) {
-        if (typeof v === 'object' && v !== null && 'value' in v) {
-          return v.value;
-        }
-        return typeof v === 'number' ? v : Number(v);
+if (lowerTarget.startsWith('claude ') && lowerTarget.endsWith(' (thinking)')) {
+  const targetVersion = lowerTarget.replace('claude ', '').replace(' (thinking)', '');
+  for (const [k, v] of Object.entries(balances)) {
+    if (!k || !k.toLowerCase().includes('claude')) continue;
+    const friendlyName = getFriendlyModelName(k);
+    if (friendlyName && friendlyName.toLowerCase().includes(` ${targetVersion} `)) {
+      if (typeof v === 'object' && v !== null && 'value' in v) {
+        return v.value;
       }
+      return typeof v === 'number' ? v : Number(v);
     }
   }
+}
 
-  if (lowerTarget.startsWith('claude ') && lowerTarget.endsWith(' (thinking)')) {
-    const targetVersion = lowerTarget.replace('claude ', '').replace(' (thinking)', '');
-    for (const [k, v] of Object.entries(balances)) {
-      if (!k || !k.toLowerCase().includes('claude')) continue;
-      const friendlyName = getFriendlyModelName(k);
-      if (friendlyName && friendlyName.toLowerCase().includes(` ${targetVersion} `)) {
-        if (typeof v === 'object' && v !== null && 'value' in v) {
-          return v.value;
-        }
-        return typeof v === 'number' ? v : Number(v);
-      }
-    }
-  }
-
-  return -1;
+return -1;
 }
 
 export function getModelBalanceEntry(
-  balances: Record<string, any> | undefined,
-  targetKey: string
+balances: Record<string, any> | undefined,
+targetKey: string
 ): { key: string; value: number; resetTime?: string } | null {
-  if (!balances || !targetKey) return null;
-  const normalizedTarget = normalizeModelKey(targetKey).toLowerCase();
-  const lowerTarget = targetKey.toLowerCase();
+if (!balances || !targetKey) return null;
+const normalizedTarget = normalizeModelKey(targetKey).toLowerCase();
+const lowerTarget = targetKey.toLowerCase();
 
-  for (const [k, v] of Object.entries(balances)) {
-    if (!k) continue;
-    const friendlyName = getFriendlyModelName(k);
-    const normalizedK = normalizeModelKey(k);
+const candidates: Array<{ key: string; rawKey: string; value: number; resetTime?: string }> = [];
 
-    if (
-      (friendlyName && friendlyName.toLowerCase() === normalizedTarget) ||
-      (friendlyName && friendlyName.toLowerCase() === lowerTarget) ||
-      normalizedK.toLowerCase() === normalizedTarget ||
-      k.toLowerCase() === lowerTarget ||
-      k.toLowerCase().includes(normalizedTarget) ||
-      normalizedTarget.includes(k.toLowerCase())
-    ) {
-      let value = 0;
-      let resetTime: string | undefined;
-      if (typeof v === 'object' && v !== null && 'value' in v) {
-        value = typeof v.value === 'number' ? v.value : Number(v.value);
-        resetTime = v.resetTime;
-      } else {
-        value = typeof v === 'number' ? v : Number(v);
-      }
-      return {
-        key: friendlyName || normalizeModelKey(targetKey),
-        value: isNaN(value) ? 0 : value,
-        resetTime
-      };
+for (const [k, v] of Object.entries(balances)) {
+  if (!k) continue;
+  const friendlyName = getFriendlyModelName(k);
+  const normalizedK = normalizeModelKey(k);
+
+  if (
+    (friendlyName && friendlyName.toLowerCase() === normalizedTarget) ||
+    (friendlyName && friendlyName.toLowerCase() === lowerTarget) ||
+    normalizedK.toLowerCase() === normalizedTarget ||
+    k.toLowerCase() === lowerTarget ||
+    k.toLowerCase().includes(normalizedTarget) ||
+    normalizedTarget.includes(k.toLowerCase())
+  ) {
+    let value = 0;
+    let resetTime: string | undefined;
+    if (typeof v === 'object' && v !== null && 'value' in v) {
+      value = typeof v.value === 'number' ? v.value : Number(v.value);
+      resetTime = v.resetTime;
+    } else {
+      value = typeof v === 'number' ? v : Number(v);
     }
+    candidates.push({
+      key: friendlyName || normalizeModelKey(targetKey),
+      rawKey: k,
+      value: isNaN(value) ? 0 : value,
+      resetTime
+    });
   }
+}
+
+if (candidates.length > 0) {
+  const canonical = candidates.find(c => c.rawKey.includes('tiered'));
+  if (canonical) {
+    return { key: canonical.key, value: canonical.value, resetTime: canonical.resetTime };
+  }
+  return { key: candidates[0].key, value: candidates[0].value, resetTime: candidates[0].resetTime };
+}
 
   // Handle Claude version match (e.g. Claude 5.5, Sonnet 5.5, Opus 5.5)
   if (normalizedTarget.includes('5.5') || lowerTarget.includes('5.5') || lowerTarget.includes('5-5')) {

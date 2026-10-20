@@ -5791,7 +5791,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       for (const entry of afterLiteFilter) {
         const friendlyName = getFriendlyModelName(entry.key);
         if (friendlyName) {
-          if (!friendlyModelMap.has(friendlyName)) {
+          const existing = friendlyModelMap.get(friendlyName);
+          if (!existing) {
+            friendlyModelMap.set(friendlyName, { key: friendlyName, value: entry.value, resetTime: entry.resetTime });
+          } else if (entry.key.includes('tiered') && !existing.key.includes('tiered')) {
+            // Prioritize canonical 'tiered' model key over legacy alias
             friendlyModelMap.set(friendlyName, { key: friendlyName, value: entry.value, resetTime: entry.resetTime });
           }
         }
@@ -5855,40 +5859,52 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     // Determine the next reset time for countdown display in card header:
-    // Prioritize the soonest renewal among models that need recharge (< 100%).
-    // If all models are 100%, fall back to all models with resetTime so countdown is always visible.
+    // 1. If preferred model is set and has resetTime:
+    //    - If depleted (< 100%), it takes top priority so the user tracks when their active model is ready.
+    //    - If 100%, check if any other model is depleted (< 100%) and will recharge sooner.
+    //    - If all models are 100%, preferred model's own resetTime is the canonical countdown for the card.
     let nextResetTime: string | undefined = undefined;
-    let minDiffMs = Infinity;
-
-    const withReset = processedModels.filter(m => m.resetTime);
-    const depletedCandidates = withReset.filter(m => m.value < 100);
-    const targetPool = depletedCandidates.length > 0 ? depletedCandidates : withReset;
-
-    for (const m of targetPool) {
-      const date = new Date(m.resetTime!);
-      const time = date.getTime();
-      if (!isNaN(time)) {
-        const diffMs = time - Date.now();
-        const effDiff = diffMs <= 0 ? 0 : diffMs;
-        if (effDiff > 0 && effDiff < minDiffMs) {
-          minDiffMs = effDiff;
-          nextResetTime = m.resetTime;
-        }
-      }
-    }
+    const now = Date.now();
 
     if (preferredModelData && preferredModelData.resetTime) {
       const prefDate = new Date(preferredModelData.resetTime);
       const prefTime = prefDate.getTime();
-      if (!isNaN(prefTime)) {
-        const prefDiff = prefTime - Date.now();
-        const effPrefDiff = prefDiff <= 0 ? 0 : prefDiff;
+      if (!isNaN(prefTime) && prefTime > now) {
         if (preferredModelData.value < 100) {
-          if (effPrefDiff <= minDiffMs || minDiffMs === Infinity) {
-            nextResetTime = preferredModelData.resetTime;
-          }
-        } else if (!nextResetTime) {
           nextResetTime = preferredModelData.resetTime;
+        } else {
+          // If preferred model is 100%, see if another model is depleted (< 100%) and needs recharge sooner
+          const depletedWithReset = processedModels.filter(m => m.resetTime && m.value < 100);
+          let soonestDepletedTime = Infinity;
+          let soonestDepletedReset: string | undefined = undefined;
+          for (const m of depletedWithReset) {
+            const t = new Date(m.resetTime!).getTime();
+            if (!isNaN(t) && t > now && t < soonestDepletedTime) {
+              soonestDepletedTime = t;
+              soonestDepletedReset = m.resetTime;
+            }
+          }
+          nextResetTime = soonestDepletedReset || preferredModelData.resetTime;
+        }
+      }
+    }
+
+    // 2. Fallback: if no preferred model or preferred model has no future resetTime, check all models
+    if (!nextResetTime) {
+      const withReset = processedModels.filter(m => m.resetTime);
+      const depletedCandidates = withReset.filter(m => m.value < 100);
+      const targetPool = depletedCandidates.length > 0 ? depletedCandidates : withReset;
+      let minDiffMs = Infinity;
+
+      for (const m of targetPool) {
+        const date = new Date(m.resetTime!);
+        const time = date.getTime();
+        if (!isNaN(time) && time > now) {
+          const diffMs = time - now;
+          if (diffMs < minDiffMs) {
+            minDiffMs = diffMs;
+            nextResetTime = m.resetTime;
+          }
         }
       }
     }

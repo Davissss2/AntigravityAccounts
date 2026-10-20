@@ -16,7 +16,7 @@ import { Account, AccountPlan, AccountStatus } from '../../core/domain/models/ac
 import { ExtensionConfig } from '../../core/config/extension.config';
 import { generateDeviceProfile } from '../../core/domain/models/device-profile.model';
 import { isEmailMatch } from '../../core/utils/account.utils';
-import { getModelBalanceValue } from '../../core/utils/model.utils';
+import { getModelBalanceValue, getModelBalanceEntry } from '../../core/utils/model.utils';
 import { ApiClient } from '../../core/network/api.client';
 import { OAUTH, AUTH_PROVIDERS } from '../../core/constants/app.constants';
 import { ChatResumeUtils } from '../../core/utils/chat-resume.utils';
@@ -1007,16 +1007,27 @@ export class AccountService {
    * If a model is at 100% and already has a valid future resetTime, preserves the existing
    * resetTime so that clicking refresh does not jump the countdown back to 59 minutes due
    * to Google's dynamic relative "now + 7 days" window.
+   * Also purges legacy zombie aliases (e.g. 'gemini-3.8-flash-high') when canonical keys exist.
    */
   private mergeBalancesPreservingResetTime(
     oldBalances: Record<string, any>,
     freshBalances: Record<string, any>
   ): Record<string, any> {
-    const merged: Record<string, any> = { ...oldBalances, ...freshBalances };
+    const cleanedOld = { ...oldBalances };
+    // Purge zombie legacy aliases when canonical keys exist
+    if (freshBalances['gemini-3.8-flash-tiered'] || cleanedOld['gemini-3.8-flash-tiered']) {
+      delete cleanedOld['gemini-3.8-flash-high'];
+      delete cleanedOld['gemini-3.8-flash'];
+    }
+    if (freshBalances['gemini-3.8-flash-medium'] || cleanedOld['gemini-3.8-flash-medium']) {
+      delete cleanedOld['gemini-3.8-flash-med'];
+    }
+
+    const merged: Record<string, any> = { ...cleanedOld, ...freshBalances };
     const now = Date.now();
     for (const [key, freshEntry] of Object.entries(freshBalances)) {
       if (typeof freshEntry === 'object' && freshEntry !== null && freshEntry.value === 100) {
-        const oldEntry = oldBalances[key];
+        const oldEntry = cleanedOld[key];
         if (oldEntry && typeof oldEntry === 'object' && oldEntry.resetTime) {
           const oldTime = new Date(oldEntry.resetTime).getTime();
           // If the old resetTime is still valid and in the future, preserve it
@@ -1509,15 +1520,20 @@ export class AccountService {
     const preferredModel = await this.accountRepo.getPreferredModel();
     const status = await this.determineAccountStatus(balanceInfo, preferredModel);
 
+    const oldBalances = account.balances || {};
+    const mergedBalances = balanceInfo.isDepleted
+      ? balanceInfo.balances
+      : this.mergeBalancesPreservingResetTime(oldBalances, balanceInfo.balances);
+
     await this.accountRepo.updateAccount(email, {
-      balances: balanceInfo.balances,
+      balances: mergedBalances,
       plan: balanceInfo.plan !== AccountPlan.UNKNOWN ? balanceInfo.plan : account.plan,
       projectId: balanceInfo.projectId || account.projectId,
       status: status,
       lastRefreshedAt: new Date().toISOString()
     });
 
-    callbacks?.onDone?.(email, balanceInfo.balances, status);
+    callbacks?.onDone?.(email, mergedBalances, status);
 
     // Trigger low balance warning native notification if enabled
     if (config.isLowCreditNotificationsEnabled() && !balanceInfo.hasError) {

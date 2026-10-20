@@ -11,7 +11,7 @@ import { IAccountRepository } from '../../core/domain/repositories/account.repos
 import { I18nService } from '../../i18n/i18n.service';
 import { AccountStatus } from '../../core/domain/models/account.model';
 import { AccountService } from '../../features/accounts/account.service';
-import { getFriendlyModelName } from '../../core/utils/model.utils';
+import { getFriendlyModelName, getModelBalanceEntry } from '../../core/utils/model.utils';
 import { isEmailMatch } from '../../core/utils/account.utils';
 
 export class StatusBarProvider implements vscode.Disposable {
@@ -66,9 +66,20 @@ export class StatusBarProvider implements vscode.Disposable {
     // Apply the same filtering/exclusion pipeline used in the main UI
     const { models, credits } = this.filterBalances(activeAccount.balances);
 
+    const preferredModel = await this.accountRepo.getPreferredModel();
+    let preferredEntry: { key: string; value: number; resetTime?: string } | null = null;
+    if (preferredModel && activeAccount.balances) {
+      preferredEntry = getModelBalanceEntry(activeAccount.balances, preferredModel);
+    }
+
     // Build short credits text for the status bar
     let creditsText = '?';
-    if (models.length > 0 || credits.length > 0) {
+    if (preferredEntry) {
+      creditsText = `${preferredEntry.key}: ${preferredEntry.value}%`;
+      if (credits.length > 0) {
+        creditsText += ` | 💳 ${credits.map(c => c.value).join('/')}`;
+      }
+    } else if (models.length > 0 || credits.length > 0) {
       const allValues = [
         ...credits.map(c => c.value),
         ...models.map(m => m.value),
@@ -137,6 +148,7 @@ export class StatusBarProvider implements vscode.Disposable {
       if (typeof rawV === 'object' && rawV !== null && 'value' in rawV) {
         // Model entry (from fetchAvailableModels)
         allModelEntries.push({ key: k, lowerKey, value: rawV.value, resetTime: rawV.resetTime });
+      } else {
         // Credit entry (plain number)
         const value = typeof rawV === 'number' ? rawV : Number(rawV);
         if (value > 0) {
@@ -163,7 +175,10 @@ export class StatusBarProvider implements vscode.Disposable {
     for (const m of afterLiteFilter) {
       const friendlyName = getFriendlyModelName(m.key);
       if (friendlyName) {
-        if (!friendlyModelMap.has(friendlyName)) {
+        const existing = friendlyModelMap.get(friendlyName);
+        if (!existing) {
+          friendlyModelMap.set(friendlyName, { key: friendlyName, value: m.value, resetTime: m.resetTime });
+        } else if (m.key.includes('tiered') && !existing.key.includes('tiered')) {
           friendlyModelMap.set(friendlyName, { key: friendlyName, value: m.value, resetTime: m.resetTime });
         }
       }

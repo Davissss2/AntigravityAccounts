@@ -657,7 +657,7 @@ async function migrateAndSanitizeStorage(context: vscode.ExtensionContext): Prom
     const globalState = context.globalState;
     const secrets = context.secrets;
 
-    const MIGRATION_FLAG = 'antigravityAccount.storageMigration_v2_done';
+    const MIGRATION_FLAG = 'antigravityAccount.storageMigration_v4_done';
     if (globalState.get<boolean>(MIGRATION_FLAG, false)) {
       logger.debug('Storage migration already completed, skipping secret scan.');
       return;
@@ -694,6 +694,25 @@ async function migrateAndSanitizeStorage(context: vscode.ExtensionContext): Prom
       logger.info(`Detected typo in active account config: "${activeAccount}". Correcting to "${newActive}"`);
       activeAccount = newActive;
       globalState.update('antigravity.accounts.active', activeAccount);
+    }
+
+    // Step C: Sanitize model balance zombie keys across all stored accounts
+    for (const acc of sanitizedAccounts) {
+      if (acc.balances) {
+        if (acc.balances['gemini-3.8-flash-tiered']) {
+          if (acc.balances['gemini-3.8-flash-high'] || acc.balances['gemini-3.8-flash']) {
+            delete acc.balances['gemini-3.8-flash-high'];
+            delete acc.balances['gemini-3.8-flash'];
+            accountsModified = true;
+          }
+        }
+        if (acc.balances['gemini-3.8-flash-medium']) {
+          if (acc.balances['gemini-3.8-flash-med']) {
+            delete acc.balances['gemini-3.8-flash-med'];
+            accountsModified = true;
+          }
+        }
+      }
     }
 
     if (accountsModified) {
