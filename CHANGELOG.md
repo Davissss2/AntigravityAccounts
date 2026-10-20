@@ -5,6 +5,18 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.28] - 2026-10-20
+
+### Fixed & Core Engine
+- **Corrección Definitiva del Scroll y Desincronización del Ratón (UI/UX)**:
+  - Eliminado `content-visibility: auto` y `contain-intrinsic-size: auto 140px` en `.account-card`. Esta optimización rompía la proporcionalidad de la barra de desplazamiento en Chromium, haciendo que el ratón se desplazara al fondo mientras el scrollbar se quedaba desfasado arriba.
+  - Añadido `overflow-x: hidden` y `max-width: 100vw` en `html` y `body`, suprimiendo la barra horizontal parásita inferior.
+- **Monitoreo Reactivo y Rápido de Cuota Activa en Uso**:
+  - Reducido el intervalo de sondeo de la cuenta activa en `extension.ts` (15s normal, 10s en uso y 6s en cuota baja) y reducido el throttle en `account.service.ts` a 8 segundos (5 segundos en crítico).
+  - Refresco rápido forzado al enfocar la ventana del IDE (`onDidChangeWindowState`), manteniendo la cuota actualizada mientras se chatea o programa.
+- **Detección de la Próxima Renovación Real más Cercana**:
+  - En `renderAccountCard`, el temporizador de cabecera evalúa la fecha de recarga más cercana (`minDiffMs`) entre los modelos consumidos. Si una cuenta tiene modelos que recargan en pocas horas (ej. 6.3 horas), la tarjeta refleja esa recarga inmediata en lugar de saltar a la ventana semanal de 7 días.
+
 ## [0.3.27] - 2026-10-20
 
 ### Fixed & Core Engine

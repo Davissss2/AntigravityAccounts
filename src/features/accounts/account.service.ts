@@ -910,11 +910,8 @@ export class AccountService {
     const preferredModel = await this.accountRepo.getPreferredModel();
     const currentQuota = this.getAccountUsableQuotaPercentage(account, preferredModel);
 
-    // Dynamic throttle:
-    // When quota is <= 10%, throttle allows rapid checks every 8 seconds without hitting Google rate limits.
-    // When quota is <= 25%, throttle allows checks every 15 seconds.
-    // Otherwise throttle requires 25 seconds between background requests.
-    const minThrottleMs = (config.isAdaptiveQuotaPollingEnabled() && currentQuota <= 10) ? 8_000 : (currentQuota <= 25 ? 15_000 : 25_000);
+    // Dynamic throttle: responsive updates without hitting rate limits
+    const minThrottleMs = (config.isAdaptiveQuotaPollingEnabled() && currentQuota <= 15) ? 5_000 : 8_000;
     if (!force && (now - this._lastActiveQuotaCheckTime < minThrottleMs)) {
       return account;
     }

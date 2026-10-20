@@ -229,20 +229,20 @@ function registerCommands(
         const quota = activeAccount ? accountService.getAccountUsableQuotaPercentage(activeAccount, preferredModel) : 100;
 
         // Dynamic interval:
-        // - Critical (<= 10%): Poll every 8s to catch depletion immediately without rate limiting
-        // - Low (<= 25%): Poll every 20s
-        // - Normal (> 25%): Respect user setting (default: 45s)
-        let dynamicIntervalSec = 45;
+        // - Critical (<= 15%): Poll every 6s to catch depletion immediately
+        // - In-use / Medium (<= 50%): Poll every 10s
+        // - Normal (> 50%): Poll every 15s (fast and responsive)
+        let dynamicIntervalSec = 15;
         if (config.isAdaptiveQuotaPollingEnabled()) {
-          if (quota <= 10) {
-            dynamicIntervalSec = 8;
-          } else if (quota <= 25) {
-            dynamicIntervalSec = 20;
+          if (quota <= 15) {
+            dynamicIntervalSec = 6;
+          } else if (quota <= 50) {
+            dynamicIntervalSec = 10;
           } else {
-            dynamicIntervalSec = Math.max(25, config.getActiveQuotaRefreshIntervalSeconds());
+            dynamicIntervalSec = Math.min(15, config.getActiveQuotaRefreshIntervalSeconds());
           }
         } else {
-          dynamicIntervalSec = Math.max(15, config.getActiveQuotaRefreshIntervalSeconds());
+          dynamicIntervalSec = Math.min(15, config.getActiveQuotaRefreshIntervalSeconds());
         }
 
         const intervalMs = dynamicIntervalSec * 1000;
@@ -258,22 +258,17 @@ function registerCommands(
     } catch (e) {
       // ignore
     }
-  }, 4000); // Check every 4 seconds for responsive updates
+  }, 3000); // Check every 3 seconds for responsive updates
 
-  // Responsive trigger: refresh active quota on window focus if remaining quota is low (<= 15%)
+  // Responsive trigger: refresh active quota on window focus
   context.subscriptions.push(
     vscode.window.onDidChangeWindowState(async (state) => {
       if (state.focused) {
         const currentActive = await accountService.getActiveAntigravityEmail();
         if (currentActive) {
-          const activeAccount = await accountRepo.getAccount(currentActive);
-          if (activeAccount) {
-            const preferredModel = await accountRepo.getPreferredModel();
-            const quota = accountService.getAccountUsableQuotaPercentage(activeAccount, preferredModel);
-            if (quota <= 15 && (Date.now() - lastActiveBalanceCheckTime >= 8000)) {
-              lastActiveBalanceCheckTime = Date.now();
-              accountService.refreshActiveAccountFast(false).catch(() => {});
-            }
+          if (Date.now() - lastActiveBalanceCheckTime >= 4000) {
+            lastActiveBalanceCheckTime = Date.now();
+            accountService.refreshActiveAccountFast(true).catch(() => {});
           }
         }
       }

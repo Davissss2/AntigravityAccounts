@@ -2042,6 +2042,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             background: var(--vscode-scrollbarSlider-hoverBackground, rgba(128, 128, 128, 0.45));
           }
 
+          html, body {
+            overflow-x: hidden;
+            max-width: 100vw;
+          }
+
           body {
             padding: 12px;
             background-color: var(--background-dark);
@@ -2136,8 +2141,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           .account-card {
-            content-visibility: auto;
-            contain-intrinsic-size: auto 140px;
             background: var(--surface-color);
             border: 1px solid var(--border-color);
             border-radius: 12px;
@@ -5887,29 +5890,42 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     // Determine the next reset time for countdown display in card header:
-    // Determine the next reset time for countdown display in card header:
-    // 1. If preferred model is set and has resetTime, use it unconditionally
+    // Prioritize the soonest renewal among models that need recharge (< 100%).
+    // If an account recharges in 6.3 hours, the user will see that earliest recharge!
     let nextResetTime: string | undefined = undefined;
     let minDiffMs = Infinity;
 
-    if (preferredModelData && preferredModelData.resetTime) {
-      nextResetTime = preferredModelData.resetTime;
-    } else {
-      // 2. Otherwise find the earliest resetTime among available models (preferring models < 100%)
-      const withReset = processedModels.filter(m => m.resetTime);
-      const candidates = withReset.filter(m => m.value < 100);
-      const targetPool = candidates.length > 0 ? candidates : withReset;
+    // 1. Search across processedModels for the earliest renewal (preferring models < 100%)
+    const withReset = processedModels.filter(m => m.resetTime);
+    const depletedCandidates = withReset.filter(m => m.value < 100);
+    const targetPool = depletedCandidates.length > 0 ? depletedCandidates : withReset;
 
-      for (const m of targetPool) {
-        const date = new Date(m.resetTime!);
-        const time = date.getTime();
-        if (!isNaN(time)) {
-          const diffMs = time - Date.now();
-          const effDiff = diffMs <= 0 ? 0 : diffMs;
-          if (effDiff < minDiffMs) {
-            minDiffMs = effDiff;
-            nextResetTime = m.resetTime;
+    for (const m of targetPool) {
+      const date = new Date(m.resetTime!);
+      const time = date.getTime();
+      if (!isNaN(time)) {
+        const diffMs = time - Date.now();
+        const effDiff = diffMs <= 0 ? 0 : diffMs;
+        if (effDiff > 0 && effDiff < minDiffMs) {
+          minDiffMs = effDiff;
+          nextResetTime = m.resetTime;
+        }
+      }
+    }
+
+    // 2. If preferred model is set and also recharges soon, or if no other model was found
+    if (preferredModelData && preferredModelData.resetTime) {
+      const prefDate = new Date(preferredModelData.resetTime);
+      const prefTime = prefDate.getTime();
+      if (!isNaN(prefTime)) {
+        const prefDiff = prefTime - Date.now();
+        const effPrefDiff = prefDiff <= 0 ? 0 : prefDiff;
+        if (preferredModelData.value < 100) {
+          if (effPrefDiff <= minDiffMs || minDiffMs === Infinity) {
+            nextResetTime = preferredModelData.resetTime;
           }
+        } else if (!nextResetTime) {
+          nextResetTime = preferredModelData.resetTime;
         }
       }
     }
