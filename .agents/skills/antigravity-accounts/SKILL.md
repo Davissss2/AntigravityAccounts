@@ -100,3 +100,53 @@ Antigravity mantiene la base de datos `state.vscdb` en memoria y sobreescribe el
 - **Motivo**: Los sistemas heurísticos de abuso de Google detectan patrones masivos de creación a partir de ese umbral y proceden a suspender o solicitar verificación inmediata en las cuentas nuevas.
 - Mantener un pool de 70 a 78 cuentas activas garantiza rotación continua y máxima vida útil sin bloqueos.
 - Se recomienda no abusar del botón de "Refrescar todas las cuentas" manualmente y dejar que el sistema opere con las cuotas cacheadas.
+
+---
+
+## 7. Lecciones Técnicas, Ingeniería Inversa de Antigravity Core y Prevención de Errores
+
+### 7.1. Ingeniería Inversa de la Resolución de Endpoints en Antigravity IDE (`out/main.js`)
+Mediante herramientas de ingeniería inversa (REA) sobre el código empaquetado del IDE (`C:\Users\Usuario\AppData\Local\Programs\Antigravity IDE\resources\app\out\main.js`), se extrajo la función canónica de selección de endpoints (`NAl`):
+```javascript
+function NAl({ isDevMode: e, isGoogleInternal: t, isGcpTos: r, isTierGCPTos: n, cloudCodeUrlOverride: i }) {
+  return i || (t && e ? Zis : t ? Dis : r || n === true || n === undefined ? Gis : Uis);
+}
+// Zis = "https://autopush-cloudcode-pa.sandbox.googleapis.com"
+// Dis = "https://preprod-daily-cloudcode-pa.sandbox.googleapis.com"
+// Gis = "https://cloudcode-pa.googleapis.com" (PRODUCCIÓN)
+// Uis = "https://daily-cloudcode-pa.googleapis.com" (DAILY / PERSONAL SIN GCP TOS)
+```
+
+**Regla de Oro:**
+- Cuentas de usuario particulares sin acuerdos comerciales GCP ToS (`isGcpTos === false`) deben consultar obligatoriamente `https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels`.
+- El endpoint de producción `cloudcode-pa.googleapis.com` devuelve de forma estática `remainingFraction: 1` (100%) para todos los modelos en cuentas personales, falseando por completo el saldo real.
+
+### 7.2. El Problema de las Claves Zombi (`gemini-3.8-flash-high` vs `gemini-3.8-flash-tiered`)
+- **Causa Raíz de la Discrepancia (Tarjeta en 100% vs Barra Inferior en 4% o 7%)**:
+  1. Google PA **nunca** devuelve la clave `gemini-3.8-flash-high`. La clave canónica devuelta por Google es `gemini-3.8-flash-tiered`.
+  2. En versiones anteriores de la extensión existía el alias `gemini-3.8-flash-high` guardado en `account.balances` dentro de SQLite (`state.vscdb`).
+  3. Cuando se actualizaba la cuenta desde `daily-cloudcode-pa`, Google inyectaba `gemini-3.8-flash-tiered: 4`, pero al hacer spread de balances antiguos (`...oldBalances`), la clave `gemini-3.8-flash-high: 100` permanecía almacenada indefinidamente.
+  4. En `model.utils.ts`, ambas claves mapeaban al nombre amigable `"3.8 Flash (High)"`. Al recorrer `Object.entries(balances)`, `gemini-3.8-flash-high` aparecía primero en el orden de iteración y devolvía 100% de inmediato.
+  5. En el webview, `friendlyModelMap` registraba primero `gemini-3.8-flash-high` (100%) y descartaba silenciosamente `gemini-3.8-flash-tiered` (4%).
+- **Solución Implementada**:
+  - `model.utils.ts` (`getModelBalanceValue` y `getModelBalanceEntry`): recopila todas las coincidencias del modelo y prioriza estrictamente las claves canónicas con sufijo `-tiered` sobre alias heredados (`-high`, `-med`).
+  - `accounts-webview.provider.ts` y `status-bar.provider.ts`: deduplicación activa por nombre amigable donde la clave `-tiered` sobrescribe cualquier alias previo.
+  - `account.service.ts`: `mergeBalancesPreservingResetTime` purga de forma destructiva las claves `gemini-3.8-flash-high` y `gemini-3.8-flash` cuando la clave `-tiered` existe en balances nuevos o antiguos.
+  - `extension.ts`: Migración automática de almacenamiento v4 (`storageMigration_v4_done`) que limpia en el arranque de la extensión todas las cuentas persistidas en cualquier equipo o instalación.
+
+### 7.3. Causa y Solución del Temporizador que se Resetea a 59 Minutos al Refrescar
+- **Causa 1 (Omisión de Merge en Refresco Individual)**:
+  - En `account.service.ts`, `refreshBalancesWorkflow` utilizaba `mergeBalancesPreservingResetTime`, pero `refreshSingleAccountBalance` (el botón de refresco individual de cada tarjeta) guardaba directamente `balances: balanceInfo.balances`.
+  - Google devuelve una ventana dinámica relativa de `now + 7 days` para cuentas al 100%. Al pulsar el botón manual de refresco, Google recalculaba la fecha con respecto al segundo exacto de la petición, reseteando la cuenta atrás del usuario a 59 minutos.
+  - **Solución**: `refreshSingleAccountBalance` invoca siempre `this.mergeBalancesPreservingResetTime(oldBalances, balanceInfo.balances)` para retener el ciclo original si el saldo se mantiene al 100%.
+- **Causa 2 (Competencia Desordenada de Modelos en la Cabecera de la Tarjeta)**:
+  - En `accounts-webview.provider.ts`, la variable `nextResetTime` se calculaba buscando la diferencia mínima (`minDiffMs`) sobre todos los modelos devueltos por Google.
+  - Modelos terciarios como `gpt-oss-120b-medium` devolvían timestamps ligeramente desfasados con respecto al modelo preferido, monopolizando el contador y provocando saltos bruscos.
+  - **Solución**: Si hay un modelo preferido (`preferredModelData`) con `resetTime` en el futuro:
+    1. Si está consumido (`< 100%`), su tiempo es la máxima prioridad.
+    2. Si está al 100%, solo se cede la cabecera si otro modelo consumido recarga antes. Si todos están al 100%, la cabecera muestra determinísticamente la renovación del modelo preferido.
+
+### 7.4. Barra de Estado Sincronizada y Multiplataforma
+- **Barra de Estado**: Antes mostraba una cadena ilegible de 10 porcentajes sin contexto (`💰 100/100/100/100/4/4`). Ahora lee `getModelBalanceEntry` para el modelo preferido y muestra `$(hubot) [Alias] | 💰 [Modelo]: [X]%`, garantizando coincidencia al 100% con la tarjeta del webview.
+- **Empaquetado Multiplataforma**: Generar siempre paquetes universales mediante `npx -y @vscode/vsce package` (`antigravity-account-X.X.X.vsix`) sin la bandera `--target win32-x64` para permitir la instalación directa en Ubuntu, Debian, macOS (ARM64/x64) y Windows.
+
