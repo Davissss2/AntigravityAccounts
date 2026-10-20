@@ -5,6 +5,16 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.27] - 2026-10-20
+
+### Fixed & Core Engine
+- **Restauración del Endpoint de Cuotas Vivas Dinámicas (daily-cloudcode-pa)**:
+  - Reestablecido `daily-cloudcode-pa.googleapis.com` como endpoint primario en `FETCH_MODELS_URLS`. Se comprobó empíricamente que `cloudcode-pa.googleapis.com` devuelve cuotas ficticias estáticas al 100% (`remainingFraction: 1`), mientras que `daily-cloudcode-pa` responde en ~300ms con las cuotas reales y dinámicas de uso.
+  - Ajustado el timeout a 3500ms en `tryFetchAvailableModels` para evitar caídas innecesarias a fallback.
+- **Visualización Incondicional del Tiempo de Renovación**:
+  - Eliminada la restricción que ocultaba el contador de renovación cuando el porcentaje marcaba 100%, restaurando la visualización del tiempo de reseteo (`resetTime`) del modelo preferido en la cabecera de cada tarjeta.
+  - Si no hay modelo preferido con reseteo, busca automáticamente el siguiente modelo con fecha de renovación válida.
+
 ## [0.3.26] - 2026-10-20
 
 ### Fixed & Core Engine

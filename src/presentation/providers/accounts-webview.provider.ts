@@ -5538,10 +5538,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const getAccountNextRegenTime = (acc: any): number => {
       if (!acc.balances) return Infinity;
 
-      // 1. If preferred model is set and has resetTime AND its quota is depleted/used (< 100)
+      // 1. If preferred model is set and has resetTime, use it as primary renewal time
       if (effectivePreferred) {
         const prefEntry = getModelBalanceEntry(acc.balances, effectivePreferred);
-        if (prefEntry && prefEntry.resetTime && prefEntry.value < 100) {
+        if (prefEntry && prefEntry.resetTime) {
           const date = new Date(prefEntry.resetTime);
           const time = date.getTime();
           if (!isNaN(time)) {
@@ -5887,16 +5887,20 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     // Determine the next reset time for countdown display in card header:
-    // 1. If preferred model is set, has resetTime, and is used/depleted (< 100%), prioritize it strictly
+    // Determine the next reset time for countdown display in card header:
+    // 1. If preferred model is set and has resetTime, use it unconditionally
     let nextResetTime: string | undefined = undefined;
     let minDiffMs = Infinity;
 
-    if (preferredModelData && preferredModelData.resetTime && preferredModelData.value < 100) {
+    if (preferredModelData && preferredModelData.resetTime) {
       nextResetTime = preferredModelData.resetTime;
     } else {
-      // 2. Otherwise find the earliest resetTime among models that actually need renewal (< 100%)
-      const candidates = processedModels.filter(m => m.resetTime && m.value < 100);
-      for (const m of candidates) {
+      // 2. Otherwise find the earliest resetTime among available models (preferring models < 100%)
+      const withReset = processedModels.filter(m => m.resetTime);
+      const candidates = withReset.filter(m => m.value < 100);
+      const targetPool = candidates.length > 0 ? candidates : withReset;
+
+      for (const m of targetPool) {
         const date = new Date(m.resetTime!);
         const time = date.getTime();
         if (!isNaN(time)) {

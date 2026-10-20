@@ -259,7 +259,7 @@ export class BalanceService {
       if (signal?.aborted) return balances;
       try {
         Logger.getInstance().debug(`Attempting fetchAvailableModels at ${url} with project ${effectiveProject}...`);
-        const timeoutMs = url.includes('daily') ? 2500 : 4500;
+        const timeoutMs = url.includes('daily') ? 3500 : 4500;
         const data = await ApiClient.request<any>(url, {
           method: 'POST',
           body,
