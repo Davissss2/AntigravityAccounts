@@ -242,7 +242,7 @@
     "accountAddedErrorBalance": "계정 {{email}}이 추가되었으나 크레딧 조회가 실패했습니다. 나중에 다시 시도합니다.",
     "accountAddedSuccess": "계정 {{email}}이 성공적으로 추가되었습니다. 크레딧: [{{balances}}]",
     "accountAddError": "계정 추가 오류: {{error}}",
-    "missingLoginData": "{{email}}의 로그인 정보가 없습니다. 삭제 후 다시 추가하세요.",
+    "missingLoginData": "{{email}}의 로그인 정보가 없습니다. 접근을 복구하려면 다시 로그인하세요.",
     "sessionExpiredFailed": "{{email}}의 세션이 만료되었습니다. 다시 로그인하세요.",
     "refreshInProgress": "⏳ 크레딧 새로고침이 이미 진행 중입니다...",
     "refreshCooldown": "⏳ 다시 새로고침하기 전에 {{seconds}}초 기다려 주세요.",

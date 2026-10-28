@@ -265,7 +265,7 @@
     "accountAddedErrorBalance": "Cuenta {{email}} agregada, pero falló al obtener el saldo. Se reintentará más tarde.",
     "accountAddedSuccess": "Cuenta {{email}} agregada con éxito. Saldos: [{{balances}}]",
     "accountAddError": "Error al agregar la cuenta: {{error}}",
-    "missingLoginData": "Faltan los datos de inicio de sesión para {{email}}. Elimínala y agrégala de nuevo.",
+    "missingLoginData": "Faltan los datos de inicio de sesión para {{email}}. Es necesario volver a iniciar sesión para restaurar el acceso.",
     "sessionExpiredFailed": "La sesión para {{email}} expiró y no se pudo renovar. Vuelve a iniciar sesión.",
     "refreshInProgress": "⏳ La actualización de saldos ya está en progreso...",
     "refreshCooldown": "⏳ Espera {{seconds}} segundos antes de volver a actualizar.",

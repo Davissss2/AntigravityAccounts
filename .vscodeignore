@@ -12,3 +12,21 @@ antigravity-backup.json
 security-tips.md
 last-rep.md
 chaaaange.txt
+
+# Dependencies are bundled into dist/extension.js; sql.js is copied into dist/ by
+# scripts/build.js. Keeping the list explicit makes `vsce package` fast and
+# independent of how npm resolved the dependency tree.
+node_modules/**
+!node_modules/sql.js/dist/sql-wasm.js
+!node_modules/sql.js/dist/sql-wasm.wasm
+
+# Local investigation artefacts and tooling, never part of the extension.
+scratch/**
+scripts/**
+.agents/**
+.GitHub/**
+.git/**
+tests/**
+coverage/**
+*.log
+.journal

@@ -265,7 +265,7 @@
     "accountAddedErrorBalance": "Account {{email}} added, but fetching balance failed. Will retry later.",
     "accountAddedSuccess": "Account {{email}} added successfully. Balances: [{{balances}}]",
     "accountAddError": "Error adding account: {{error}}",
-    "missingLoginData": "Login data for {{email}} is missing. Please remove and add it again.",
+    "missingLoginData": "Login data for {{email}} is missing. A new Google sign-in is required to restore access.",
     "sessionExpiredFailed": "Session for {{email}} expired and failed to renew. Please re-authenticate.",
     "refreshInProgress": "⏳ Balance refresh is already in progress...",
     "refreshCooldown": "⏳ Please wait {{seconds}} seconds before refreshing again.",

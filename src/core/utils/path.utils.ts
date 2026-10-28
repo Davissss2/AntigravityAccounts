@@ -84,4 +84,48 @@ export class PathUtils {
   static getStorageJsonPath(context?: vscode.ExtensionContext): string {
     return path.join(this.getAntigravityDataPath(context), 'storage.json');
   }
+
+  /**
+   * Gets the path to the Chromium Service Worker cache directory in Antigravity's profile.
+   */
+  static getServiceWorkerPath(context?: vscode.ExtensionContext): string {
+    return path.join(this.getAntigravityDataPath(context), 'Service Worker');
+  }
+
+  /**
+   * Self-healing utility: clears stale LevelDB lock files left behind by unclean terminations
+   * to prevent InvalidStateError: Failed to register a ServiceWorker.
+   */
+  static repairServiceWorkerIfCorrupted(context?: vscode.ExtensionContext): void {
+    try {
+      const swPath = this.getServiceWorkerPath(context);
+      const dbPath = path.join(swPath, 'Database');
+      const lockPath = path.join(dbPath, 'LOCK');
+
+      if (fs.existsSync(lockPath)) {
+        try {
+          const fd = fs.openSync(lockPath, 'r+');
+          fs.closeSync(fd);
+          fs.unlinkSync(lockPath);
+        } catch {}
+      }
+
+      // Check for corrupted zero-byte LevelDB LOG file caused by abrupt terminations
+      const logFilePath = path.join(dbPath, 'LOG');
+      if (fs.existsSync(logFilePath)) {
+        try {
+          const stats = fs.statSync(logFilePath);
+          if (stats.size === 0) {
+            // LevelDB is corrupted with zero-byte LOG. Remove corrupted log files so Chromium heals itself cleanly.
+            fs.unlinkSync(logFilePath);
+            const oldLog = path.join(dbPath, 'LOG.old');
+            if (fs.existsSync(oldLog)) fs.unlinkSync(oldLog);
+          }
+        } catch {}
+      }
+    } catch {
+      // Best-effort silent check
+    }
+  }
 }
+

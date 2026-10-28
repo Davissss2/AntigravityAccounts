@@ -242,7 +242,7 @@
     "accountAddedErrorBalance": "アカウント {{email}} を追加しましたが、残高の取得に失敗しました。後で再試行します。",
     "accountAddedSuccess": "アカウント {{email}} を正常に追加しました。残高: [{{balances}}]",
     "accountAddError": "アカウント追加エラー: {{error}}",
-    "missingLoginData": "{{email}} のログイン情報が見つかりません。削除して再度追加してください。",
+    "missingLoginData": "{{email}} のログイン情報が見つかりません。アクセスを復元するには再度ログインしてください。",
     "sessionExpiredFailed": "{{email}} のセッションが期限切れです。再ログインしてください。",
     "refreshInProgress": "⏳ 残高の更新が既に進行中です...",
     "refreshCooldown": "⏳ 次の更新まで {{seconds}} 秒お待ちください。",

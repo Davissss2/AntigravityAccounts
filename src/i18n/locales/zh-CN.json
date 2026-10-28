@@ -242,7 +242,7 @@
     "accountAddedErrorBalance": "已添加账号 {{email}}，但获取余额失败，稍后将重试。",
     "accountAddedSuccess": "成功添加账号 {{email}}。余额: [{{balances}}]",
     "accountAddError": "添加账号出错：{{error}}",
-    "missingLoginData": "{{email}} 的登录数据丢失，请删除并重新添加。",
+    "missingLoginData": "{{email}} 的登录数据丢失，需要重新登录以恢复访问。",
     "sessionExpiredFailed": "{{email}} 的会话已过期且无法自动续期，请重新登录。",
     "refreshInProgress": "⏳ 正在刷新余额中...",
     "refreshCooldown": "⏳ 请等待 {{seconds}} 秒后再刷新。",

@@ -2,7 +2,7 @@
   "name": "antigravity-account",
   "displayName": "Antigravity Account",
   "description": "Manage multiple Antigravity accounts seamlessly - switch, monitor credits, and auto-rotate with one click.",
-  "version": "0.3.31",
+  "version": "0.3.48",
   "publisher": "Davissss2",
   "author": {
     "name": "Davissss2",
@@ -118,6 +118,11 @@
       {
         "command": "antigravity-account.reconcileAccounts",
         "title": "Reconcile Orphaned Accounts",
+        "category": "Antigravity Account"
+      },
+      {
+        "command": "antigravity-account.repairWebview",
+        "title": "Repair Webview / Service Worker",
         "category": "Antigravity Account"
       },
       {

@@ -15,6 +15,42 @@ function copyTheme() {
   }
 }
 
+function copySqlJs() {
+  try {
+    fs.mkdirSync('dist', { recursive: true });
+    const sqlWasmJs = path.join(__dirname, '..', 'node_modules', 'sql.js', 'dist', 'sql-wasm.js');
+    const sqlWasmBinary = path.join(__dirname, '..', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
+    if (fs.existsSync(sqlWasmJs)) {
+      fs.copyFileSync(sqlWasmJs, 'dist/sql-wasm.js');
+      console.log('Copied sql-wasm.js to dist/sql-wasm.js');
+    }
+    if (fs.existsSync(sqlWasmBinary)) {
+      fs.copyFileSync(sqlWasmBinary, 'dist/sql-wasm.wasm');
+      console.log('Copied sql-wasm.wasm to dist/sql-wasm.wasm');
+    }
+  } catch (err) {
+    console.error('Failed to copy sql.js files:', err.message);
+  }
+}
+
+/**
+ * Ships the Windows Credential Manager helper next to the worker. The agent
+ * (agy.exe --hub) authenticates with the "gemini:antigravity" generic credential,
+ * so switching accounts has to update that credential as well.
+ */
+function copyCredentialHelper() {
+  try {
+    fs.mkdirSync('dist', { recursive: true });
+    const src = path.join(__dirname, '..', 'src', 'infrastructure', 'storage', 'write-cred.ps1');
+    if (fs.existsSync(src)) {
+      fs.copyFileSync(src, 'dist/write-cred.ps1');
+      console.log('Copied write-cred.ps1 to dist/write-cred.ps1');
+    }
+  } catch (err) {
+    console.error('Failed to copy credential helper:', err.message);
+  }
+}
+
 function syncToIDE() {
   try {
     const pkgPath = path.join(__dirname, '..', 'package.json');
@@ -56,6 +92,15 @@ function syncToIDE() {
 
       fs.mkdirSync(targetDistDir, { recursive: true });
       fs.copyFileSync('dist/extension.js', path.join(targetDistDir, 'extension.js'));
+      if (fs.existsSync('dist/sql-wasm.js')) {
+        fs.copyFileSync('dist/sql-wasm.js', path.join(targetDistDir, 'sql-wasm.js'));
+      }
+      if (fs.existsSync('dist/sql-wasm.wasm')) {
+        fs.copyFileSync('dist/sql-wasm.wasm', path.join(targetDistDir, 'sql-wasm.wasm'));
+      }
+      if (fs.existsSync('dist/write-cred.ps1')) {
+        fs.copyFileSync('dist/write-cred.ps1', path.join(targetDistDir, 'write-cred.ps1'));
+      }
       
       fs.mkdirSync(targetThemeDir, { recursive: true });
       fs.copyFileSync('dist/presentation/theme/global.css', path.join(targetThemeDir, 'global.css'));
@@ -82,7 +127,9 @@ const syncPlugin = {
   setup(build) {
     build.onEnd(result => {
       if (result.errors.length === 0) {
+        copySqlJs();
         copyTheme();
+        copyCredentialHelper();
         syncToIDE();
         console.log('Build output generated and synchronized.');
       } else {

@@ -28,6 +28,10 @@ export class AccountService {
 
   /** Guard to prevent multiple simultaneous account switches */
   private _isSwitching: boolean = false;
+  /** Timestamp of the current refresh cycle start, used to detect a dead lock */
+  private _refreshStartedAt: number = 0;
+  /** A refresh running for longer than this is considered dead and is released */
+  private static readonly STALE_REFRESH_MS = 10 * 60_000;
   /** Timestamp of the last fast quota check for the active account */
   private _lastActiveQuotaCheckTime: number = 0;
 
@@ -55,6 +59,13 @@ export class AccountService {
   private _queuedTimeout: NodeJS.Timeout | null = null;
   /** Last email notified for native vs injected mismatch */
   private _lastNotifiedMismatchEmail: string | null = null;
+  /**
+   * Access-token owner cache (token tail -> Google account). Owners do not change for
+   * the lifetime of a token, so caching keeps the identity guard cheap enough to run
+   * on every refresh instead of only on account switches.
+   */
+  private _tokenOwnerCache = new Map<string, { owner: string; at: number }>();
+  private static readonly TOKEN_OWNER_CACHE_MS = 30 * 60_000;
 
   constructor(
     private authService: AuthService,
@@ -214,7 +225,14 @@ export class AccountService {
 
     let tokens = await this.accountRepo.getTokens(email);
     if (!tokens) {
-      vscode.window.showErrorMessage(i18n.t('service.missingLoginData', { email }));
+      // Never open a browser during a switch: mark the card so its explicit
+      // "Re-sign in" button becomes available and tell the user why.
+      const i18nError = I18nService.getInstance();
+      await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
+      this._onAccountsChanged.fire();
+      vscode.window.showErrorMessage(
+        `${i18nError.t('accounts.expiredBanner')} (${email})`
+      );
       return 'error';
     }
 
@@ -224,12 +242,22 @@ export class AccountService {
       Logger.getInstance().info(`Token for ${email} is expired or expiring soon. Refreshing before injection...`);
       try {
         const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
-        tokens = {
+        const refreshedTokens = {
           accessToken: newTokens.accessToken,
           refreshToken: newTokens.refreshToken, // Keeps original if response omits it
           expiresAt: now + newTokens.expiresIn
         };
-        await this.accountRepo.storeTokens(email, tokens);
+        // A poisoned refresh token returns another account's token. Never persist it:
+        // the identity guard below will drive a proper sign-in instead.
+        const refreshedOwner = await this.resolveTokenOwner(refreshedTokens.accessToken);
+        if (refreshedOwner && !isEmailMatch(refreshedOwner, email)) {
+          Logger.getInstance().warn(
+            `Refreshed token for ${email} belongs to ${refreshedOwner}; not storing it.`
+          );
+        } else {
+          tokens = refreshedTokens;
+          await this.accountRepo.storeTokens(email, tokens);
+        }
         Logger.getInstance().info(`Token refreshed successfully for ${email}`);
       } catch (e: any) {
         Logger.getInstance().error(`Failed to refresh token for ${email}`, e);
@@ -261,6 +289,22 @@ export class AccountService {
       Logger.getInstance().info(`Migrated device profile for ${email}: added firstSessionDate.`);
     }
 
+    // Identity guard: never inject a token that belongs to a different account.
+    // A mismatched pair (userStatus = A, oauthToken = B) makes the IDE authenticate as
+    // B while the panel shows A, so the card reports B's quota and the chat fails with
+    // "quota reached" for no visible reason. Credentials are healed in place when the
+    // refresh token is still valid; otherwise the card is marked as expired.
+    const verifiedTokens = await this.ensureCredentialsBelongTo(email, tokens);
+    if (!verifiedTokens) {
+      const i18n = I18nService.getInstance();
+      vscode.window.showErrorMessage(
+        `${i18n.t('accounts.expiredBanner')} (${email})`
+      );
+      this._onAccountsChanged.fire();
+      return 'error';
+    }
+    tokens = verifiedTokens;
+
     // Inject into Database (tokens + device profile + telemetry)
     const result = await this.stateDbService.injectAccountState(account, tokens, deviceProfile, options?.skipPrompt);
     
@@ -286,20 +330,10 @@ export class AccountService {
    */
   async getActiveAntigravityEmail(): Promise<string | null | undefined> {
     try {
-      // 1. FAST IN-MEMORY LIVE AUTH: Query Antigravity native session directly
-      try {
-        const nativeEmail = await Promise.race([
-          this.getNativeAuthEmail(),
-          new Promise<undefined>(r => setTimeout(() => r(undefined), 2500))
-        ]);
-        if (nativeEmail) {
-          return nativeEmail.toLowerCase();
-        }
-      } catch (err) {
-        Logger.getInstance().debug('Failed to get live native auth email', err);
-      }
-
-      // 2. FALLBACK: Read directly from state.vscdb
+      // 1. AUTHORITATIVE SOURCE: state.vscdb. Since Antigravity 1.107 the session is
+      // driven by the UnifiedStateSync topics, while the VS Code authentication
+      // session can keep returning the account that was logged in interactively
+      // long ago, which made the panel pin a stale account after every switch.
       try {
         const dbEmail = await Promise.race([
           this.stateDbService.readCurrentEmailFromDb(),
@@ -310,6 +344,19 @@ export class AccountService {
         }
       } catch (err) {
         Logger.getInstance().debug('Failed to read email from state.vscdb', err);
+      }
+
+      // 2. FALLBACK: live native auth session, only when the database has no session
+      try {
+        const nativeEmail = await Promise.race([
+          this.getNativeAuthEmail(),
+          new Promise<undefined>(r => setTimeout(() => r(undefined), 500))
+        ]);
+        if (nativeEmail) {
+          return nativeEmail.toLowerCase();
+        }
+      } catch (err) {
+        Logger.getInstance().debug('Failed to get live native auth email', err);
       }
 
       // 3. PERSISTENCE FALLBACK: If repository has an active account recorded, preserve it
@@ -350,7 +397,36 @@ export class AccountService {
    */
   async getActiveAntigravityAccountInfo(): Promise<{ email: string | null; tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null; avatarUrl?: string | null } | null> {
     try {
-      // 1. LIVE IN-MEMORY NATIVE SESSION
+      // 1. AUTHORITATIVE SOURCE: state.vscdb (UnifiedStateSync, Antigravity 1.107+)
+      const dbInfo = await this.stateDbService.readActiveAccountInfoFromDb().catch(() => null);
+      if (dbInfo?.email) {
+        const dbTokens = dbInfo.tokens;
+        const needsFreshTokens = !dbTokens?.accessToken
+          || dbTokens.expiresAt < (Math.floor(Date.now() / 1000) + 120);
+
+        // Querying the native provider costs up to 8 sequential getSession() calls and
+        // used to block every refresh for ~45s. Only ask for it when the persisted
+        // token is actually missing or about to expire, and never block on it.
+        if (needsFreshTokens) {
+          try {
+            const nativeSession = await Promise.race([
+              this.getNativeAuthSession(),
+              new Promise<null>(resolve => setTimeout(() => resolve(null), 1500))
+            ]);
+            if (nativeSession?.tokens?.accessToken && nativeSession.email
+              && isEmailMatch(nativeSession.email, dbInfo.email)) {
+              return {
+                email: dbInfo.email,
+                tokens: nativeSession.tokens,
+                avatarUrl: nativeSession.avatarUrl ?? dbInfo.avatarUrl
+              };
+            }
+          } catch { /* keep database data */ }
+        }
+        return dbInfo;
+      }
+
+      // 2. FALLBACK: live native auth session when the database has no session yet
       const nativeSession = await this.getNativeAuthSession();
       if (nativeSession && nativeSession.tokens?.accessToken) {
         return {
@@ -360,8 +436,7 @@ export class AccountService {
         };
       }
 
-      // 2. FALLBACK: Static state.vscdb read
-      return await this.stateDbService.readActiveAccountInfoFromDb();
+      return null;
     } catch (error) {
       Logger.getInstance().error('Failed to read active account info from Antigravity', error);
       return null;
@@ -918,10 +993,11 @@ export class AccountService {
     this._lastActiveQuotaCheckTime = now;
 
     const activeInfo = await this.getActiveAntigravityAccountInfo();
-    let tokens = activeInfo?.tokens || await this.accountRepo.getTokens(activeEmail);
-    if (activeInfo?.tokens) {
-      await this.accountRepo.storeTokens(activeEmail, activeInfo.tokens);
-    }
+    // Only adopt the session credentials when they provably belong to this account.
+    const adopted = await this.adoptSessionTokens(activeEmail, activeInfo);
+    let tokens = adopted && activeInfo?.tokens
+      ? activeInfo.tokens
+      : await this.accountRepo.getTokens(activeEmail);
 
     if (tokens?.refreshToken && (tokens.expiresAt < (Math.floor(Date.now() / 1000) + 120) || !tokens.accessToken)) {
       try {
@@ -937,9 +1013,21 @@ export class AccountService {
     if (!tokens?.accessToken) return account;
 
     try {
+      if (tokens?.accessToken) {
+        const owner = await this.resolveTokenOwnerCached(tokens.accessToken);
+        if (owner && !isEmailMatch(owner, activeEmail)) {
+          Logger.getInstance().warn(`Skipping fast refresh: the token for ${activeEmail} belongs to ${owner}.`);
+          await this.accountRepo.updateAccount(activeEmail, { status: AccountStatus.TOKEN_EXPIRED });
+          this._onAccountsChanged.fire();
+          return account;
+        }
+      }
+
+      const preferredModel = await this.accountRepo.getPreferredModel();
       let balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
         fast: true,
-        projectId: account.projectId
+        projectId: account.projectId,
+        probeModel: preferredModel ?? undefined
       });
 
       if (balanceInfo.isAuthError && tokens.refreshToken) {
@@ -951,7 +1039,8 @@ export class AccountService {
           await this.accountRepo.storeTokens(activeEmail, tokens);
           balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
             fast: true,
-            projectId: account.projectId
+            projectId: account.projectId,
+            probeModel: preferredModel ?? undefined
           });
         } catch (authErr) {
           Logger.getInstance().warn(`Fast token recovery failed for ${activeEmail}`);
@@ -963,11 +1052,11 @@ export class AccountService {
         return account;
       }
 
-      if (balanceInfo.isDepleted) {
-        balanceInfo.balances = this.balanceService.createExhaustedBalances(account.balances);
-      }
+      // `balanceInfo.balances` is already the authoritative per-model map returned by
+      // fetchAvailableModels; zeroing every model here is what made a single exhausted
+      // model look like a fully depleted account (and flipped cards back to 100% on the
+      // next refresh). Keep the API values untouched.
 
-      const preferredModel = await this.accountRepo.getPreferredModel();
       const newStatus = await this.determineAccountStatus(balanceInfo, preferredModel);
 
       const oldBalances = account.balances || {};
@@ -1003,43 +1092,43 @@ export class AccountService {
   }
 
   /**
-   * Merges fresh balance info with existing balances.
-   * If a model is at 100% and already has a valid future resetTime, preserves the existing
-   * resetTime so that clicking refresh does not jump the countdown back to 59 minutes due
-   * to Google's dynamic relative "now + 7 days" window.
-   * Also purges legacy zombie aliases (e.g. 'gemini-3.8-flash-high') when canonical keys exist.
+   * Merges fresh balance info with the stored one.
+   *
+   * The result is rebuilt from the API response only: models Google no longer returns
+   * (legacy `-high/-low` aliases, `gemini-3.6/3.7-flash-*`, deprecated previews) are
+   * dropped instead of being carried forever, which used to leave frozen 0%/100%
+   * entries that disagreed with the IDE.
+   *
+   * The only carried-over value is `resetTime` for models still at 100%: Google answers
+   * a rolling "now + window" reset, so re-reading it on every refresh would jump the
+   * countdown back to the top.
    */
   private mergeBalancesPreservingResetTime(
     oldBalances: Record<string, any>,
     freshBalances: Record<string, any>
   ): Record<string, any> {
-    const cleanedOld = { ...oldBalances };
-    // Purge zombie legacy aliases when canonical keys exist
-    if (freshBalances['gemini-3.8-flash-tiered'] || cleanedOld['gemini-3.8-flash-tiered']) {
-      delete cleanedOld['gemini-3.8-flash-high'];
-      delete cleanedOld['gemini-3.8-flash'];
-    }
-    if (freshBalances['gemini-3.8-flash-medium'] || cleanedOld['gemini-3.8-flash-medium']) {
-      delete cleanedOld['gemini-3.8-flash-med'];
-    }
-
-    const merged: Record<string, any> = { ...cleanedOld, ...freshBalances };
     const now = Date.now();
+    const merged: Record<string, any> = {};
+
     for (const [key, freshEntry] of Object.entries(freshBalances)) {
-      if (typeof freshEntry === 'object' && freshEntry !== null && freshEntry.value === 100) {
-        const oldEntry = cleanedOld[key];
+      if (typeof freshEntry !== 'object' || freshEntry === null) {
+        merged[key] = freshEntry;
+        continue;
+      }
+
+      const entry = { ...freshEntry };
+      if (entry.value === 100) {
+        const oldEntry = oldBalances[key];
         if (oldEntry && typeof oldEntry === 'object' && oldEntry.resetTime) {
           const oldTime = new Date(oldEntry.resetTime).getTime();
-          // If the old resetTime is still valid and in the future, preserve it
           if (!isNaN(oldTime) && oldTime > now) {
-            merged[key] = {
-              ...freshEntry,
-              resetTime: oldEntry.resetTime
-            };
+            entry.resetTime = oldEntry.resetTime;
           }
         }
       }
+      merged[key] = entry;
     }
+
     return merged;
   }
 
@@ -1126,12 +1215,21 @@ export class AccountService {
   ): Promise<boolean> {
     // ── Guard: Prevent concurrent or rapid-fire refreshes ──
     if (this._isRefreshing) {
-      Logger.getInstance().info('Refresh already in progress, ignoring duplicate request.');
-      if (notify && ExtensionConfig.getInstance().isNotificationsEnabled()) {
-        const i18n = I18nService.getInstance();
-        vscode.window.showInformationMessage(i18n.t('service.refreshInProgress'));
+      const staleMs = Date.now() - this._refreshStartedAt;
+      if (staleMs > AccountService.STALE_REFRESH_MS) {
+        // The previous scan died without releasing the lock (window reload, closed
+        // panel, aborted host...), which used to block every new scan silently.
+        Logger.getInstance().warn(`Stale refresh lock (${Math.round(staleMs / 60_000)} min). Releasing it and starting a new scan.`);
+        this._isRefreshing = false;
+        this.cancelQueue();
+      } else {
+        Logger.getInstance().info('Refresh already in progress, ignoring duplicate request.');
+        if (notify && ExtensionConfig.getInstance().isNotificationsEnabled()) {
+          const i18n = I18nService.getInstance();
+          vscode.window.showInformationMessage(i18n.t('service.refreshInProgress'));
+        }
+        return false;
       }
-      return false;
     }
 
     const now = Date.now();
@@ -1163,6 +1261,7 @@ export class AccountService {
     }
 
     this._isRefreshing = true;
+    this._refreshStartedAt = now;
     this._lastRefreshTime = now;
 
     try {
@@ -1281,13 +1380,13 @@ export class AccountService {
       const isActive = activeEmail && isEmailMatch(account.email, activeEmail);
       if (isActive) {
         const activeInfo = await this.getActiveAntigravityAccountInfo();
-        if (activeInfo?.tokens?.accessToken) {
+        // Same rule as everywhere else: never copy a foreign session into a card.
+        if (await this.adoptSessionTokens(account.email, activeInfo) && activeInfo?.tokens) {
           tokens.accessToken = activeInfo.tokens.accessToken;
           tokens.expiresAt = activeInfo.tokens.expiresAt;
           if (activeInfo.tokens.refreshToken) {
             tokens.refreshToken = activeInfo.tokens.refreshToken;
           }
-          await this.accountRepo.storeTokens(account.email, tokens);
         }
       }
 
@@ -1306,6 +1405,19 @@ export class AccountService {
         }
       }
 
+      // Identity check: a card must never display another account's quota. Poisoned
+      // credentials (one account's tokens stored under another's name) are flagged
+      // instead of being used to query the API.
+      if (tokens.accessToken) {
+        const owner = await this.resolveTokenOwnerCached(tokens.accessToken);
+        if (owner && !isEmailMatch(owner, account.email)) {
+          Logger.getInstance().warn(`Skipping ${account.email}: its stored token belongs to ${owner}.`);
+          await this.accountRepo.updateAccount(account.email, { status: AccountStatus.TOKEN_EXPIRED });
+          options?.onAccountDone?.(account.email, account.balances, AccountStatus.TOKEN_EXPIRED);
+          continue;
+        }
+      }
+
       // Check cancellation again before API call
       if (options?.signal?.aborted) {
         Logger.getInstance().info('Refresh cancelled by user before API call.');
@@ -1313,9 +1425,11 @@ export class AccountService {
       }
 
       // Fetch Balance
+      const preferredModel = await this.accountRepo.getPreferredModel();
       let balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, { 
         projectId: account.projectId,
-        signal: options?.signal 
+        signal: options?.signal,
+        probeModel: preferredModel ?? undefined
       });
 
       // Automatic 401 recovery: if token was rejected by Google, refresh with refreshToken and retry immediately
@@ -1328,7 +1442,8 @@ export class AccountService {
           await this.accountRepo.storeTokens(account.email, tokens);
           balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
             projectId: account.projectId,
-            signal: options?.signal
+            signal: options?.signal,
+            probeModel: preferredModel ?? undefined
           });
         } catch (authErr) {
           Logger.getInstance().warn(`Token recovery failed for ${account.email}`);
@@ -1343,11 +1458,11 @@ export class AccountService {
         break;
       }
 
-      if (balanceInfo.isDepleted) {
-        balanceInfo.balances = this.balanceService.createExhaustedBalances(account.balances);
-      }
+      // `balanceInfo.balances` is already the authoritative per-model map returned by
+      // fetchAvailableModels; zeroing every model here is what made a single exhausted
+      // model look like a fully depleted account (and flipped cards back to 100% on the
+      // next refresh). Keep the API values untouched.
 
-      const preferredModel = await this.accountRepo.getPreferredModel();
       const status = await this.determineAccountStatus(balanceInfo, preferredModel);
       
       if (!balanceInfo.hasError) {
@@ -1425,6 +1540,127 @@ export class AccountService {
   }
 
   /**
+   * Resolves which Google account an access token belongs to. Used to detect
+   * identity/token mismatches before injecting or persisting credentials.
+   * Returns null when the token cannot be verified (offline, 5xx, expired...).
+   */
+  async resolveTokenOwner(accessToken?: string): Promise<string | null> {
+    if (!accessToken) return null;
+    try {
+      const info = await ApiClient.request<{ email?: string }>(OAUTH.USERINFO_URL, {
+        accessToken,
+        timeoutMs: 5000
+      });
+      const email = info?.email?.trim().toLowerCase();
+      return email && email.includes('@') ? email : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Cached variant of {@link resolveTokenOwner}. Owners are immutable for a token, so a
+   * 30 minute cache keeps the identity guard free on the hot refresh path.
+   */
+  private async resolveTokenOwnerCached(accessToken?: string): Promise<string | null> {
+    if (!accessToken) return null;
+    const key = accessToken.slice(-24);
+    const hit = this._tokenOwnerCache.get(key);
+    if (hit && Date.now() - hit.at < AccountService.TOKEN_OWNER_CACHE_MS) {
+      return hit.owner;
+    }
+    const owner = await this.resolveTokenOwner(accessToken);
+    if (owner) {
+      this._tokenOwnerCache.set(key, { owner, at: Date.now() });
+    }
+    return owner;
+  }
+
+  /**
+   * Adopts the live session credentials for `email` only when they provably belong to
+   * it. Blindly copying them is what poisoned cards in the past: the session could hold
+   * one account's token while the card being refreshed held another's name, so every
+   * later quota read reported the wrong account.
+   */
+  private async adoptSessionTokens(
+    email: string,
+    session: { email: string | null; tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null } | null
+  ): Promise<boolean> {
+    const tokens = session?.tokens;
+    if (!tokens?.accessToken) return false;
+
+    const sessionEmail = session?.email?.trim().toLowerCase();
+    if (sessionEmail && !isEmailMatch(sessionEmail, email)) {
+      Logger.getInstance().warn(
+        `Ignoring session tokens for ${email}: the IDE session identifies as ${sessionEmail}.`
+      );
+      return false;
+    }
+
+    const owner = await this.resolveTokenOwnerCached(tokens.accessToken);
+    if (owner && !isEmailMatch(owner, email)) {
+      Logger.getInstance().warn(`Ignoring session tokens for ${email}: they belong to ${owner}.`);
+      return false;
+    }
+
+    await this.accountRepo.storeTokens(email, tokens);
+    return true;
+  }
+
+  /**
+   * Guarantees that the stored credentials really belong to `email`, healing them in
+   * place instead of asking the user to delete and re-add the account.
+   *
+   * Healing order:
+   *  1. The current access token already belongs to the account -> nothing to do.
+   *  2. Exchange the stored refresh token for a fresh access token and re-check.
+   *
+   * No browser is ever opened here: a switch must stay a silent, one-click action.
+   * When even the refresh token belongs to another account the credential simply
+   * cannot be recreated without Google's consent, so the card is marked as expired
+   * (which exposes the explicit "Re-sign in" button) and the switch is aborted with
+   * a precise message. That button, never the switch itself, is what opens Google.
+   *
+   * Returns null when the credentials cannot be healed silently.
+   */
+  private async ensureCredentialsBelongTo(
+    email: string,
+    tokens: { accessToken: string; refreshToken: string; expiresAt: number }
+  ): Promise<{ accessToken: string; refreshToken: string; expiresAt: number } | null> {
+    const owner = await this.resolveTokenOwnerCached(tokens.accessToken);
+    if (!owner || isEmailMatch(owner, email)) {
+      return tokens;
+    }
+
+    Logger.getInstance().warn(`Access token stored for ${email} belongs to ${owner}. Trying the refresh token...`);
+    if (tokens.refreshToken) {
+      try {
+        const refreshed = await this.authService.refreshAccessToken(tokens.refreshToken);
+        const candidate = {
+          accessToken: refreshed.accessToken,
+          refreshToken: refreshed.refreshToken || tokens.refreshToken,
+          expiresAt: Math.floor(Date.now() / 1000) + refreshed.expiresIn
+        };
+        const candidateOwner = await this.resolveTokenOwner(candidate.accessToken);
+        if (!candidateOwner || isEmailMatch(candidateOwner, email)) {
+          await this.accountRepo.storeTokens(email, candidate);
+          Logger.getInstance().info(`Healed credentials for ${email} through its refresh token.`);
+          return candidate;
+        }
+        Logger.getInstance().warn(
+          `Refresh token stored for ${email} also belongs to ${candidateOwner}; it cannot be healed without consent.`
+        );
+      } catch (refreshErr) {
+        Logger.getInstance().warn(`Refresh token rejected for ${email}.`, refreshErr);
+      }
+    }
+
+    await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
+    this._onAccountsChanged.fire();
+    return null;
+  }
+
+  /**
    * Refreshes the balance for a single account.
    * Used when auto-refresh is disabled — only the active account gets updated.
    * Follows the same per-account logic as refreshBalancesWorkflow.
@@ -1460,9 +1696,8 @@ export class AccountService {
 
     if (isActive) {
       const activeInfo = await this.getActiveAntigravityAccountInfo();
-      if (activeInfo?.tokens) {
+      if (await this.adoptSessionTokens(email, activeInfo) && activeInfo?.tokens) {
         tokens = activeInfo.tokens;
-        await this.accountRepo.storeTokens(email, tokens);
       }
     }
 
@@ -1488,8 +1723,22 @@ export class AccountService {
       }
     }
 
+    if (tokens.accessToken) {
+      const owner = await this.resolveTokenOwnerCached(tokens.accessToken);
+      if (owner && !isEmailMatch(owner, email)) {
+        Logger.getInstance().warn(`Skipping refresh for ${email}: its stored token belongs to ${owner}.`);
+        await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
+        callbacks?.onDone?.(email, account.balances, AccountStatus.TOKEN_EXPIRED);
+        return;
+      }
+    }
+
     const config = ExtensionConfig.getInstance();
-    let balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, { projectId: account.projectId });
+    const preferredModelForProbe = await this.accountRepo.getPreferredModel();
+    let balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
+      projectId: account.projectId,
+      probeModel: preferredModelForProbe ?? undefined
+    });
 
     // Automatic 401 recovery: if token was rejected, refresh with refreshToken and retry immediately
     if (balanceInfo.isAuthError && tokens.refreshToken) {
@@ -1499,7 +1748,10 @@ export class AccountService {
         tokens.accessToken = newTokens.accessToken;
         tokens.expiresAt = Math.floor(Date.now() / 1000) + newTokens.expiresIn;
         await this.accountRepo.storeTokens(email, tokens);
-        balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, { projectId: account.projectId });
+        balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
+          projectId: account.projectId,
+          probeModel: preferredModelForProbe ?? undefined
+        });
       } catch (authErr) {
         Logger.getInstance().warn(`Token recovery failed for ${email}`);
       }
@@ -1513,9 +1765,7 @@ export class AccountService {
       return;
     }
 
-    if (balanceInfo.isDepleted) {
-      balanceInfo.balances = this.balanceService.createExhaustedBalances(account.balances);
-    }
+    // `balanceInfo.balances` already mirrors the API; never overwrite it with zeros.
 
     const preferredModel = await this.accountRepo.getPreferredModel();
     const status = await this.determineAccountStatus(balanceInfo, preferredModel);
@@ -1581,8 +1831,9 @@ export class AccountService {
         cancellable: false
       }, async (progress) => {
 
-        // 1. Run the OAuth login flow (opens browser)
-        const { tokens, profile } = await this.authService.login();
+        // 1. Run the OAuth login flow (opens browser). The email is passed as a hint so
+        // Google preselects the account the card belongs to.
+        const { tokens, profile } = await this.authService.login(email);
 
         // 2. SECURITY CHECK: Verify the returned email matches the original account
         if (profile.email.toLowerCase() !== email.toLowerCase()) {

@@ -37,9 +37,11 @@ export class AuthService {
 
   /**
    * Initiates the Google OAuth login process.
+   * @param emailHint When provided, Google preselects that account (`login_hint`),
+   * which lets the extension heal an account without asking the user to delete it.
    * @returns Tokens and User Profile, or throws an error if authentication fails.
    */
-  async login(): Promise<{ tokens: OAuthTokens; profile: UserProfile }> {
+  async login(emailHint?: string): Promise<{ tokens: OAuthTokens; profile: UserProfile }> {
     const server = new OAuthServer();
     
     try {
@@ -59,6 +61,10 @@ export class AuthService {
       // Force consent to guarantee we get a refresh_token every time
       authUrl.searchParams.append('prompt', 'consent'); 
       authUrl.searchParams.append('include_granted_scopes', 'true');
+
+      if (emailHint) {
+        authUrl.searchParams.append('login_hint', emailHint.toLowerCase());
+      }
 
       // 3. Open the user's default browser
       Logger.getInstance().info(`Opening browser for OAuth on port ${port}...`);

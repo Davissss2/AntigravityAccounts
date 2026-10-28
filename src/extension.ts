@@ -44,6 +44,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Antigr
   const config = ExtensionConfig.getInstance();
   config.initialize(context);
 
+  // ── Auto-Heal Service Worker Stale Locks (Prevents Webview InvalidStateError) ──
+  PathUtils.repairServiceWorkerIfCorrupted(context);
+
   // ── Execute Pending Chat Resume (on account switch / quota depletion) ──
   try {
     const storageDir = PathUtils.getAntigravityDataPath(context);
@@ -316,12 +319,7 @@ function registerCommands(
   disposables.push(
     vscode.window.registerWebviewViewProvider(
       AccountsWebviewProvider.viewType,
-      accountsProvider,
-      {
-        webviewOptions: {
-          retainContextWhenHidden: true
-        }
-      }
+      accountsProvider
     )
   );
 
@@ -602,6 +600,14 @@ function registerCommands(
         vscode.window.showInformationMessage('No orphaned accounts found in SecretStorage.');
       }
       return restored;
+    })
+  );
+
+  disposables.push(
+    vscode.commands.registerCommand('antigravity-account.repairWebview', async () => {
+      PathUtils.repairServiceWorkerIfCorrupted(context);
+      accountsProvider.debouncedRefresh(50);
+      vscode.window.showInformationMessage('Antigravity Account webview repaired and repainted.');
     })
   );
 

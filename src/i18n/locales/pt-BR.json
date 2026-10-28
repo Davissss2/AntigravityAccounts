@@ -242,7 +242,7 @@
     "accountAddedErrorBalance": "Conta {{email}} adicionada, mas falhou ao buscar saldo. Tentará novamente mais tarde.",
     "accountAddedSuccess": "Conta {{email}} adicionada com sucesso. Saldos: [{{balances}}]",
     "accountAddError": "Erro ao adicionar conta: {{error}}",
-    "missingLoginData": "Dados de login ausentes para {{email}}. Remova e adicione novamente.",
+    "missingLoginData": "Dados de login ausentes para {{email}}. É necessário entrar novamente para restaurar o acesso.",
     "sessionExpiredFailed": "A sessão para {{email}} expirou e não pôde ser renovada. Reconecte-se.",
     "refreshInProgress": "⏳ A atualização de saldo já está em andamento...",
     "refreshCooldown": "⏳ Aguarde {{seconds}} segundos antes de atualizar novamente.",

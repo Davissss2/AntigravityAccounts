@@ -242,7 +242,7 @@
     "accountAddedErrorBalance": "Konto {{email}} hinzugefügt, aber Guthabenabruf fehlgeschlagen. Späterer Neuversuch.",
     "accountAddedSuccess": "Konto {{email}} erfolgreich hinzugefügt. Guthaben: [{{balances}}]",
     "accountAddError": "Fehler beim Hinzufügen des Kontos: {{error}}",
-    "missingLoginData": "Anmeldedaten für {{email}} fehlen. Bitte entfernen und erneut hinzufügen.",
+    "missingLoginData": "Anmeldedaten für {{email}} fehlen. Bitte erneut anmelden, um den Zugriff wiederherzustellen.",
     "sessionExpiredFailed": "Sitzung für {{email}} ist abgelaufen. Bitte erneut anmelden.",
     "refreshInProgress": "⏳ Guthabenaktualisierung läuft bereits...",
     "refreshCooldown": "⏳ Bitte warten Sie {{seconds}} Sekunden vor der nächsten Aktualisierung.",

@@ -90,6 +90,29 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
   private _isEditingAlias: boolean = false;
   private _pendingRefreshAfterInteraction: boolean = false;
 
+  /** Concurrency and visibility guards to prevent Webview ServiceWorker InvalidStateError */
+  private _isRendering: boolean = false;
+  private _renderQueued: boolean = false;
+  private _refreshDebounceTimer: NodeJS.Timeout | null = null;
+  private _pendingRefreshOnVisible: boolean = false;
+
+  /**
+   * Debounces full HTML re-renders so rapid account updates (e.g., active quota polling,
+   * batch refreshes, auth events) are coalesced into a single clean repaint without
+   * destroying and recreating the webview iframe in rapid succession.
+   */
+  public debouncedRefresh(delayMs: number = 300): void {
+    if (this._refreshDebounceTimer) {
+      clearTimeout(this._refreshDebounceTimer);
+    }
+    this._refreshDebounceTimer = setTimeout(() => {
+      this._refreshDebounceTimer = null;
+      this.refresh().catch(err => {
+        Logger.getInstance().error('Error during debounced refresh', err);
+      });
+    }, delayMs);
+  }
+
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly accountRepo: IAccountRepository,
@@ -102,11 +125,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       }
     }).catch(() => {});
 
-    // Automatically re-detect active account and re-render when data changes
+    // Automatically re-detect active account and re-render when data changes (debounced & safe)
     this.accountService.onAccountsChanged(() => {
       // Do not recreate full HTML DOM during active scan since cards update individually
       if (!this._isRefreshingProgress.isRefreshing) {
-        this.detectAndPinActiveAccount().then(() => this.refresh());
+        this.detectAndPinActiveAccount().then(() => this.debouncedRefresh(350));
       }
     });
   }
@@ -120,7 +143,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       if (email !== this._cachedNativeAuthEmail) {
         this._cachedNativeAuthEmail = email;
         if (this._view && this._pinnedActiveEmail && email && !isEmailMatch(email, this._pinnedActiveEmail)) {
-          this.refresh();
+          this.debouncedRefresh(200);
         }
       }
     }).catch(err => {
@@ -135,6 +158,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
   private _pendingQueueEmails: string[] = [];
 
   public isRefreshing(): boolean {
+    this.reconcileRefreshProgress();
     return this._isRefreshingProgress.isRefreshing;
   }
 
@@ -158,6 +182,21 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       enableScripts: true,
       localResourceRoots: [this.extensionUri]
     };
+
+    // Clean up reference when the webview view is disposed
+    webviewView.onDidDispose(() => {
+      if (this._view === webviewView) {
+        this._view = undefined;
+      }
+    });
+
+    // If webview transitions from hidden to visible, flush any pending updates
+    webviewView.onDidChangeVisibility(() => {
+      if (webviewView.visible && this._pendingRefreshOnVisible) {
+        this._pendingRefreshOnVisible = false;
+        this.debouncedRefresh(100);
+      }
+    });
 
     // Handle messages sent from the Webview HTML UI
     webviewView.webview.onDidReceiveMessage(async (message) => {
@@ -744,15 +783,17 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       } catch {}
     }
 
-    // Step 1: IMMEDIATE RENDER — Render the full UI in Frame 0 (0ms latency, ZERO black screen!)
-    await this.refresh();
+    // Step 1: Initial render with slight delay to ensure Chromium service worker handshake is established
+    setTimeout(() => {
+      this.refresh();
+    }, 60);
 
     // Step 2: Background asynchronous active account detection & pinning from state.vscdb
     const prevPinned = this._pinnedActiveEmail;
     this.detectAndPinActiveAccount().then(async () => {
-      // Re-render if pinned account changed or was confirmed for the first time
-      if (this._pinnedActiveEmail !== prevPinned || !prevPinned) {
-        await this.refresh();
+      // Re-render only if pinned account actually changed from what Frame 0 rendered
+      if (this._pinnedActiveEmail && this._pinnedActiveEmail !== prevPinned) {
+        this.debouncedRefresh(200);
       }
 
       const accounts = await this.accountRepo.getAllAccounts();
@@ -786,17 +827,96 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Forces a re-render of the Webview HTML.
+   * Clears a refresh-progress state left behind by a scan that died without
+   * reaching its finally block (window reload, aborted host, closed panel).
+   * Without this the UI keeps the banner, hides the refresh button and looks
+   * like the extension refuses to scan again.
    */
-  public async refresh() {
+  private reconcileRefreshProgress(): void {
+    if (this._isRefreshingProgress.isRefreshing && !this._refreshAbortController) {
+      Logger.getInstance().warn('Stale refresh progress detected; resetting the scan state.');
+      this._isRefreshingProgress = {
+        isRefreshing: false,
+        totalAccounts: 0,
+        currentIndex: 0,
+        currentEmail: '',
+      };
+      this._pendingQueueEmails = [];
+    }
+  }
+
+  /**
+   * Forces a safe, synchronized re-render of the Webview HTML.
+   * Concurrency-guarded to prevent InvalidStateError: Failed to register a ServiceWorker.
+   */
+  public async refresh(): Promise<void> {
+    this.reconcileRefreshProgress();
+
     if (this._isSettingsOpen || this._isEditingAlias) {
       this._pendingRefreshAfterInteraction = true;
       Logger.getInstance().debug('Skipping full webview HTML re-render because user is interacting with settings or editing alias.');
       return;
     }
-    if (this._view) {
+
+    if (!this._view) {
+      return;
+    }
+
+    // Never attempt to re-render if the view is hidden/collapsed to avoid InvalidStateError in ServiceWorker
+    if (!this._view.visible) {
+      this._pendingRefreshOnVisible = true;
+      Logger.getInstance().debug('Webview is hidden; deferring HTML re-render until visible.');
+      return;
+    }
+
+    // Guard against concurrent execution destroying the iframe while still bootstrapping
+    if (this._isRendering) {
+      this._renderQueued = true;
+      Logger.getInstance().debug('Render already in progress; queued follow-up refresh.');
+      return;
+    }
+
+    // Re-resolve the active account before painting. The cached pin can be stale when
+    // the previous render happened before a switch that immediately closed the window,
+    // which left the old account marked as ACTIVE while the status bar showed the new
+    // one. The lookup is bounded: painting must never wait for it.
+    try {
+      await Promise.race([
+        this.detectAndPinActiveAccount(),
+        new Promise<void>(resolve => setTimeout(resolve, 250))
+      ]);
+    } catch (err) {
+      Logger.getInstance().debug('Active account refresh before render failed', err);
+    }
+
+    if (!this._view || !this._view.visible) {
+      this._pendingRefreshOnVisible = true;
+      return;
+    }
+
+    this._isRendering = true;
+    try {
       const html = await this._getHtmlForWebview(this._view.webview);
-      this._view.webview.html = html;
+      // Double check that the view was not disposed or hidden during HTML generation
+      if (this._view && this._view.visible) {
+        this._view.webview.html = html;
+      }
+    } catch (err: any) {
+      Logger.getInstance().error('Error setting webview HTML', err);
+      if (err?.message?.includes('InvalidStateError') || err?.name === 'InvalidStateError') {
+        Logger.getInstance().warn('Detected ServiceWorker InvalidStateError during render. Scheduling recovery retry in 250ms...');
+        setTimeout(() => {
+          if (this._view && this._view.visible) {
+            this.debouncedRefresh(100);
+          }
+        }, 250);
+      }
+    } finally {
+      this._isRendering = false;
+      if (this._renderQueued) {
+        this._renderQueued = false;
+        this.debouncedRefresh(80);
+      }
     }
   }
 
@@ -1003,7 +1123,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       this._view?.webview.postMessage({ command: 'refreshFinished', wasCancelled });
       this._refreshAbortController = null;
       if (!wasCancelled) {
-        await this.refresh();
+        this.debouncedRefresh(150);
       }
     }
   }
@@ -1048,8 +1168,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     } finally {
       // Tell webview refresh is finished
       this._view?.webview.postMessage({ command: 'refreshFinished', wasCancelled: false });
-      // Re-render to apply updated data and sorting
-      await this.refresh();
+      // Re-render to apply updated data and sorting safely
+      this.debouncedRefresh(150);
     }
   }
 
@@ -1846,6 +1966,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       <html lang="${isRtl ? 'ar' : 'en'}" dir="${isRtl ? 'rtl' : 'ltr'}" data-theme="${configTheme}">
       <head>
         <meta charset="UTF-8">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource} data:; script-src 'unsafe-inline';">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Antigravity Accounts</title>
         <style>

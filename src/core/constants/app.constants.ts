@@ -33,11 +33,10 @@ export const API = {
   LOAD_CODE_ASSIST: 'https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
   FETCH_CREDITS: 'https://cloudcode-pa.googleapis.com/v1internal:fetchCredits',
   DAILY_LOAD_CODE_ASSIST: 'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
-  FETCH_MODELS_URLS: [
-    'https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',
-    'https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',
-  ],
-  DEFAULT_VERSION: '1.22.2',
+  // The only quota source in Antigravity 1.107: the IDE renders "Models & Usage"
+  // and raises "Individual quota reached" from this exact endpoint.
+  FETCH_MODELS_URL: 'https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',
+  DEFAULT_VERSION: '1.107.0',
 } as const;
 
 // ── Storage Keys ──
@@ -74,6 +73,10 @@ export const STATE_DB_KEYS = {
   AUTH_STATUS: 'antigravityAuthStatus',
   ONBOARDING: 'antigravityOnboarding',
   LEGACY: 'google.antigravity',
+  // globalState of the bundled `agy` extension. Its `antigravity-storage` blob holds the
+  // `agy.onboarding.lastLoginUsername` label that Antigravity Settings -> Account prints
+  // as the account email, so it has to follow every switch.
+  AGY_GLOBAL_STATE: 'google.google-antigravity',
   TELEMETRY_SERVICE_MACHINE_ID: 'telemetry.serviceMachineId',
   STORAGE_SERVICE_MACHINE_ID: 'storage.serviceMachineId',
   TELEMETRY_FIRST_SESSION_DATE: 'telemetry.firstSessionDate',

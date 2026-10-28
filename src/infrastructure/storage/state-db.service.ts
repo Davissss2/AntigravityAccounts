@@ -34,8 +34,37 @@ export class StateDbService {
 
   private async getSqlJs(): Promise<any> {
     if (!StateDbService.sqlJsPromise) {
-      const initSqlJs = require('sql.js');
-      StateDbService.sqlJsPromise = initSqlJs();
+      let initSqlJs: any;
+      try {
+        initSqlJs = require('sql.js');
+      } catch (e1) {
+        try {
+          const localDistJs = path.join(__dirname, 'sql-wasm.js');
+          if (fs.existsSync(localDistJs)) {
+            initSqlJs = require(localDistJs);
+          } else {
+            const rootDistJs = path.join(__dirname, '..', 'dist', 'sql-wasm.js');
+            initSqlJs = require(rootDistJs);
+          }
+        } catch {
+          throw e1;
+        }
+      }
+
+      const wasmCandidates = [
+        path.join(__dirname, 'sql-wasm.wasm'),
+        path.join(__dirname, '..', 'dist', 'sql-wasm.wasm'),
+        path.join(path.dirname(__dirname), 'dist', 'sql-wasm.wasm'),
+      ];
+      const foundWasm = wasmCandidates.find(p => fs.existsSync(p));
+
+      if (foundWasm) {
+        StateDbService.sqlJsPromise = initSqlJs({
+          locateFile: () => foundWasm
+        });
+      } else {
+        StateDbService.sqlJsPromise = initSqlJs();
+      }
     }
     return StateDbService.sqlJsPromise;
   }
@@ -110,6 +139,32 @@ export class StateDbService {
       if (enterpriseEntry) {
         rows.push({ key: STATE_DB_KEYS.ENTERPRISE_PREFS, value: enterpriseEntry });
       }
+
+      // Keep Antigravity's own "last login" label aligned with the account being
+      // injected. Settings -> Account prints `agy.onboarding.lastLoginUsername`, so
+      // without this the page kept showing the account that signed in interactively
+      // last, which reads as "the switch did nothing" even when the tokens are right.
+      const loginLabelRow = await this.buildAgyLoginLabelRow(account.email, isGcpTos);
+      if (loginLabelRow) {
+        rows.push(loginLabelRow);
+      }
+      // Since Antigravity 1.107 the agent (agy.exe --hub) authenticates with the
+      // Windows generic credential "gemini:antigravity" (a plain-JSON token blob in
+      // the OS vault). state.vscdb no longer drives the chat session, so writing only
+      // the database left the panel on the new account while the agent kept consuming
+      // the previous one. This payload is handed to the worker, which persists it.
+      const credentialPayload = {
+        token: {
+          access_token: tokens.accessToken,
+          token_type: 'Bearer',
+          refresh_token: tokens.refreshToken,
+          expiry: this.formatCredentialExpiry(tokens.expiresAt),
+          expires_in: 3599
+        },
+        auth_method: 'consumer',
+        id_token_email: account.email
+      };
+
       if (deviceProfile) {
         // Inject ALL telemetry fingerprint keys to prevent cross-account correlation.
         // Without this, shared values (e.g. firstSessionDate, storage.serviceMachineId)
@@ -124,7 +179,7 @@ export class StateDbService {
       }
 
       // ── Step 4: Spawn background worker + close window ──
-      const triggered = await this.triggerWorkerAndClose(account.email, dbPath, rows, deviceProfile, skipPrompt);
+      const triggered = await this.triggerWorkerAndClose(account.email, dbPath, rows, deviceProfile, skipPrompt, credentialPayload);
       return triggered ? 'success' : 'cancelled';
 
     } catch (error: any) {
@@ -137,6 +192,68 @@ export class StateDbService {
     }
   }
 
+  /**
+   * Builds the row that keeps `agy.onboarding.lastLoginUsername` in sync with the
+   * account being injected. That label is what Antigravity Settings prints as the
+   * account email, so leaving it untouched made a perfectly good switch look like a
+   * no-op. The value is read, patched and written back as a whole JSON string, which
+   * keeps the worker dumb (it just writes rows).
+   */
+  private async buildAgyLoginLabelRow(
+    email: string,
+    isGcpTos: boolean
+  ): Promise<{ key: string; value: string | null } | null> {
+    const storageKey = STATE_DB_KEYS.AGY_GLOBAL_STATE;
+
+    const raw = await this.readConsistentSnapshot<string | null>((db) => {
+      const stmt = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
+      try {
+        stmt.bind({ $key: storageKey });
+        if (!stmt.step()) return null;
+        return (stmt.get()[0] as string) ?? null;
+      } finally {
+        stmt.free();
+      }
+    }, (value) => !!value);
+
+    if (!raw) return null;
+
+    try {
+      const outer = JSON.parse(raw) as Record<string, any>;
+      const storageRaw = outer['antigravity-storage'];
+      const storage = typeof storageRaw === 'string' ? JSON.parse(storageRaw) : storageRaw;
+      if (!storage || typeof storage !== 'object') return null;
+
+      storage['agy.onboarding.lastLoginUsername'] = email;
+      storage['agy.onboarding.lastLoginIsGcpTos'] = String(isGcpTos);
+      outer['antigravity-storage'] = typeof storageRaw === 'string' ? JSON.stringify(storage) : storage;
+
+      Logger.getInstance().info(`Synced Antigravity login label to ${email}.`);
+      return { key: storageKey, value: JSON.stringify(outer) };
+    } catch (error) {
+      Logger.getInstance().warn('Could not patch the Antigravity login label', error);
+      return null;
+    }
+  }
+
+  /**
+   * Formats an expiry exactly the way the agent stores it: ISO-8601 with seven
+   * fractional digits and a numeric offset (e.g. `2026-10-28T14:15:22.3827820+01:00`).
+   * A different shape makes the hub treat the credential as unusable.
+   */
+  private formatCredentialExpiry(expiresAtSeconds?: number): string {
+    const date = new Date(((expiresAtSeconds || Math.floor(Date.now() / 1000) + 3599) * 1000));
+    const pad = (n: number, size: number = 2) => String(n).padStart(size, '0');
+    const offsetMinutes = -date.getTimezoneOffset();
+    const sign = offsetMinutes >= 0 ? '+' : '-';
+    const abs = Math.abs(offsetMinutes);
+    const millis = date.getMilliseconds();
+    const micros = `${pad(millis, 3)}0000`;
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T`
+      + `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${micros}`
+      + `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+  }
+
   // ─── Worker-based injection ─────────────────────────────────────────────────
 
   private async triggerWorkerAndClose(
@@ -144,7 +261,8 @@ export class StateDbService {
     dbPath: string,
     rows: Array<{ key: string; value: string | null }>,
     deviceProfile?: DeviceProfile | null,
-    skipPrompt: boolean = false
+    skipPrompt: boolean = false,
+    credentialPayload?: Record<string, any> | null
   ): Promise<boolean> {
     const config = ExtensionConfig.getInstance();
     const shouldPrompt = !skipPrompt && config.isConfirmOnSwitchEnabled();
@@ -196,12 +314,20 @@ export class StateDbService {
       rows,
       exeCandidates,
       storageJsonPath: PathUtils.getStorageJsonPath(this.context),
-      deviceProfile
+      deviceProfile,
+      credentialPayload
     };
 
-    fs.writeFileSync(payloadPath, JSON.stringify(payloadObj, null, 2), 'utf-8');
-    fs.writeFileSync(workerPath, this.getWorkerScript(), 'utf-8');
-
+    // An extension update can replace this folder while the host is still running,
+    // leaving __dirname pointing at a directory that no longer exists (ENOENT).
+    try {
+      fs.writeFileSync(payloadPath, JSON.stringify(payloadObj, null, 2), 'utf-8');
+      fs.writeFileSync(workerPath, this.getWorkerScript(), 'utf-8');
+    } catch (writeErr: any) {
+      throw new Error(
+        `Cannot write the injection payload into ${workDir}. Reload the window so the updated build is loaded and try again. (${writeErr?.code || writeErr?.message})`
+      );
+    }
     Logger.getInstance().info(`Spawning inject-worker. Payload: ${payloadPath}, candidates: ${exeCandidates.join(', ')}`);
 
     // CRITICAL: process.execPath inside Antigravity IS the Antigravity.exe (Electron binary).
@@ -430,22 +556,111 @@ function findRelaunchExe() {
   return null;
 }
 
+// ── Agent credential store helpers (Windows / macOS / Linux) ──
+// The Antigravity agent hub authenticates with a generic credential named
+// "gemini:antigravity" whose secret is the JSON token blob. Each OS keeps it in its
+// own vault, so the write has to be platform specific.
+const AGENT_CRED_TARGET = 'gemini:antigravity';
+const AGENT_CRED_USER = 'antigravity';
+
+function stopAgentHub() {
+  try {
+    if (process.platform === 'win32') {
+      execSync('taskkill /F /IM agy.exe', { stdio: 'ignore', windowsHide: true });
+    } else {
+      // The hub runs as an unmanaged process advertising --hub; match only those.
+      execSync("pkill -f 'agy.*--hub'", { stdio: 'ignore' });
+    }
+    log('Stopped the agent hub so it reloads the credential on next launch.');
+  } catch (hubErr) {
+    log('Agent hub was not running (or could not be stopped): ' + String(hubErr).split('\\n')[0]);
+  }
+}
+
+async function syncAgentCredential(cred, workDir) {
+  const json = JSON.stringify(cred);
+
+  // The hub caches the token in memory: stop it before rewriting the vault.
+  stopAgentHub();
+
+  try {
+    if (process.platform === 'win32') {
+      const helper = path.join(workDir, 'write-cred.ps1');
+      if (!fs.existsSync(helper)) {
+        log('write-cred.ps1 not found next to the worker: ' + helper);
+        return;
+      }
+      const tmp = path.join(require('os').tmpdir(), 'antigravity-cred-' + Date.now() + '.json');
+      try {
+        fs.writeFileSync(tmp, json, 'utf-8');
+        const out = execSync(
+          'powershell -NoProfile -ExecutionPolicy Bypass -File "' + helper + '" -PayloadPath "' + tmp + '"',
+          { encoding: 'utf-8', windowsHide: true, timeout: 20000 }
+        );
+        log('Agent credential (Windows Credential Manager): ' + String(out).trim());
+        log('Credential account: ' + cred.id_token_email);
+      } finally {
+        try { fs.unlinkSync(tmp); } catch {}
+      }
+      return;
+    }
+
+    if (process.platform === 'darwin') {
+      // -U replaces the existing generic password in place.
+      execSync(
+        'security add-generic-password -U -s "' + AGENT_CRED_TARGET + '" -a "' + AGENT_CRED_USER + '" -w ' + JSON.stringify(json),
+        { stdio: 'ignore', timeout: 20000 }
+      );
+      log('Agent credential (macOS Keychain): ' + cred.id_token_email);
+      return;
+    }
+
+    // Linux: libsecret backend (GNOME Keyring, KWallet, KeePassXC...). The secret
+    // travels through stdin so it never shows up in the process list.
+    execSync(
+      'secret-tool store --label="Antigravity" service "' + AGENT_CRED_TARGET + '" username "' + AGENT_CRED_USER + '"',
+      { input: json, stdio: ['pipe', 'ignore', 'pipe'], timeout: 20000 }
+    );
+    log('Agent credential (libsecret): ' + cred.id_token_email);
+  } catch (credErr) {
+    log('ERROR writing the agent credential on ' + process.platform + ': ' + String(credErr).split('\\n')[0]);
+    log('The account was switched in state.vscdb only. Install ' +
+      (process.platform === 'darwin' ? 'Xcode command line tools (security).' : 'libsecret (secret-tool).'));
+  }
+}
+
 async function inject() {
-  // Phase 1: Wait up to 5s for Antigravity to flush and gracefully exit
-  // (The log showed most processes exit within ~2 seconds)
-  const exited = await waitForAntigravityExit(5000);
+  // Phase 1: Wait up to 12s for Antigravity to flush and gracefully exit
+  // (Electron requires several seconds on busy systems to cleanly flush LevelDB and Service Worker caches)
+  const exited = await waitForAntigravityExit(12000);
 
   if (!exited) {
     // Phase 2: Force-kill any lingering processes by their specific PIDs
     // (NOT by image name — that would kill our worker too!)
     // These are typically GPU helper or utility processes that hold the
     // single-instance lock and prevent relaunch.
-    log('Graceful exit incomplete. Force-killing remaining processes...');
+    log('Graceful exit incomplete after 12s. Force-killing remaining processes...');
     forceKillRemainingPids();
   }
 
   // Phase 3: Safety margin for OS to release file locks
-  await new Promise(r => setTimeout(r, 1500));
+  await new Promise(r => setTimeout(r, 2000));
+
+  // Phase 3.5: Clean dangling locks from Service Worker and LevelDB to prevent InvalidStateError on relaunch
+  try {
+    const dataDir = path.dirname(path.dirname(dbPath));
+    const swLock = path.join(dataDir, 'Service Worker', 'Database', 'LOCK');
+    if (fs.existsSync(swLock)) {
+      try {
+        fs.unlinkSync(swLock);
+        log('Cleaned dangling Service Worker LOCK file before relaunch.');
+      } catch (lockCleanErr) {
+        log('Could not unlink Service Worker LOCK: ' + String(lockCleanErr));
+      }
+    }
+  } catch (cleanupErr) {
+    log('Service worker lock cleanup error: ' + String(cleanupErr));
+  }
 
   // Write device profile to storage.json after IDE has exited to avoid cached configuration overwrites!
   if (payload.storageJsonPath && payload.deviceProfile) {
@@ -479,14 +694,23 @@ async function inject() {
       initSqlJs = require('sql.js');
     } catch {
       try {
-        initSqlJs = require(path.join(__dirname, '..', 'node_modules', 'sql.js'));
+        initSqlJs = require(path.join(__dirname, 'sql-wasm.js'));
       } catch {
-        initSqlJs = require(path.join(__dirname, '..', '..', 'node_modules', 'sql.js'));
+        try {
+          initSqlJs = require(path.join(__dirname, '..', 'node_modules', 'sql.js'));
+        } catch {
+          initSqlJs = require(path.join(__dirname, '..', '..', 'node_modules', 'sql.js'));
+        }
       }
     }
 
     log('Opening database: ' + dbPath);
-    const SQL = await initSqlJs();
+    const wasmCandidates = [
+      path.join(__dirname, 'sql-wasm.wasm'),
+      path.join(__dirname, '..', 'dist', 'sql-wasm.wasm'),
+    ];
+    const foundWasm = wasmCandidates.find(p => fs.existsSync(p));
+    const SQL = await initSqlJs(foundWasm ? { locateFile: () => foundWasm } : {});
     const buf = fs.readFileSync(dbPath);
     const db = new SQL.Database(buf);
 
@@ -508,6 +732,15 @@ async function inject() {
     }
   } catch (dbErr) {
     log('ERROR during database injection: ' + String(dbErr));
+  }
+
+  // ── Sync the agent credential (OS credential store) ──
+  // The agent hub reads "gemini:antigravity" from the OS vault and caches it in
+  // memory. Without this write the switch only changed state.vscdb, so the chat kept
+  // consuming the previous account's quota. Implemented for Windows, macOS and Linux,
+  // always best-effort: a failure here never blocks the switch.
+  if (payload.credentialPayload) {
+    await syncAgentCredential(payload.credentialPayload, path.dirname(payloadPath));
   }
 
   // Cleanup payload file
@@ -595,22 +828,21 @@ async function inject() {
           child.unref();
           log('Relaunch .sh spawned, PID: ' + child.pid);
         } catch (shErr) {
-          log('Relaunch .sh failed: ' + String(shErr));
-        }
-
-        // Direct spawn backup with sanitized environment
-        try {
-          const cleanEnv = { ...process.env };
-          delete cleanEnv.ELECTRON_RUN_AS_NODE;
-          const directChild = spawn(relaunchExe, spawnArgs, {
-            detached: true,
-            stdio: 'ignore',
-            env: cleanEnv
-          });
-          directChild.unref();
-          log('Direct Node spawn executed with PID: ' + directChild.pid);
-        } catch (spawnErr) {
-          log('Direct spawn attempt error: ' + String(spawnErr));
+          log('Relaunch .sh failed: ' + String(shErr) + ', attempting direct spawn fallback...');
+          // Direct spawn backup with sanitized environment
+          try {
+            const cleanEnv = { ...process.env };
+            delete cleanEnv.ELECTRON_RUN_AS_NODE;
+            const directChild = spawn(relaunchExe, spawnArgs, {
+              detached: true,
+              stdio: 'ignore',
+              env: cleanEnv
+            });
+            directChild.unref();
+            log('Direct Node spawn executed with PID: ' + directChild.pid);
+          } catch (spawnErr) {
+            log('Direct spawn attempt error: ' + String(spawnErr));
+          }
         }
       }
     } else {
@@ -687,7 +919,7 @@ inject().catch((err) => {
    * Reads the currently active email from Antigravity's state.vscdb.
    * This allows the extension to detect which account Antigravity is currently
    * using, even if it was switched outside this extension.
-   * 
+   *
    * Returns null if the database doesn't exist or the email can't be extracted.
    */
   async readCurrentEmailFromDb(): Promise<string | null> {
@@ -697,42 +929,82 @@ inject().catch((err) => {
       return null;
     }
 
-    try {
-      const SQL = await this.getSqlJs();
-      const buf = fs.readFileSync(dbPath);
-      const db = new SQL.Database(buf);
-
+    const email = await this.readConsistentSnapshot<string | null>((db) => {
+      const stmt = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
       try {
-        // Read the userStatus entry which contains the email
-        // sql.js uses prepare/bind for parameterized queries
-        const stmt = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
         stmt.bind({ $key: STATE_DB_KEYS.USER_STATUS });
-
-        if (!stmt.step()) {
-          stmt.free();
-          Logger.getInstance().info('No userStatus entry found in state.vscdb.');
-          return null;
-        }
-
-        const row = stmt.get();
-        stmt.free();
-
-        const base64Value = row[0] as string;
-        if (!base64Value) return null;
-
-        // Decode the protobuf chain to extract the email
-        const email = this.extractEmailFromUserStatus(base64Value);
-        if (email) {
-          Logger.getInstance().info(`Detected active Antigravity account: ${email}`);
-        }
-        return email;
+        if (!stmt.step()) return null;
+        const base64Value = stmt.get()[0] as string;
+        return base64Value ? this.extractEmailFromUserStatus(base64Value) : null;
       } finally {
-        db.close();
+        stmt.free();
       }
-    } catch (error: any) {
-      Logger.getInstance().error('Failed to read active account from state.vscdb', error);
-      throw error;
+    }, (value) => !!value);
+
+    if (email) {
+      Logger.getInstance().info(`Detected active Antigravity account: ${email}`);
+      return email;
     }
+
+    Logger.getInstance().info('No userStatus entry found in state.vscdb.');
+    return null;
+  }
+
+  /**
+   * Reads `state.vscdb` as a consistent snapshot.
+   *
+   * The IDE keeps this database in rollback-journal mode and keeps writing to it while
+   * the extension is running (trajectories, window state...). A plain `readFileSync` +
+   * `new SQL.Database(buffer)` bypasses SQLite locking, so a read can land in the middle
+   * of a transaction and yield a truncated row. That produced sporadic "no session" /
+   * empty-token reads, which in turn made quota lookups run against the wrong account.
+   *
+   * The snapshot is validated by the caller's parser and retried while the database is
+   * being written.
+   */
+  private async readConsistentSnapshot<T>(
+    reader: (db: any) => T,
+    isValid: (value: T) => boolean,
+    attempts: number = 4
+  ): Promise<T | null> {
+    const dbPath = PathUtils.getVscdbPath(this.context);
+    if (!fs.existsSync(dbPath)) {
+      return null;
+    }
+
+    let SQL: any;
+    try {
+      SQL = await this.getSqlJs();
+    } catch (error) {
+      Logger.getInstance().error('Failed to initialise sql.js for state.vscdb', error);
+      return null;
+    }
+
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      let db: any = null;
+      try {
+        const buf = fs.readFileSync(dbPath);
+        db = new SQL.Database(buf);
+        const value = reader(db);
+        if (isValid(value)) {
+          return value;
+        }
+        Logger.getInstance().debug(
+          `state.vscdb snapshot ${attempt + 1}/${attempts} was incomplete (database busy); retrying...`
+        );
+      } catch (error) {
+        Logger.getInstance().debug(`state.vscdb snapshot ${attempt + 1}/${attempts} failed`, error);
+      } finally {
+        try {
+          db?.close();
+        } catch { /* already closed */ }
+      }
+
+      await new Promise<void>(resolve => setTimeout(resolve, 60 + attempt * 120));
+    }
+
+    Logger.getInstance().warn('Could not obtain a consistent state.vscdb snapshot.');
+    return null;
   }
 
   /**
@@ -746,35 +1018,22 @@ inject().catch((err) => {
       return null;
     }
 
-    try {
-      const SQL = await this.getSqlJs();
-      const buf = fs.readFileSync(dbPath);
-      const db = new SQL.Database(buf);
-
+    const tokens = await this.readConsistentSnapshot<{ accessToken: string; refreshToken: string; expiresAt: number } | null>((db) => {
+      const stmt = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
       try {
-        const stmt = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
         stmt.bind({ $key: STATE_DB_KEYS.OAUTH_TOKEN });
-
-        if (!stmt.step()) {
-          stmt.free();
-          Logger.getInstance().info('No oauthToken entry found in state.vscdb.');
-          return null;
-        }
-
-        const row = stmt.get();
-        stmt.free();
-
-        const base64Value = row[0] as string;
-        if (!base64Value) return null;
-
-        return this.parseTokensFromBase64(base64Value);
+        if (!stmt.step()) return null;
+        const base64Value = stmt.get()[0] as string;
+        return base64Value ? this.parseTokensFromBase64(base64Value) : null;
       } finally {
-        db.close();
+        stmt.free();
       }
-    } catch (error: any) {
-      Logger.getInstance().error('Failed to read active tokens from state.vscdb', error);
-      return null;
+    }, (value) => !!value);
+
+    if (!tokens) {
+      Logger.getInstance().info('No usable oauthToken entry found in state.vscdb.');
     }
+    return tokens;
   }
 
   /**
@@ -788,59 +1047,56 @@ inject().catch((err) => {
       return null;
     }
 
-    try {
-      const SQL = await this.getSqlJs();
-      const buf = fs.readFileSync(dbPath);
-      const db = new SQL.Database(buf);
+    // Both rows are required for a usable answer, so a torn read is retried instead of
+    // being reported as "no session".
+    return await this.readConsistentSnapshot<{ email: string | null; tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null; avatarUrl?: string | null } | null>((db) => {
+      let email: string | null = null;
+      let tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null = null;
+      let avatarUrl: string | null = null;
 
+      // 1. Read userStatus
+      const stmtUser = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
       try {
-        let email: string | null = null;
-        let tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null = null;
-        let avatarUrl: string | null = null;
-
-        // 1. Read userStatus
-        const stmtUser = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
         stmtUser.bind({ $key: STATE_DB_KEYS.USER_STATUS });
         if (stmtUser.step()) {
-          const row = stmtUser.get();
-          const base64Value = row[0] as string;
+          const base64Value = stmtUser.get()[0] as string;
           if (base64Value) {
             email = this.extractEmailFromUserStatus(base64Value);
           }
         }
+      } finally {
         stmtUser.free();
+      }
 
-        // 2. Read oauthToken
-        const stmtToken = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
+      // 2. Read oauthToken
+      const stmtToken = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
+      try {
         stmtToken.bind({ $key: STATE_DB_KEYS.OAUTH_TOKEN });
         if (stmtToken.step()) {
-          const row = stmtToken.get();
-          const base64Value = row[0] as string;
+          const base64Value = stmtToken.get()[0] as string;
           if (base64Value) {
             tokens = this.parseTokensFromBase64(base64Value);
           }
         }
+      } finally {
         stmtToken.free();
+      }
 
-        // 3. Read profileUrl if present
+      // 3. Read profileUrl if present
+      try {
+        const stmtProfile = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
         try {
-          const stmtProfile = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
           stmtProfile.bind({ $key: STATE_DB_KEYS.PROFILE_URL });
           if (stmtProfile.step()) {
-            const row = stmtProfile.get();
-            avatarUrl = (row[0] as string) || null;
+            avatarUrl = (stmtProfile.get()[0] as string) || null;
           }
+        } finally {
           stmtProfile.free();
-        } catch { /* optional */ }
+        }
+      } catch { /* optional */ }
 
-        return { email, tokens, avatarUrl };
-      } finally {
-        db.close();
-      }
-    } catch (error: any) {
-      Logger.getInstance().error('Failed to read active account info from state.vscdb', error);
-      return null;
-    }
+      return { email, tokens, avatarUrl };
+    }, (value) => !!value && !!value.email && !!value.tokens);
   }
 
   /**

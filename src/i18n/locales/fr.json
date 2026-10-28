@@ -242,7 +242,7 @@
     "accountAddedErrorBalance": "Compte {{email}} ajouté, mais la récupération du solde a échoué. Nouvel essai plus tard.",
     "accountAddedSuccess": "Compte {{email}} ajouté avec succès. Soldes : [{{balances}}]",
     "accountAddError": "Erreur lors de l'ajout du compte : {{error}}",
-    "missingLoginData": "Données de connexion manquantes pour {{email}}. Veuillez le supprimer et le réajouter.",
+    "missingLoginData": "Données de connexion manquantes pour {{email}}. Une nouvelle connexion Google est nécessaire pour restaurer l'accès.",
     "sessionExpiredFailed": "La session pour {{email}} a expiré et n'a pas pu être renouvelée. Veuillez vous reconnecter.",
     "refreshInProgress": "⏳ Actualisation des soldes en cours...",
     "refreshCooldown": "⏳ Veuillez patienter {{seconds}} secondes avant d'actualiser à nouveau.",
