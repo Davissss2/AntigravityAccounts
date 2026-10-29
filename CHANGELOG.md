@@ -5,6 +5,12 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.53] - 2026-10-29
+
+### Arreglado
+- Si la IA ya había terminado y la cuenta se agota después, al cambiar de cuenta se abre el mismo chat pero **no** se escribe «continua». Antes bastaba con que el último movimiento del chat fuera de hace menos de 45 segundos, aunque el trabajo estuviera acabado.
+- Ahora se mira si la conversación quedó a medias: el modelo esperando una herramienta, una herramienta terminada sin respuesta, o tu mensaje sin contestar. Solo en ese caso se reanuda sola.
+
 ## [0.3.52] - 2026-10-29
 
 ### Arreglado

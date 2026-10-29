@@ -328,6 +328,21 @@ antigravity.triggerSend                    // envía lo que haya en la caja
 - No existen `antigravity.openChatView` ni `antigravity.sendPromptToAgentPanel`.
 - Antes de forzar `openConversation`, comprobar que el id pertenece al **workspace abierto** (`vscode.workspace.workspaceFolders[0]`). Si no se puede verificar, no reabrir nada: el panel ya restaura su propia conversación y forzar otra es lo que produce el «me ha metido en un chat en el que no estaba».
 
+#### 7.9.3. ¿La IA había terminado o se quedó a medias?
+El `transcript.jsonl` guarda un JSON por paso con `type`, `status`, `created_at`, `content` y `tool_calls`. La decisión **no** puede basarse en la antigüedad del fichero: un chat terminado hace 20 s y uno interrumpido hace 20 s son indistinguibles por fecha.
+
+| Último paso | Interpretación |
+|---|---|
+| `PLANNER_RESPONSE` + `content` y sin `tool_calls` | **Terminó** → reabrir el chat, no escribir nada |
+| `PLANNER_RESPONSE` con `tool_calls` | Cortado esperando herramientas → reanudar |
+| `GENERIC` / `TOOL_RESPONSE` / `TOOL_CALL` | Herramienta ejecutada sin respuesta del modelo → reanudar |
+| `USER_INPUT` | Petición sin contestar → reanudar |
+| `status` = `RUNNING` / `IN_PROGRESS` / `PENDING` | En curso → reanudar |
+| `ERROR_MESSAGE` | Se trata como interrupción solo si el texto contiene keywords de cuota/503 |
+
+- El marcador de reanudación debe combinar esa forma con una ventana de recencia (≥10 min desde el último `mtime`): un run abandonado de hace horas no se reanuda.
+- Si `wasWorking` acaba en `false`, `executePendingResume` **sí reabre** la conversación (para no perder el hilo) y **no** escribe el prompt.
+
 ### 7.10. Regla de oro del ordenamiento: el mismo número que la tarjeta
 - `sortAccounts()` debe ordenar por **exactamente** el porcentaje que imprime la tarjeta: `getModelBalanceEntry(balances, preferredModel)?.value`. Nunca por «el mejor modelo disponible».
 - Defecto histórico (corregido en 0.3.52): `getAccountQuotaValue` hacía `if (prefVal > 0) return prefVal;` y, si el modelo preferido estaba a 0 %, caía a un máximo sobre otras claves (`gemini-3.8-*`, `claude-*`, `gpt-oss-*`). Una cuenta agotada para el usuario se ordenaba como 100 % arriba del todo. Medido en esta máquina: **11 cuentas al 0 % colocadas por encima de cuentas con cuota**.

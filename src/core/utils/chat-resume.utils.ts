@@ -134,11 +134,15 @@ export class ChatResumeUtils {
       const now = Date.now();
       const elapsedSec = Math.max(0, Math.round((now - latestMtime) / 1000));
 
-      // Inspect the tail of transcript.jsonl to determine if generation stopped due to quota exhaustion
+      // Inspect the tail of transcript.jsonl: was the run cut off, or had the agent
+      // already finished? Recency cannot tell them apart (a chat that ended 20 seconds
+      // ago looks identical to one interrupted 20 seconds ago), so the decision is made
+      // from the shape of the last recorded step.
       let isQuotaError = false;
+      let runStillOpen = false;
       try {
         const stat = fs.statSync(latestTranscriptPath);
-        const bufferSize = Math.min(stat.size, 32768); // read last 32KB
+        const bufferSize = Math.min(stat.size, 65536); // read last 64KB
         const fd = fs.openSync(latestTranscriptPath, 'r');
         const buffer = Buffer.alloc(bufferSize);
         fs.readSync(fd, buffer, 0, bufferSize, Math.max(0, stat.size - bufferSize));
@@ -147,6 +151,15 @@ export class ChatResumeUtils {
         const chunk = buffer.toString('utf-8');
         const lines = chunk.trim().split('\n').filter(Boolean);
         const tailLines = lines.slice(-20);
+
+        const entries: any[] = [];
+        for (const line of tailLines) {
+          try {
+            entries.push(JSON.parse(line));
+          } catch {
+            // A partially written last line is normal and must be ignored.
+          }
+        }
 
         const quotaKeywords = [
           '503',
@@ -159,50 +172,50 @@ export class ChatResumeUtils {
           'no capacity available'
         ];
 
-        for (let i = tailLines.length - 1; i >= 0; i--) {
-          try {
-            const entry = JSON.parse(tailLines[i]);
-            const content = String(entry.content || '').toLowerCase();
-            const status = String(entry.status || '').toLowerCase();
-            const type = String(entry.type || '').toUpperCase();
+        for (let i = entries.length - 1; i >= 0; i--) {
+          const entry = entries[i];
+          const content = String(entry.content || '').toLowerCase();
+          const status = String(entry.status || '').toLowerCase();
+          const type = String(entry.type || '').toUpperCase();
 
-            if (type === 'ERROR_MESSAGE' || status === 'ERROR') {
-              for (const kw of quotaKeywords) {
-                if (content.includes(kw)) {
-                  isQuotaError = true;
-                  break;
-                }
+          if (type === 'ERROR_MESSAGE' || status === 'ERROR') {
+            for (const kw of quotaKeywords) {
+              if (content.includes(kw)) {
+                isQuotaError = true;
+                break;
               }
             }
-            if (!isQuotaError) {
-              for (const kw of quotaKeywords) {
-                if (
-                  content.includes(kw) &&
-                  (content.includes('error') ||
-                    content.includes('code 503') ||
-                    content.includes('capacity') ||
-                    content.includes('exhausted') ||
-                    content.includes('quota'))
-                ) {
-                  isQuotaError = true;
-                  break;
-                }
-              }
-            }
-            if (isQuotaError) break;
-          } catch {
-            // ignore partial JSON parse error
           }
+          if (!isQuotaError) {
+            for (const kw of quotaKeywords) {
+              if (
+                content.includes(kw) &&
+                (content.includes('error') ||
+                  content.includes('code 503') ||
+                  content.includes('capacity') ||
+                  content.includes('exhausted') ||
+                  content.includes('quota'))
+              ) {
+                isQuotaError = true;
+                break;
+              }
+            }
+          }
+          if (isQuotaError) break;
         }
+
+        runStillOpen = ChatResumeUtils.isRunStillOpen(entries);
       } catch (err: any) {
         Logger.getInstance().debug('[ChatResume] Error reading transcript tail', err);
       }
 
-      // wasWorking: true only if quota interruption occurred or AI was actively executing within threshold
-      const wasWorking = isQuotaError || (elapsedSec <= timeoutSec && elapsedSec <= 45);
+      // An open run only counts as an interruption when the transcript was touched
+      // moments ago: an abandoned run from hours ago must never be resumed.
+      const recentlyActive = now - latestMtime <= Math.max(10 * 60_000, timeoutSec * 1000);
+      const wasWorking = isQuotaError || (runStillOpen && recentlyActive);
 
       Logger.getInstance().info(
-        `[ChatResume] Detected AI chat activity: conversation=${latestConversationId}, elapsed=${elapsedSec}s, isQuotaError=${isQuotaError}, wasWorking=${wasWorking}`
+        `[ChatResume] Detected AI chat activity: conversation=${latestConversationId}, elapsed=${elapsedSec}s, isQuotaError=${isQuotaError}, runStillOpen=${runStillOpen}, wasWorking=${wasWorking}`
       );
 
       return { wasWorking, isQuotaError, elapsedSec, conversationId: latestConversationId };
@@ -210,6 +223,43 @@ export class ChatResumeUtils {
       Logger.getInstance().debug('[ChatResume] Error detecting chat activity', err);
       return empty;
     }
+  }
+
+  /**
+   * True when the last recorded step shows the agent had NOT finished.
+   *
+   * A completed turn always ends with the model's own answer: a PLANNER_RESPONSE that
+   * carries text and has no pending tool call. Anything else means the turn was still
+   * in flight when it was cut: a request with no answer yet, a tool result the model
+   * never reacted to, or a planner step whose tools had not returned.
+   *
+   * This is what keeps an account switch from typing "continua" into a chat that had
+   * already finished its work.
+   */
+  static isRunStillOpen(entries: any[]): boolean {
+    if (!entries || entries.length === 0) return false;
+
+    let last: any = null;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      if (entries[i] && typeof entries[i] === 'object') {
+        last = entries[i];
+        break;
+      }
+    }
+    if (!last) return false;
+
+    const type = String(last.type || '').toUpperCase();
+    const status = String(last.status || '').toUpperCase();
+    const hasToolCalls = Array.isArray(last.tool_calls) && last.tool_calls.length > 0;
+    const hasContent = String(last.content || '').trim().length > 0;
+
+    if (['RUNNING', 'IN_PROGRESS', 'PENDING', 'QUEUED'].includes(status)) return true;
+    if (type === 'ERROR_MESSAGE') return false; // an error is handled as an interruption
+    if (type === 'USER_INPUT') return true;     // request accepted, the answer never started
+    if (type === 'GENERIC' || type === 'TOOL_RESPONSE' || type === 'TOOL_CALL') return true;
+    if (type === 'PLANNER_RESPONSE') return hasToolCalls;
+    if (hasToolCalls) return true;
+    return !hasContent;
   }
 
   /** Absolute path of the folder this window has open, if it is a real directory. */
