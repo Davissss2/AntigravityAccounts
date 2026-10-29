@@ -248,7 +248,11 @@ export class StateDbService {
       } catch { /* fall back to the newest conversation below */ }
 
       if (!ChatResumeUtils.conversationExists(conversationId)) {
-        conversationId = ChatResumeUtils.latestConversationId();
+        // The panel's own index is empty, so fall back to the conversation this window
+        // was working on. It is restricted to the current workspace and returns
+        // undefined when that cannot be established, in which case we leave the index
+        // alone and let the editor restore its own conversation.
+        conversationId = ChatResumeUtils.activeConversationId();
       }
 
       if (ChatResumeUtils.conversationExists(conversationId)) {

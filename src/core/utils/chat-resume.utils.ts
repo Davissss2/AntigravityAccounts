@@ -32,44 +32,103 @@ export interface RecentChatActivityResult {
 
 const RESUME_FILENAME = '.pending-chat-resume.json';
 
+/**
+ * Root folders where Antigravity keeps its agent data.
+ *
+ * Since 1.107 the agent hub stores everything under `~/.gemini/antigravity`
+ * (`brain/` and `conversations/`). The `antigravity-ide` folder belongs to older
+ * builds, where the editor drove the agent itself. Reading only the old path made
+ * the resume pick a days-old conversation from a different workspace, and the
+ * editor then reopened that chat instead of the one being written.
+ */
+function dataRoots(): string[] {
+  const home = os.homedir();
+  return ['antigravity', 'antigravity-ide']
+    .map(name => path.join(home, '.gemini', name))
+    .filter(dir => {
+      try {
+        return fs.statSync(dir).isDirectory();
+      } catch {
+        return false;
+      }
+    });
+}
+
+/** Lower-cased, slash-normalised path used to compare workspaces. */
+function normalizePath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
+/** `file:///c%3A/Users/...` -> `c:/users/...` */
+function uriToPath(uri: string): string | null {
+  const match = /^file:\/\/\/(.*)$/i.exec(uri);
+  if (!match) return null;
+  let decoded = match[1];
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    // keep the raw value
+  }
+  decoded = decoded.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (!decoded.includes(':')) decoded = `/${decoded}`; // unix absolute path
+  return decoded.toLowerCase();
+}
+
 export class ChatResumeUtils {
   /**
    * Scans Antigravity's local brain directory to determine if the AI agent
    * was actively responding or interrupted by quota exhaustion.
    */
   static detectRecentChatActivity(timeoutSec: number = 90): RecentChatActivityResult {
+    const empty: RecentChatActivityResult = { wasWorking: false, isQuotaError: false, elapsedSec: Infinity };
     try {
-      const homeDir = os.homedir();
-      const brainDir = path.join(homeDir, '.gemini', 'antigravity-ide', 'brain');
-      if (!fs.existsSync(brainDir)) {
-        return { wasWorking: false, isQuotaError: false, elapsedSec: Infinity };
-      }
+      const candidates: Array<{ mtime: number; id: string; transcript: string }> = [];
 
-      const entries = fs.readdirSync(brainDir, { withFileTypes: true });
-      let latestMtime = 0;
-      let latestConversationId: string | undefined = undefined;
-      let latestTranscriptPath: string | undefined = undefined;
-
-      for (const entry of entries) {
-        if (entry.isDirectory() && entry.name !== 'tempmediaStorage') {
+      for (const root of dataRoots()) {
+        const brainDir = path.join(root, 'brain');
+        let entries: fs.Dirent[];
+        try {
+          entries = fs.readdirSync(brainDir, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+        for (const entry of entries) {
+          if (!entry.isDirectory() || entry.name === 'tempmediaStorage') continue;
           const transcriptPath = path.join(brainDir, entry.name, '.system_generated', 'logs', 'transcript.jsonl');
-          if (fs.existsSync(transcriptPath)) {
-            try {
-              const stat = fs.statSync(transcriptPath);
-              if (stat.mtimeMs > latestMtime) {
-                latestMtime = stat.mtimeMs;
-                latestConversationId = entry.name;
-                latestTranscriptPath = transcriptPath;
-              }
-            } catch {
-              // ignore access error
-            }
+          try {
+            const stat = fs.statSync(transcriptPath);
+            candidates.push({ mtime: stat.mtimeMs, id: entry.name, transcript: transcriptPath });
+          } catch {
+            // conversation without transcript
           }
         }
       }
 
-      if (latestMtime === 0 || !latestTranscriptPath) {
-        return { wasWorking: false, isQuotaError: false, elapsedSec: Infinity };
+      if (candidates.length === 0) {
+        return empty;
+      }
+
+      candidates.sort((a, b) => b.mtime - a.mtime);
+
+      // Prefer the conversation of the workspace this window has open: the newest
+      // transcript may belong to another window, and reopening that chat is what
+      // made the switch jump into a conversation the user was not looking at.
+      const workspace = this.currentWorkspacePath();
+      const fresh = candidates.filter(c => Date.now() - c.mtime <= 45 * 60_000);
+      const pool = fresh.length > 0 ? fresh : candidates;
+      const chosen = (workspace && pool.find(c => this.belongsToWorkspace(c.id, workspace))) || pool[0];
+
+      const latestMtime = chosen.mtime;
+      const latestTranscriptPath: string = chosen.transcript;
+      // Only carry the id when it really belongs to the folder this window has open.
+      // Otherwise the resume would reopen a chat from another workspace, which looks
+      // exactly like "it switched me into a conversation I was not in".
+      const belongs = workspace ? this.belongsToWorkspace(chosen.id, workspace) : true;
+      const latestConversationId: string | undefined = belongs ? chosen.id : undefined;
+      if (!belongs) {
+        Logger.getInstance().info(
+          `[ChatResume] Newest conversation ${chosen.id} belongs to another workspace; it will not be reopened.`
+        );
       }
 
       const now = Date.now();
@@ -149,8 +208,61 @@ export class ChatResumeUtils {
       return { wasWorking, isQuotaError, elapsedSec, conversationId: latestConversationId };
     } catch (err: any) {
       Logger.getInstance().debug('[ChatResume] Error detecting chat activity', err);
-      return { wasWorking: false, isQuotaError: false, elapsedSec: Infinity };
+      return empty;
     }
+  }
+
+  /** Absolute path of the folder this window has open, if it is a real directory. */
+  private static currentWorkspacePath(): string | null {
+    try {
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders || folders.length === 0) return null;
+      if (folders[0].uri.scheme !== 'file') return null;
+      return normalizePath(folders[0].uri.fsPath);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Workspace paths recorded inside a conversation, read straight from its SQLite
+   * file (and its WAL, where the newest pages live). The hub keeps this metadata in
+   * the conversation itself, so no extra process or library is needed.
+   */
+  private static conversationWorkspaces(conversationId: string): string[] {
+    const found = new Set<string>();
+    for (const root of dataRoots()) {
+      const dbPath = path.join(root, 'conversations', `${conversationId}.db`);
+      if (!fs.existsSync(dbPath)) continue;
+
+      for (const file of [dbPath, `${dbPath}-wal`]) {
+        try {
+          const size = fs.statSync(file).size;
+          if (size === 0) continue;
+          const length = Math.min(size, 2 * 1024 * 1024);
+          const buffer = Buffer.alloc(length);
+          const fd = fs.openSync(file, 'r');
+          fs.readSync(fd, buffer, 0, length, 0);
+          fs.closeSync(fd);
+
+          for (const match of buffer.toString('latin1').matchAll(/file:\/\/\/[A-Za-z0-9%._:\/\-]{3,200}/g)) {
+            const parsed = uriToPath(match[0]);
+            if (parsed) found.add(parsed);
+          }
+        } catch {
+          // unreadable page: try the next file
+        }
+      }
+    }
+    return [...found];
+  }
+
+  /** True when the conversation was created in (or under) the given workspace. */
+  private static belongsToWorkspace(conversationId: string, workspace: string): boolean {
+    if (!workspace) return true;
+    const paths = this.conversationWorkspaces(conversationId);
+    if (paths.length === 0) return false; // unknown: do not force-open it
+    return paths.some(p => p === workspace || p.startsWith(`${workspace}/`));
   }
 
   /**
@@ -217,30 +329,54 @@ export class ChatResumeUtils {
   }
 
   /**
-   * Returns the most recently modified conversation id found in Antigravity's brain
-   * directory. Used as a fallback when the persisted layout index is empty.
+   * Returns the conversation this window was working on, or undefined when it cannot
+   * be established with confidence.
+   *
+   * Candidates are ranked by how recently the hub wrote them (database or WAL), and
+   * only conversations touched in `maxAgeMs` and belonging to the current workspace
+   * qualify. Returning undefined is a valid answer: the editor then restores its own
+   * conversation instead of being pushed into someone else's chat.
    */
-  static latestConversationId(): string | undefined {
+  static activeConversationId(maxAgeMs: number = 45 * 60_000): string | undefined {
     try {
-      const brainDir = path.join(os.homedir(), '.gemini', 'antigravity-ide', 'brain');
-      if (!fs.existsSync(brainDir)) return undefined;
+      const workspace = this.currentWorkspacePath();
+      const now = Date.now();
+      const candidates: Array<{ id: string; live: number }> = [];
 
-      let latest = 0;
-      let latestId: string | undefined;
-      for (const entry of fs.readdirSync(brainDir, { withFileTypes: true })) {
-        if (!entry.isDirectory()) continue;
-        const dir = path.join(brainDir, entry.name);
+      for (const root of dataRoots()) {
+        const convDir = path.join(root, 'conversations');
+        let entries: fs.Dirent[];
         try {
-          const mtime = fs.statSync(dir).mtimeMs;
-          if (mtime > latest) {
-            latest = mtime;
-            latestId = entry.name;
-          }
+          entries = fs.readdirSync(convDir, { withFileTypes: true });
         } catch {
-          // ignore unreadable entries
+          continue;
+        }
+        for (const entry of entries) {
+          if (!entry.isFile() || !entry.name.endsWith('.db')) continue;
+          const id = entry.name.slice(0, -'.db'.length);
+          if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) continue;
+
+          let live = 0;
+          for (const file of [path.join(convDir, entry.name), path.join(convDir, `${entry.name}-wal`)]) {
+            try {
+              live = Math.max(live, fs.statSync(file).mtimeMs);
+            } catch {
+              // file removed meanwhile
+            }
+          }
+          if (live > 0 && now - live <= maxAgeMs) {
+            candidates.push({ id, live });
+          }
         }
       }
-      return latestId;
+
+      candidates.sort((a, b) => b.live - a.live);
+      for (const candidate of candidates) {
+        if (this.belongsToWorkspace(candidate.id, workspace ?? '')) {
+          return candidate.id;
+        }
+      }
+      return undefined;
     } catch {
       return undefined;
     }
@@ -250,9 +386,9 @@ export class ChatResumeUtils {
   static conversationExists(id?: string): boolean {
     if (!id || id === '_new') return false;
     try {
-      const base = path.join(os.homedir(), '.gemini', 'antigravity-ide');
-      return fs.existsSync(path.join(base, 'brain', id))
-        || fs.existsSync(path.join(base, 'conversations', `${id}.db`));
+      return dataRoots().some(base =>
+        fs.existsSync(path.join(base, 'brain', id))
+        || fs.existsSync(path.join(base, 'conversations', `${id}.db`)));
     } catch {
       return false;
     }
@@ -284,9 +420,9 @@ export class ChatResumeUtils {
       }
 
       // Give the panel and language server time to mount before driving them.
-      await wait(3000);
+      await wait(4000);
 
-      if (data.conversationId) {
+      if (data.conversationId && this.conversationExists(data.conversationId)) {
         try {
           await vscode.commands.executeCommand('antigravity.openConversation', data.conversationId);
           Logger.getInstance().info(`[ChatResume] Reopened conversation ${data.conversationId}.`);
@@ -294,6 +430,9 @@ export class ChatResumeUtils {
           Logger.getInstance().warn('[ChatResume] antigravity.openConversation failed', openErr);
         }
         await wait(1500);
+      } else {
+        // No verified conversation: leave whatever the editor restored by itself.
+        Logger.getInstance().info('[ChatResume] No verified conversation to reopen; keeping the panel as is.');
       }
 
       try {
@@ -306,12 +445,17 @@ export class ChatResumeUtils {
       // Only push the agent forward when it was actually interrupted mid-work by the
       // quota running out; a manual switch must never send anything on its own.
       if (data.reason === 'depleted' && data.wasWorking && data.prompt) {
-        await wait(1500);
+        await wait(1200);
         try {
+          // `antigravity.triggerSend` sends whatever sits in the composer, which is empty
+          // after a restart, so pressing it alone did nothing. `antigravity.addContext`
+          // is the command the agent itself uses to put text there: write it first.
+          await vscode.commands.executeCommand('antigravity.addContext', data.prompt);
+          await wait(800);
           await vscode.commands.executeCommand('antigravity.triggerSend');
-          Logger.getInstance().info(`[ChatResume] Sent "${data.prompt}" to resume the interrupted agent.`);
+          Logger.getInstance().info(`[ChatResume] Wrote "${data.prompt}" and sent it to the interrupted agent.`);
         } catch (sendErr) {
-          Logger.getInstance().warn('[ChatResume] antigravity.triggerSend failed', sendErr);
+          Logger.getInstance().warn('[ChatResume] Could not resume the interrupted agent', sendErr);
         }
       } else {
         Logger.getInstance().info(

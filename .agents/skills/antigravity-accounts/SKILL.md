@@ -302,6 +302,32 @@ Consecuencia práctica: el actor autoritativo es el par `userStatus` + `oauthTok
 3. Llamar a `v1internal:fetchAvailableModels` **con ese project** y buscar `remainingFraction === 0`.
 4. Comparar con la fecha del mensaje de error del chat: un aviso de *hace 24 min* puede ser anterior al último reinicio del IDE y no describir la sesión actual.
 
+### 7.9. Antigravity 1.107 — Dónde viven las conversaciones y cómo reabrir el chat correcto
+
+#### 7.9.1. Ruta real de los datos del agente
+| Dato | Ruta 1.107 | Ruta heredada (≤1.22) |
+|---|---|---|
+| Transcript vivo (por conversación) | `~/.gemini/antigravity/brain/<cascadeId>/.system_generated/logs/transcript.jsonl` | `~/.gemini/antigravity-ide/brain/…` |
+| Base de la conversación | `~/.gemini/antigravity/conversations/<cascadeId>.db` (+ `-wal`) | `~/.gemini/antigravity-ide/conversations/…` |
+| Índice con título y workspace | `~/.gemini/antigravity/conversation_summaries.db` → tabla `conversation_summaries` (`conversation_id`, `title`, `last_modified_time`, `workspace_uris`, `not_fully_idle`) | — |
+
+- **Error clásico**: leer solo `antigravity-ide`. El hub escribe en `antigravity`, así que la conversación más reciente de la carpeta antigua puede tener **días**, de otro proyecto. El reanudado abría ese chat.
+- Los ids de conversación son **UUID v4**; se validan con regex antes de usarlos.
+- La frescura real se mide con `max(mtime(<id>.db), mtime(<id>.db-wal))`: el `.db` principal puede llevar horas sin cambios porque todo va al WAL.
+- El workspace de una conversación se lee buscando `file:///…` dentro del `.db` **y del `-wal`** (primeros MB). `file:///c%3A/...` necesita `decodeURIComponent`.
+
+#### 7.9.2. Reabrir el chat y escribir en él (comandos reales)
+```text
+antigravity.openConversation <cascadeId>   // 2º arg opcional: path
+antigravity.panel.focus
+antigravity.addContext <texto>             // mete texto en la caja del chat
+antigravity.triggerSend                    // envía lo que haya en la caja
+```
+- `antigravity.triggerSend` **no escribe nada**: si la caja está vacía, no envía. Hay que llamar antes a `antigravity.addContext` (es el comando que usa el propio agente para «Fix the problems listed in 'Current Problems'»).
+- `antigravity.addContext` acepta strings y objetos (`{type:'text', text}`); internamente construye `items[{chunk:{case:'text'}}]` y llama al RPC del webview.
+- No existen `antigravity.openChatView` ni `antigravity.sendPromptToAgentPanel`.
+- Antes de forzar `openConversation`, comprobar que el id pertenece al **workspace abierto** (`vscode.workspace.workspaceFolders[0]`). Si no se puede verificar, no reabrir nada: el panel ya restaura su propia conversación y forzar otra es lo que produce el «me ha metido en un chat en el que no estaba».
+
 
 
 

@@ -5,6 +5,12 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.51] - 2026-10-29
+
+### Arreglado
+- Al cambiar de cuenta se abría un chat que no era el tuyo. Se buscaba en una carpeta antigua y sin mirar el proyecto que tenías abierto. Ahora se reabre el chat del proyecto en el que estás; y si no se puede saber con seguridad, se deja el que Antigravity ya tenía abierto.
+- El "continua" no se escribía: solo se pulsaba enviar con la caja de texto vacía. Ahora se escribe el mensaje y después se envía.
+
 ## [0.3.50] - 2026-10-29
 
 ### Arreglado
