@@ -20,6 +20,13 @@ node_modules/**
 !node_modules/sql.js/dist/sql-wasm.js
 !node_modules/sql.js/dist/sql-wasm.wasm
 
+# Only the bundled entry point is loaded at runtime (package.json "main"). Per-file
+# leftovers from older tsc builds sit in dist/ and are dead weight, so keep just the
+# bundle, the sql.js runtime and the credential helper.
+dist/**/*.js
+!dist/extension.js
+!dist/sql-wasm.js
+
 # Local investigation artefacts and tooling, never part of the extension.
 scratch/**
 scripts/**

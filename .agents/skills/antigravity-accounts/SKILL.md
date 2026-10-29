@@ -328,6 +328,14 @@ antigravity.triggerSend                    // envía lo que haya en la caja
 - No existen `antigravity.openChatView` ni `antigravity.sendPromptToAgentPanel`.
 - Antes de forzar `openConversation`, comprobar que el id pertenece al **workspace abierto** (`vscode.workspace.workspaceFolders[0]`). Si no se puede verificar, no reabrir nada: el panel ya restaura su propia conversación y forzar otra es lo que produce el «me ha metido en un chat en el que no estaba».
 
+### 7.10. Regla de oro del ordenamiento: el mismo número que la tarjeta
+- `sortAccounts()` debe ordenar por **exactamente** el porcentaje que imprime la tarjeta: `getModelBalanceEntry(balances, preferredModel)?.value`. Nunca por «el mejor modelo disponible».
+- Defecto histórico (corregido en 0.3.52): `getAccountQuotaValue` hacía `if (prefVal > 0) return prefVal;` y, si el modelo preferido estaba a 0 %, caía a un máximo sobre otras claves (`gemini-3.8-*`, `claude-*`, `gpt-oss-*`). Una cuenta agotada para el usuario se ordenaba como 100 % arriba del todo. Medido en esta máquina: **11 cuentas al 0 % colocadas por encima de cuentas con cuota**.
+- El tiempo de recarga del orden debe replicar el de la cabecera de la tarjeta: preferido si `< 100 %` (fecha pasada ⇒ disponible ahora), si no el modelo agotado más próximo, y si todo está lleno la fecha del preferido. Las fechas de renovación **en el pasado** de modelos antiguos (p. ej. `gemini-3.7-flash-*` caducados) no son «disponible ahora»: son datos obsoletos y deben ignorarse.
+- Estados `token_expired` / `error` / `ineligible` ⇒ cuota 0 y recarga `Infinity`, para que caigan al final en todas las modalidades.
+- `AccountStatus` usa valores **en minúsculas** (`'active'`, `'depleted'`, `'token_expired'`…). Comparar contra `'TOKEN_EXPIRED'` nunca acierta.
+- Verificación sin IDE: volcar `antigravity.accounts.list` a JSON, cargar `model.utils` con esbuild + Node y comprobar el invariante «ninguna cuenta con tarjeta 0 % aparece antes que una con cuota».
+
 
 
 

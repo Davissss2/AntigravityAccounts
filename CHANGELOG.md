@@ -5,6 +5,13 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.52] - 2026-10-29
+
+### Arreglado
+- El orden de las cuentas no coincidía con lo que enseña cada tarjeta: una cuenta con tu modelo al 0% se colocaba como si tuviera el 100%, solo porque otro modelo distinto seguía lleno. Ahora se ordena por el mismo porcentaje que ves en la tarjeta.
+- «Cuota restante» y «Tiempo de recarga» usan también ese mismo número y la misma fecha de recarga, así que el orden ya no se contradice con lo que pone la tarjeta.
+- Las cuentas caducadas o con error quedan siempre al final, sin mezclarse con las agotadas.
+
 ## [0.3.51] - 2026-10-29
 
 ### Arreglado

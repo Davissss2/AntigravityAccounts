@@ -5568,138 +5568,107 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
   private sortAccounts(accounts: any[], effectivePreferred: string, pinnedEmailLower: string | null): void {
     const sortBy = ExtensionConfig.getInstance().getSortBy();
 
-    // Helper: compute remaining usable quota percentage (0-100)
-    const getAccountQuotaValue = (acc: any): number => {
-      if (!acc.balances) return 0;
-      if (acc.status === AccountStatus.TOKEN_EXPIRED || acc.status === AccountStatus.ERROR || acc.status === AccountStatus.INELIGIBLE) {
-        return 0;
-      }
+    const isDeadAccount = (acc: any): boolean =>
+      acc.status === AccountStatus.TOKEN_EXPIRED
+      || acc.status === AccountStatus.ERROR
+      || acc.status === AccountStatus.INELIGIBLE;
 
-      // 1. If preferred model is set and matches an active model with quota > 0, return its value
-      if (effectivePreferred) {
-        const prefVal = getModelBalanceValue(acc.balances, effectivePreferred);
-        if (prefVal > 0) return prefVal;
-      }
-
-      // 2. Primary Gemini model keys: find highest available quota
-      const primaryKeys = [
-        'gemini-3.8-flash-tiered',
-        'gemini-3.8-flash-high',
-        'gemini-3.8-flash',
-        'gemini-3.8-flash-med',
-        'gemini-3.8-flash-medium',
-        'gemini-3.7-flash-tiered',
-        'gemini-3.7-flash',
-        'gemini-3.5-flash-high',
-        'gemini-3.6-flash-high',
-        'gemini-3.5-flash-medium',
-        'gemini-3.5-flash-low',
-        'gemini-3.1-pro-high',
-        'gemini-3.1-pro-low'
-      ];
-
-      let maxQuota = 0;
-      for (const pk of primaryKeys) {
-        if (acc.balances[pk] !== undefined) {
-          const rawV = acc.balances[pk];
-          const val = typeof rawV === 'object' && rawV !== null ? Number((rawV as any).value) : Number(rawV);
-          if (!isNaN(val) && val > maxQuota) {
-            maxQuota = val;
-          }
-        }
-      }
-      if (maxQuota > 0) return maxQuota;
-
-      // 3. Fallback: check ANY non-chat balance with value > 0
-      for (const [k, rawV] of Object.entries(acc.balances)) {
-        const lower = k.toLowerCase();
-        if (lower.startsWith('chat') || lower.startsWith('tab') || lower.startsWith('tap')) continue;
-        const val = typeof rawV === 'object' && rawV !== null ? Number((rawV as any).value) : Number(rawV);
-        if (!isNaN(val) && val > maxQuota) {
-          maxQuota = val;
-        }
-      }
-
-      return maxQuota;
+    /** Models the panel actually prints on the card (same filters as renderAccountCard). */
+    const isDisplayableModel = (key: string): boolean => {
+      const lower = key.toLowerCase();
+      if (lower.startsWith('chat') || lower.startsWith('tab') || lower.startsWith('tap')) return false;
+      if (lower.includes('gemini-2.5')) return false;
+      if (/[-_\s]?lite$/i.test(lower)) return false;
+      return !!getFriendlyModelName(key);
     };
 
-    // Helper: compute soonest remaining time until renewal in ms (0 = ready now or already passed)
-    const getAccountNextRegenTime = (acc: any): number => {
-      if (!acc.balances) return Infinity;
+    /**
+     * Percentage the card prints for that account: the preferred model's value.
+     *
+     * Sorting used to fall back to the best value among every other model, so an
+     * account whose preferred model sat at 0% — the one the chat refuses to use — was
+     * ranked as if it had 100%, merely because some unrelated model still had quota.
+     * The list then disagreed with the very number shown on each card.
+     */
+    const getAccountQuotaValue = (acc: any): number => {
+      if (!acc.balances) return 0;
+      if (isDeadAccount(acc)) return 0;
 
-      // 1. If preferred model is set, has resetTime and is depleted (< 100)
       if (effectivePreferred) {
         const prefEntry = getModelBalanceEntry(acc.balances, effectivePreferred);
-        if (prefEntry && prefEntry.resetTime && prefEntry.value < 100) {
-          const date = new Date(prefEntry.resetTime);
-          const time = date.getTime();
-          if (!isNaN(time)) {
-            const diffMs = time - Date.now();
-            return diffMs <= 0 ? 0 : diffMs;
-          }
-        }
+        const prefValue = prefEntry ? Number(prefEntry.value) : NaN;
+        return isNaN(prefValue) ? 0 : Math.max(0, prefValue);
       }
 
-      // 2. Primary keys: only consider models that need renewal (< 100%)
-      const primaryKeys = [
-        'gemini-3.8-flash-tiered',
-        'gemini-3.8-flash-high',
-        'gemini-3.8-flash',
-        'gemini-3.8-flash-med',
-        'gemini-3.8-flash-medium',
-        'gemini-3.7-flash-tiered',
-        'gemini-3.7-flash',
-        'gemini-3.5-flash-high',
-        'gemini-3.6-flash-high',
-        'gemini-3.5-flash-medium',
-        'gemini-3.5-flash-low',
-        'gemini-3.1-pro-high',
-        'gemini-3.1-pro-low'
-      ];
-
-      let minTime = Infinity;
-      for (const pk of primaryKeys) {
-        const rawV = acc.balances[pk] ?? acc.balances[`models/${pk}`];
-        if (typeof rawV === 'object' && rawV !== null && (rawV as any).resetTime) {
-          const val = typeof (rawV as any).value === 'number' ? (rawV as any).value : Number((rawV as any).value);
-          if (isNaN(val) || val < 100) {
-            const resetTimeStr = (rawV as any).resetTime;
-            const date = new Date(resetTimeStr);
-            const time = date.getTime();
-            if (!isNaN(time)) {
-              const diffMs = time - Date.now();
-              const effectiveDiff = diffMs <= 0 ? 0 : diffMs;
-              if (effectiveDiff < minTime) {
-                minTime = effectiveDiff;
-              }
-            }
-          }
-        }
-      }
-
-      if (minTime !== Infinity) return minTime;
-
-      // 3. Fallback across all balances (excluding chat/tab/etc and models at 100%)
+      // No preferred model configured: use the best model the card would display.
+      let best = 0;
       for (const [k, rawV] of Object.entries(acc.balances)) {
-        const lower = k.toLowerCase();
-        if (lower.startsWith('chat') || lower.startsWith('tab') || lower.startsWith('tap') || lower.includes('claude') || lower.includes('gpt')) continue;
-        if (typeof rawV === 'object' && rawV !== null && (rawV as any).resetTime) {
-          const val = typeof (rawV as any).value === 'number' ? (rawV as any).value : Number((rawV as any).value);
-          if (isNaN(val) || val < 100) {
-            const resetTimeStr = (rawV as any).resetTime;
-            const date = new Date(resetTimeStr);
-            const time = date.getTime();
-            if (!isNaN(time)) {
-              const diffMs = time - Date.now();
-              const effectiveDiff = diffMs <= 0 ? 0 : diffMs;
-              if (effectiveDiff < minTime) {
-                minTime = effectiveDiff;
-              }
+        if (!isDisplayableModel(k)) continue;
+        const val = typeof rawV === 'object' && rawV !== null ? Number((rawV as any).value) : Number(rawV);
+        if (!isNaN(val) && val > best) best = val;
+      }
+      return best;
+    };
+
+    /**
+     * Milliseconds until the account renews, mirroring the countdown printed on the card:
+     * the preferred model while it is below 100%, otherwise the soonest depleted model,
+     * and the preferred model's own date when everything is full.
+     */
+    const getAccountNextRegenTime = (acc: any): number => {
+      if (!acc.balances) return Infinity;
+      if (isDeadAccount(acc)) return Infinity;
+
+      const now = Date.now();
+      const toTime = (value?: string): number | null => {
+        if (!value) return null;
+        const time = new Date(value).getTime();
+        return isNaN(time) ? null : time;
+      };
+      /** Future dates only: a renewal date in the past is stale data, not "ready now". */
+      const futureDelta = (value?: string): number | null => {
+        const time = toTime(value);
+        return time !== null && time > now ? time - now : null;
+      };
+
+      if (effectivePreferred) {
+        const prefEntry = getModelBalanceEntry(acc.balances, effectivePreferred);
+        if (prefEntry) {
+          const prefTime = toTime(prefEntry.resetTime);
+          const prefValue = Number(prefEntry.value);
+
+          if (!isNaN(prefValue) && prefValue < 100) {
+            // Depleted model: its own date drives the card, and a past date means ready now.
+            if (prefTime !== null) return Math.max(0, prefTime - now);
+          } else {
+            // Preferred model is full: the card tracks the soonest depleted model instead.
+            let soonest: number | null = null;
+            for (const [k, rawV] of Object.entries(acc.balances)) {
+              if (!isDisplayableModel(k)) continue;
+              if (typeof rawV !== 'object' || rawV === null) continue;
+              const value = Number((rawV as any).value);
+              if (isNaN(value) || value >= 100) continue;
+              const d = futureDelta((rawV as any).resetTime);
+              if (d !== null && (soonest === null || d < soonest)) soonest = d;
             }
+            if (soonest !== null) return soonest;
+            const prefDelta = futureDelta(prefEntry.resetTime);
+            if (prefDelta !== null) return prefDelta;
           }
         }
       }
-      return minTime;
+
+      // Fallback: soonest future renewal among the models the card displays.
+      let min = Infinity;
+      for (const [k, rawV] of Object.entries(acc.balances)) {
+        if (!isDisplayableModel(k)) continue;
+        if (typeof rawV !== 'object' || rawV === null) continue;
+        const value = Number((rawV as any).value);
+        if (!isNaN(value) && value >= 100) continue;
+        const d = futureDelta((rawV as any).resetTime);
+        if (d !== null && d < min) min = d;
+      }
+      return min;
     };
 
     // Status weight: Active/Low balance first, Depleted next, Expired/Error last
