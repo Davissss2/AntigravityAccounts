@@ -5,121 +5,70 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.50] - 2026-10-29
+
+### Arreglado
+- Al cambiar de cuenta se cerraba la conversación: ahora se vuelve a abrir el mismo chat.
+- Si la IA se quedó a medias porque se acabó la cuota, al volver se le escribe "continua" para que siga sola.
+- El reanudado automático que había antes no llegaba a ejecutarse; ahora sí.
+
+## [0.3.49] - 2026-10-29
+
+### Arreglado
+- El chat en el que estabas trabajando desaparecía al cambiar de cuenta. Ahora Antigravity lo reabre con lo que tuvieras escrito.
+
 ## [0.3.48] - 2026-10-28
 
-### Changed
-- **Cambio de Cuenta Real en las Tres Plataformas (Windows, macOS y Linux)**:
-  - La escritura de la credencial del agente deja de ser exclusiva de Windows. El worker elige el almacén nativo de cada sistema:
-    - **Windows**: `wincred` (`LegacyGeneric:target=gemini:antigravity`) vía `CredWrite` (helper `write-cred.ps1`).
-    - **macOS**: Llavero, `security add-generic-password -U -s gemini:antigravity -a antigravity` (sin pasarela adicional: `security` viene con el sistema).
-    - **Linux**: libsecret (`secret-tool store service gemini:antigravity username antigravity`), con el secreto por `stdin` para que no aparezca en la lista de procesos.
-  - El proceso del agente se detiene de forma portable: `taskkill /F /IM agy.exe` en Windows, `pkill -f 'agy.*--hub'` en macOS y Linux. La detección de procesos, el cierre ordenado y el relanzamiento ya tenían ramas `win32`/`darwin`/Linux y no dependen de `tasklist`.
-  - Si el almacén no está disponible (p. ej. Linux sin libsecret) el cambio de cuenta **no se bloquea**: se aplica en `state.vscdb`, se registra el motivo exacto en `.inject-payload.json.worker.log` y se indica el paquete que falta.
-  - El VSIX sigue siendo universal (sin `--target`), así que el mismo paquete sirve para Linux, Debian/Ubuntu, macOS (ARM64/x64) y Windows.
+### Mejorado
+- El cambio de cuenta funciona igual en Windows, macOS y Linux.
 
 ## [0.3.47] - 2026-10-28
 
-### Fixed
-- **La Cuota Bajaba en la Cuenta Anterior Aunque el Panel Mostrara la Nueva (causa real del “sigue estando en la 72/33”)**:
-  - Desde Antigravity 1.107 el agente (`agy.exe --hub`, arrancado desde `~/.gemini/bin/agy.exe`) **no** se autentica con los topics de `state.vscdb`. Usa la credencial genérica de Windows **`gemini:antigravity`** (Almacén de credenciales, `LegacyGeneric`, usuario `antigravity`), un blob **JSON plano** con `token{access_token, token_type, refresh_token, expiry, expires_in}`, `auth_method` e `id_token_email`.
-  - Verificado en esta máquina: la credencial contenía `id_token_email = account-33@example.com` mientras el panel marcaba la 28 como ACTIVA. Por eso los créditos bajaban en la 33: el chat seguía usando su token.
-  - La inyección ahora escribe también esa credencial (helper `write-cred.ps1`, `CredWrite` vía P/Invoke), para el idioma del `expiry` exacto que usa el hub (ISO con 7 decimales y offset), y **detiene `agy.exe`** para que arranque limpio antes de relanzar el IDE.
-  - Comprobado manualmente: `before email: account-33@example.com` → `after email: account-28@example.com`, con copia del blob anterior en `%TEMP%\antigravity-cred-before.json`.
-  - En macOS/Linux el helper se omite con aviso (el equivalente en Llavero/secret-service queda pendiente).
+### Arreglado
+- Los créditos se gastaban en la cuenta anterior aunque el panel mostrara la nueva. Ahora el cambio es real.
+- La pantalla de Ajustes de Antigravity podía seguir enseñando la cuenta vieja.
 
 ## [0.3.46] - 2026-10-28
 
-### Fixed
-- **Antigravity Settings Seguía Enseñando Otra Cuenta Tras el Cambio**:
-  - La pantalla *Settings → Account* imprime `agy.onboarding.lastLoginUsername`, una etiqueta plana guardada en el `globalState` de la extensión `agy` (`google.google-antigravity` → `antigravity-storage`). Esa etiqueta solo cambia con un inicio de sesión interactivo, así que tras inyectar otra cuenta seguía mostrando la anterior (se observaron `account-72` y `account-33` mientras la sesión real era `account-11`).
-  - Verificación de que el cambio sí se aplicaba: `antigravity.profileUrl` (avatar que escribe el IDE para la sesión viva) coincide con el de `account-11`, y `userStatus`/`oauthToken` de `state.vscdb` pertenecen ambos a 11.
-  - La inyección ahora reescribe esa etiqueta (y `lastLoginIsGcpTos`) junto con los tokens, de modo que la pantalla de Antigravity muestra la cuenta que acabas de activar.
-
-### Changed
-- **Empaquetado ~6× Más Rápido y VSIX 40% Más Pequeño**:
-  - `.vscodeignore` excluye explícitamente `node_modules/**`, `scratch/**`, `scripts/**`, `.agents/**`, `tests/**` y logs. Antes, al empaquetar con `--no-dependencies`, se colaban 6832 ficheros / 30.16 MB; ahora son 77 / 6.82 MB.
-  - `vsce` se invoca desde la caché local de `npx` en vez de resolverlo por red en cada empaquetado (era lo que hacía parecer que el build tardaba una hora): build 0,3 s, package 5,4 s, install 1,6 s.
+### Arreglado
+- Ajustes de Antigravity mostraba una cuenta distinta a la que estaba activa.
 
 ## [0.3.45] - 2026-10-28
 
-### Changed
-- **Cambiar de Cuenta Vuelve a ser Instantáneo y Sin Ventanas de Google**:
-  - Se revierte el inicio de sesión automático introducido en 0.3.44. **Cambiar de cuenta nunca abre el navegador**: con credenciales sanas se refresca el token y se inyecta en menos de un segundo.
-  - Si el token guardado pertenece a otra cuenta, se intenta reparar en silencio con el `refresh token`. Si tampoco es de esa cuenta (situación que solo puede venir de la corrupción antigua), la tarjeta pasa a **EXPIRED** con el botón **Re-sign in** y se muestra el motivo; el navegador solo se abre si el usuario pulsa ese botón.
-  - La rotación automática nunca abre nada: marca la cuenta y continúa.
+### Mejorado
+- Cambiar de cuenta ya no abre ninguna ventana de Google. Solo se abre si tú pulsas "Re-sign in".
 
 ## [0.3.44] - 2026-10-28
 
-### Fixed
-- **«Le doy a Activate y no hace nada»**:
-  - El aviso que pedía iniciar sesión se lanzaba como notificación no modal: se desvanecía sola, la promesa quedaba pendiente y el cambio de cuenta terminaba en `cancelled` **sin ningún mensaje visible**. Traza real: `Refresh token stored for account-11@example.com also belongs to account-25@example.com; a fresh sign-in is required.` y a partir de ahí, silencio.
-  - Ahora, al pulsar **Activate** en una tarjeta con credenciales cruzadas, el inicio de sesión de Google **arranca solo**, con una notificación de progreso visible (`Re-authenticating {email}...`) y `login_hint` fijado a ese email. Si el usuario cierra el navegador o tarda más de 5 minutos, se muestra el error real en lugar de no hacer nada.
-  - El flujo automático de rotación (`interactive: false`) nunca abre el navegador: marca la cuenta como `TOKEN_EXPIRED` y continúa.
-- **El Token Refrescado se Guardaba Antes de Verificar su Dueño**:
-  - Al renovar un token caducado se persistía el resultado sin comprobar la propiedad. Con un refresh token contaminado eso volvía a escribir credenciales ajenas bajo la cuenta equivocada. Ahora se valida el dueño y, si no coincide, no se guarda y se pasa a la reparación.
-- **Ninguna Tarjeta Vuelve a Mostrar la Cuota de Otra Cuenta**:
-  - Los tres recorridos de refresco verifican el dueño real del token (cacheado 30 min) antes de llamar a la API. Si no coincide con la tarjeta, la cuenta se marca `TOKEN_EXPIRED` (con su botón **Re-sign in**) en lugar de escribir la cuota de otra cuenta en ese hueco.
+### Arreglado
+- Al pulsar Activate en una cuenta con las credenciales estropeadas no pasaba nada; ahora avisa.
 
 ## [0.3.43] - 2026-10-28
 
-### Changed
-- **Una Sola Fuente de Verdad para la Cuota (ingeniería inversa de Antigravity 1.107)**:
-  - Verificado en el binario instalado (`out/main.js`): el IDE pinta *Models & Usage* y dispara el aviso *«Individual quota reached»* con **una única condición**, `bpe()` → `quotaInfo.remainingFraction === 0` del endpoint `v1internal:fetchAvailableModels`. No existe una cuota «baseline» aparte que consultar ni un sondeo de generación que ejecutar.
-  - **Eliminado por completo el sondeo `generateContent`** (`probeAvailability`, su caché de 10 minutos, `isPlaceholderQuotaReport` y `resolveProbeModelKey`) y los endpoints muertos `retrieveUserQuota`/`retrieveUserQuotaSummary`/`generateContent`. Eran los que fabricaban un 0% que el IDE no veía.
-  - `BalanceService` ahora lee `remainingFraction` tal cual (ausente = 0), ignora los modelos sin `quotaInfo` y solo considera la cuenta agotada cuando **todos** los modelos medibles están a 0 — exactamente la regla del IDE.
-  - Si el proyecto guardado falla o devuelve una lista vacía, se re-resuelve el proyecto con `loadCodeAssist` (la misma llamada que hace el IDE al arrancar) y se reintenta una vez.
-
-### Fixed
-- **La Cuota Saltaba de 100% a 0% sin Consumo Real**:
-  - Al detectar el sondeo «bloqueado», `createExhaustedBalances()` ponía **todos** los modelos de la cuenta a 0 (incluidas familias que la API reportaba al 100%), marcaba la cuenta como `DEPLETED` y disparaba la rotación automática. Al expirar la caché del sondeo, la tarjeta volvía a 100%. Ese era el parpadeo.
-  - Ahora los balances se guardan tal como los devuelve la API y nunca se sobreescriben con ceros sintéticos (eliminadas las 3 llamadas a `createExhaustedBalances`).
-- **Modelos «Zombi» con Cuota Irreal**:
-  - `mergeBalancesPreservingResetTime` fusionaba los balances antiguos con los nuevos y **nunca descartaba claves**: la cuenta `account-33` guardaba **30 modelos** cuando la API solo devuelve 19, con 9 de ellos congelados al 0% (`gemini-3.1-pro-high/low`, `gemini-3.6-flash-*`, `gemini-3.7-flash-*`, `gemini-pro-agent`). Eran cuotas de modelos que ya no existen.
-  - El merge ahora se reconstruye **solo** con la respuesta de la API (conservando únicamente el `resetTime` de los modelos al 100% para no reiniciar la cuenta atrás). Verificado con datos reales: 30 claves → 19, sin ceros y sin zombis.
-- **Adopción de Credenciales de Otra Cuenta (origen del aviso de credenciales cruzadas)**:
-  - `refreshBalancesWorkflow` y `refreshActiveAccountFast` copiaban los tokens de la sesión viva en la tarjeta que se estaba refrescando **sin verificar a quién pertenecían**; solo `refreshSingleAccountBalance` estaba protegido. Cualquier refresco de una tarjeta mientras otra cuenta estaba activa contaminaba sus credenciales.
-  - Nuevo `adoptSessionTokens()`: la sesión solo se adopta si su identidad y el dueño real del token (`oauth2/v2/userinfo`) coinciden con la cuenta. Se aplica en las tres rutas.
-- **Se Elimina el Aviso «Remove this account and add it again»**:
-  - El cambio de cuenta ya no aborta: `ensureCredentialsBelongTo()` repara las credenciales en el sitio → token actual → token de refresco → inicio de sesión de Google para **esa misma cuenta** (`login_hint`), conservando alias, perfil de dispositivo e historial.
-  - Si las credenciales nunca se guardaron (`missingLoginData`), también se ofrece el mismo inicio de sesión en lugar de pedir borrar la tarjeta. Los 10 idiomas se actualizaron para no sugerir eliminar la cuenta.
-  - El dueño del token se cachea 30 minutos para que la verificación no penalice el refresco.
-- **Lecturas Inconsistentes de `state.vscdb`**:
-  - El IDE mantiene la base en modo *rollback journal* y escribe mientras la extensión lee; un `readFileSync` + `new SQL.Database(buffer)` sin bloqueo puede caer en mitad de una transacción y devolver una fila truncada, que se interpretaba como «sin sesión» y mandaba la consulta de cuota a la cuenta equivocada.
-  - Las tres lecturas (`readCurrentEmailFromDb`, `readActiveTokensFromDb`, `readActiveAccountInfoFromDb`) usan ahora `readConsistentSnapshot()`, que valida el resultado y reintenta mientras la base está ocupada.
+### Arreglado
+- La cuota saltaba sola de 100% a 0% sin haber gastado nada.
+- Algunas tarjetas enseñaban cuota de modelos que ya no existen.
+- Una cuenta podía aparecer con los datos de otra.
 
 ## [0.3.42] - 2026-10-28
 
-### Changed
-- **Aviso Accionable al Detectar Credenciales Cruzadas**:
-  - Cuando la guardia de identidad aborta un cambio de cuenta, el mensaje ya no es el genérico `Please check errors and try again. — <cuenta>`.
-  - Ahora indica explicitamente a quién pertenecen las credenciales guardadas y qué hacer: `Stored credentials belong to <cuenta>. Remove this account and add it again with Google.`
-  - Motivo: el token de refresco de la cuenta afectada también quedó sobrescrito por el de otra cuenta, por lo que no se puede recuperar automáticamente; la única solución es volver a autenticarla.
+### Mejorado
+- Mensaje más claro cuando las credenciales guardadas no son de esa cuenta.
 
 ## [0.3.41] - 2026-10-28
 
-### Fixed
-- **Panel en Negro Varios Segundos al Abrir (Regresión de 0.3.40)**:
-  - 0.3.40 resolvía la cuenta activa desde `state.vscdb` **esperando a que terminara** antes de pintar el HTML. Esa cadena incluye la inicialización de `sql.js` (WASM + parseo del `state.vscdb` de ~1.8 MB) y la lectura de toda la lista de cuentas, por lo que el panel se quedaba sin contenido durante segundos.
-  - La resolución previa al pintado ahora está acotada con `Promise.race` a **250 ms**: si no termina a tiempo se pinta con el pin cacheado y la detección continúa en segundo plano, que ya dispara un re-render si la cuenta activa cambió.
+### Arreglado
+- El panel tardaba varios segundos en aparecer al abrirlo.
 
 ## [0.3.40] - 2026-10-28
 
-### Fixed
-- **El Panel Mostraba como ACTIVE la Cuenta Anterior tras Cambiar**:
-  - El cambio de cuenta sí se aplicaba (worker inyectado, `state.vscdb`, repositorio y barra de estado pasaban a la cuenta nueva), pero la tarjeta seguía marcando la anterior como `ACTIVE` y la nueva con botón `Activate`.
-  - Causa: el HTML se pintaba con el pin cacheado (`_pinnedActiveEmail`) resuelto antes del cambio, y al cerrarse la ventana inmediatamente después de inyectar, ese render nunca se repetía; además, si el monitor no detectaba un cambio respecto a `lastActiveEmail` no se disparaba ningún refresco.
-  - `AccountsWebviewProvider.refresh()` ahora **vuelve a resolver la cuenta activa desde `state.vscdb` antes de cada pintado**, por lo que cualquier render posterior corrige la insignia `ACTIVE` y el orden de las tarjetas.
+### Arreglado
+- Después de cambiar, el panel seguía marcando como activa la cuenta anterior.
 
 ## [0.3.39] - 2026-10-28
 
-### Fixed
-- **Causa Raíz de “la cuenta tiene 100% pero el IDE dice que está agotada”**:
-  - Diagnóstico con datos reales: `state.vscdb` contenía `userStatus = account-11@example.com` pero el `oauthToken` pertenecía a **account-25@example.com** (`loadCodeAssist` → `upgradeSubscriptionUri` = `…Email=account-25%40example.com`). El IDE autenticaba como una cuenta y el panel mostraba otra, así que la tarjeta enseñaba la cuota de la cuenta equivocada.
-  - Origen: `refreshSingleAccountBalance` adoptaba los tokens de la sesión activa (`getActiveAntigravityAccountInfo`) y los guardaba bajo el email de la tarjeta sin verificar a quién pertenecían, propagando credenciales cruzadas al repositorio.
-  - Nuevo `resolveTokenOwner()` (vía `OAUTH.USERINFO_URL`) y **guardia de identidad** en dos puntos: al guardar tokens de la sesión y al inyectar en `state.vscdb`. Si el token pertenece a otra cuenta se intenta refrescar; si sigue sin coincidir se aborta el cambio con aviso explícito en lugar de inyectar credenciales ajenas.
-- **La cuota ya no se puede leer de la API (hallazgo)**:
-  - `fetchAvailableModels` devuelve para este tipo de cuenta un valor de **pool compartido**, no por usuario: la cuenta bloqueada por el IDE reportaba `remainingFraction = 0.999192` (se redondeaba a `100%`) con `resetTime = now + 7 días`.
-  - Un `generateContent`/`streamGenerateContent` con el mismo token responde `200` incluso en cuentas que el IDE bloquea: el límite “individual/baseline” lo aplica la ruta del agente y no se expone en ningún endpoint accesible, por lo que el sondeo de 0.3.37 sólo puede detectar bloqueos reales por `429/403`, no todos.
+### Arreglado
+- La tarjeta decía 100% mientras el IDE decía que la cuota estaba agotada.
 
 ## [0.3.38] - 2026-10-28
 

@@ -217,60 +217,106 @@ export class ChatResumeUtils {
   }
 
   /**
-   * Executes the chat restore and resume logic after window reload.
+   * Returns the most recently modified conversation id found in Antigravity's brain
+   * directory. Used as a fallback when the persisted layout index is empty.
+   */
+  static latestConversationId(): string | undefined {
+    try {
+      const brainDir = path.join(os.homedir(), '.gemini', 'antigravity-ide', 'brain');
+      if (!fs.existsSync(brainDir)) return undefined;
+
+      let latest = 0;
+      let latestId: string | undefined;
+      for (const entry of fs.readdirSync(brainDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const dir = path.join(brainDir, entry.name);
+        try {
+          const mtime = fs.statSync(dir).mtimeMs;
+          if (mtime > latest) {
+            latest = mtime;
+            latestId = entry.name;
+          }
+        } catch {
+          // ignore unreadable entries
+        }
+      }
+      return latestId;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** True when Antigravity still has data for that conversation. */
+  static conversationExists(id?: string): boolean {
+    if (!id || id === '_new') return false;
+    try {
+      const base = path.join(os.homedir(), '.gemini', 'antigravity-ide');
+      return fs.existsSync(path.join(base, 'brain', id))
+        || fs.existsSync(path.join(base, 'conversations', `${id}.db`));
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Executes the chat restore and resume logic after the window reloads.
+   *
+   * Antigravity 1.107 exposes real commands for this (verified in the installed
+   * `agy` extension), unlike the ones used before:
+   *   - `antigravity.openConversation(cascadeId)` → reopens that exact chat
+   *   - `antigravity.panel.focus`                → brings the agent panel forward
+   *   - `antigravity.triggerSend`                → sends whatever is in the input box
    */
   static async executePendingResume(data: PendingResumeData): Promise<void> {
+    const config = ExtensionConfig.getInstance();
+    if (!config.isAutoResumeChatEnabled()) {
+      Logger.getInstance().info('[ChatResume] Auto-resume disabled by configuration; nothing to do.');
+      return;
+    }
+
+    const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
     try {
-      const config = ExtensionConfig.getInstance();
-      if (!config.isAutoResumeChatEnabled() || data.reason === 'manual' || !data.wasWorking) {
-        Logger.getInstance().info('[ChatResume] Skipping chat resume: autoResumeChat disabled, manual switch, or AI was not interrupted.');
-        return;
+      // The agent panel lives in the bundled `google.antigravity` extension: wait for it.
+      const agy = vscode.extensions.getExtension('google.antigravity');
+      if (agy && !agy.isActive) {
+        await Promise.race([agy.activate(), wait(20000)]).catch(() => undefined);
       }
 
-      Logger.getInstance().info(
-        `[ChatResume] Restoring chat session after quota depletion: wasWorking=${data.wasWorking}, prompt="${data.prompt}", convId=${data.conversationId}`
-      );
+      // Give the panel and language server time to mount before driving them.
+      await wait(3000);
 
-      // 1. Give Antigravity Language Server and Agent Panel time to initialize and restore prior session
-      await new Promise((r) => setTimeout(r, 4500));
+      if (data.conversationId) {
+        try {
+          await vscode.commands.executeCommand('antigravity.openConversation', data.conversationId);
+          Logger.getInstance().info(`[ChatResume] Reopened conversation ${data.conversationId}.`);
+        } catch (openErr) {
+          Logger.getInstance().warn('[ChatResume] antigravity.openConversation failed', openErr);
+        }
+        await wait(1500);
+      }
 
-      // 2. Reveal Antigravity Agent chat panel without toggling it closed
-      let panelOpened = false;
       try {
-        await vscode.commands.executeCommand('antigravity.openChatView');
-        panelOpened = true;
-        Logger.getInstance().info('[ChatResume] Revealed Agent chat view via antigravity.openChatView');
-      } catch (openErr) {
-        Logger.getInstance().debug('[ChatResume] antigravity.openChatView failed, trying antigravity.openAgent', openErr);
+        await vscode.commands.executeCommand('antigravity.panel.focus');
+        Logger.getInstance().info('[ChatResume] Agent panel focused.');
+      } catch (focusErr) {
+        Logger.getInstance().debug('[ChatResume] antigravity.panel.focus failed', focusErr);
       }
 
-      if (!panelOpened) {
+      // Only push the agent forward when it was actually interrupted mid-work by the
+      // quota running out; a manual switch must never send anything on its own.
+      if (data.reason === 'depleted' && data.wasWorking && data.prompt) {
+        await wait(1500);
         try {
-          await vscode.commands.executeCommand('antigravity.openAgent');
-          panelOpened = true;
-          Logger.getInstance().info('[ChatResume] Revealed Agent panel via antigravity.openAgent');
-        } catch (openAgentErr) {
-          try {
-            await vscode.commands.executeCommand('workbench.view.extension.antigravity');
-            Logger.getInstance().info('[ChatResume] Revealed Antigravity view container fallback');
-          } catch {}
+          await vscode.commands.executeCommand('antigravity.triggerSend');
+          Logger.getInstance().info(`[ChatResume] Sent "${data.prompt}" to resume the interrupted agent.`);
+        } catch (sendErr) {
+          Logger.getInstance().warn('[ChatResume] antigravity.triggerSend failed', sendErr);
         }
-      }
-
-      // 3. Allow additional cooldown for the panel to mount and hydrate the previous conversation
-      await new Promise((r) => setTimeout(r, 2500));
-
-      // 4. Send resume prompt ONLY for quota depletion auto-switch
-      if (data.reason === 'depleted' && data.prompt) {
-        try {
-          await vscode.commands.executeCommand('antigravity.sendPromptToAgentPanel', data.prompt);
-          Logger.getInstance().info(`[ChatResume] Sent resume prompt "${data.prompt}" to Antigravity Agent panel.`);
-        } catch (promptErr) {
-          Logger.getInstance().warn(
-            '[ChatResume] Could not send prompt via antigravity.sendPromptToAgentPanel',
-            promptErr
-          );
-        }
+      } else {
+        Logger.getInstance().info(
+          `[ChatResume] Conversation reopened without sending (reason=${data.reason}, wasWorking=${data.wasWorking}).`
+        );
       }
     } catch (err: any) {
       Logger.getInstance().error('[ChatResume] Error executing pending chat resume', err);

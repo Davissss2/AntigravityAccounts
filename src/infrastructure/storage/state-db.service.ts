@@ -140,13 +140,11 @@ export class StateDbService {
         rows.push({ key: STATE_DB_KEYS.ENTERPRISE_PREFS, value: enterpriseEntry });
       }
 
-      // Keep Antigravity's own "last login" label aligned with the account being
-      // injected. Settings -> Account prints `agy.onboarding.lastLoginUsername`, so
-      // without this the page kept showing the account that signed in interactively
-      // last, which reads as "the switch did nothing" even when the tokens are right.
-      const loginLabelRow = await this.buildAgyLoginLabelRow(account.email, isGcpTos);
-      if (loginLabelRow) {
-        rows.push(loginLabelRow);
+      // Keep Antigravity's own state aligned with the account being injected: the
+      // Settings label and the conversation the agent panel reopens on startup.
+      const agyStateRow = await this.buildAgyGlobalStateRow(account.email, isGcpTos);
+      if (agyStateRow) {
+        rows.push(agyStateRow);
       }
       // Since Antigravity 1.107 the agent (agy.exe --hub) authenticates with the
       // Windows generic credential "gemini:antigravity" (a plain-JSON token blob in
@@ -193,13 +191,20 @@ export class StateDbService {
   }
 
   /**
-   * Builds the row that keeps `agy.onboarding.lastLoginUsername` in sync with the
-   * account being injected. That label is what Antigravity Settings prints as the
-   * account email, so leaving it untouched made a perfectly good switch look like a
-   * no-op. The value is read, patched and written back as a whole JSON string, which
-   * keeps the worker dumb (it just writes rows).
+   * Builds the row that patches the bundled `agy` extension's globalState.
+   *
+   * Two things live there and both must follow a switch:
+   *  1. `agy.onboarding.lastLoginUsername` — the label Antigravity Settings prints as
+   *     the account email. Leaving it untouched made a good switch look like a no-op.
+   *  2. `antigravity-multi-conversation-layout-v3-index` — the list of conversation
+   *     groups the agent panel reopens on startup. It is empty after a switch, which is
+   *     why the chat you were writing in disappeared. Pointing it back at that cascade
+   *     reopens the same conversation (and its persisted draft).
+   *
+   * The blob is read, patched and written back as a whole JSON string, so the worker
+   * stays dumb and only writes rows.
    */
-  private async buildAgyLoginLabelRow(
+  private async buildAgyGlobalStateRow(
     email: string,
     isGcpTos: boolean
   ): Promise<{ key: string; value: string | null } | null> {
@@ -226,12 +231,44 @@ export class StateDbService {
 
       storage['agy.onboarding.lastLoginUsername'] = email;
       storage['agy.onboarding.lastLoginIsGcpTos'] = String(isGcpTos);
+
+      // ── Reopen the conversation that was active before the switch ──
+      const indexKey = 'antigravity-multi-conversation-layout-v3-index';
+      const layoutPrefix = 'antigravity-multi-conversation-layout-v3-';
+      let conversationId: string | undefined;
+
+      try {
+        const parsedIndex = JSON.parse(String(storage[indexKey] ?? '[]'));
+        if (Array.isArray(parsedIndex) && parsedIndex.length > 0) {
+          const group = parsedIndex[parsedIndex.length - 1];
+          if (Array.isArray(group) && group.length > 0) {
+            conversationId = String(group[group.length - 1]);
+          }
+        }
+      } catch { /* fall back to the newest conversation below */ }
+
+      if (!ChatResumeUtils.conversationExists(conversationId)) {
+        conversationId = ChatResumeUtils.latestConversationId();
+      }
+
+      if (ChatResumeUtils.conversationExists(conversationId)) {
+        const layoutKey = `${layoutPrefix}${conversationId}`;
+        if (!storage[layoutKey]) {
+          storage[layoutKey] = JSON.stringify({
+            rootNode: { type: 'pane', id: 'pane-1', cascadeId: conversationId },
+            focusedPaneId: 'pane-1'
+          });
+        }
+        storage[indexKey] = JSON.stringify([[conversationId]]);
+        Logger.getInstance().info(`[ChatResume] Conversation ${conversationId} will be reopened after the switch.`);
+      }
+
       outer['antigravity-storage'] = typeof storageRaw === 'string' ? JSON.stringify(storage) : storage;
 
       Logger.getInstance().info(`Synced Antigravity login label to ${email}.`);
       return { key: storageKey, value: JSON.stringify(outer) };
     } catch (error) {
-      Logger.getInstance().warn('Could not patch the Antigravity login label', error);
+      Logger.getInstance().warn('Could not patch the Antigravity global state', error);
       return null;
     }
   }
