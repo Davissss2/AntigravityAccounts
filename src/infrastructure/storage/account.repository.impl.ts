@@ -7,12 +7,15 @@
  */
 
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { IAccountRepository } from '../../core/domain/repositories/account.repository';
 import { Account, AccountCreationData, AccountTokens, AccountSummary } from '../../core/domain/models/account.model';
 import { DeviceProfile } from '../../core/domain/models/device-profile.model';
 import { Workflow } from '../../core/domain/models/workflow.model';
 import { STORAGE_KEYS, SECRET_KEYS } from '../../core/constants/app.constants';
 import { Logger } from '../../core/utils/logger';
+import { PathUtils } from '../../core/utils/path.utils';
 
 export class AccountRepositoryImpl implements IAccountRepository {
   constructor(private context: vscode.ExtensionContext) {}
@@ -39,6 +42,42 @@ export class AccountRepositoryImpl implements IAccountRepository {
         }
       }
     }
+
+    if (PathUtils.isRemoteStandaloneMode(this.context)) {
+      const cliAccountsDir = PathUtils.getCliAccountsDir();
+      if (fs.existsSync(cliAccountsDir)) {
+        try {
+          const entries = fs.readdirSync(cliAccountsDir, { withFileTypes: true });
+          let updated = false;
+          for (const ent of entries) {
+            if (ent.isDirectory() && isValidEmail(ent.name)) {
+              const cliEmail = ent.name.trim().toLowerCase();
+              if (!valid.some(a => a.email.toLowerCase() === cliEmail)) {
+                const namePart = cliEmail.split('@')[0];
+                const displayName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+                valid.push({
+                  email: cliEmail,
+                  name: displayName,
+                  plan: 'unknown' as any,
+                  status: 'active' as any,
+                  balances: {},
+                  addedAt: new Date().toISOString(),
+                  isActive: false,
+                  hasDeviceProfile: false
+                });
+                updated = true;
+              }
+            }
+          }
+          if (updated) {
+            await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, valid);
+          }
+        } catch (e) {
+          Logger.getInstance().warn('[AccountRepo] Failed to auto-discover CLI accounts', e);
+        }
+      }
+    }
+
     return valid;
   }
 
@@ -144,36 +183,102 @@ export class AccountRepositoryImpl implements IAccountRepository {
   }
 
   async storeTokens(email: string, tokens: AccountTokens): Promise<void> {
-    await this.context.secrets.store(SECRET_KEYS.REFRESH_TOKEN(email), tokens.refreshToken);
-    await this.context.secrets.store(SECRET_KEYS.ACCESS_TOKEN(email), tokens.accessToken);
-    // Expiration metadata
-    await this.context.secrets.store(SECRET_KEYS.METADATA(email), JSON.stringify({ expiresAt: tokens.expiresAt }));
+    try {
+      await this.context.secrets.store(SECRET_KEYS.REFRESH_TOKEN(email), tokens.refreshToken);
+      await this.context.secrets.store(SECRET_KEYS.ACCESS_TOKEN(email), tokens.accessToken);
+      // Expiration metadata
+      await this.context.secrets.store(SECRET_KEYS.METADATA(email), JSON.stringify({ expiresAt: tokens.expiresAt }));
+    } catch (err) {
+      Logger.getInstance().debug(`[AccountRepo] SecretStorage store failed for ${email} (headless environment):`, err);
+    }
+
+    try {
+      const cliDir = PathUtils.getCliAccountsDir();
+      const accountDir = path.join(cliDir, email);
+      if (!fs.existsSync(accountDir)) {
+        fs.mkdirSync(accountDir, { recursive: true });
+      }
+      const tokenFile = path.join(accountDir, 'antigravity-oauth-token');
+      let idToken = '';
+      if (fs.existsSync(tokenFile)) {
+        try {
+          const existing = JSON.parse(fs.readFileSync(tokenFile, 'utf-8'));
+          idToken = existing?.id_token || '';
+        } catch {}
+      }
+      const payload = {
+        token: {
+          access_token: tokens.accessToken,
+          token_type: 'Bearer',
+          refresh_token: tokens.refreshToken,
+          expiry: new Date(tokens.expiresAt * 1000).toISOString()
+        },
+        auth_method: 'consumer',
+        id_token: idToken
+      };
+      fs.writeFileSync(tokenFile, JSON.stringify(payload, null, 2), 'utf-8');
+    } catch (err) {
+      Logger.getInstance().debug(`[AccountRepo] Failed to sync token to CLI accounts directory:`, err);
+    }
   }
 
   async getTokens(email: string): Promise<AccountTokens | null> {
     try {
-      let refreshToken = await this.context.secrets.get(SECRET_KEYS.REFRESH_TOKEN(email));
-      let accessToken = await this.context.secrets.get(SECRET_KEYS.ACCESS_TOKEN(email));
-      let metaStr = await this.context.secrets.get(SECRET_KEYS.METADATA(email));
+      let refreshToken: string | undefined;
+      let accessToken: string | undefined;
+      let metaStr: string | undefined;
 
-      if (!refreshToken || !accessToken) {
-        const lower = email.toLowerCase();
-        if (lower !== email) {
-          refreshToken = await this.context.secrets.get(SECRET_KEYS.REFRESH_TOKEN(lower));
-          accessToken = await this.context.secrets.get(SECRET_KEYS.ACCESS_TOKEN(lower));
-          metaStr = await this.context.secrets.get(SECRET_KEYS.METADATA(lower));
+      try {
+        refreshToken = await this.context.secrets.get(SECRET_KEYS.REFRESH_TOKEN(email));
+        accessToken = await this.context.secrets.get(SECRET_KEYS.ACCESS_TOKEN(email));
+        metaStr = await this.context.secrets.get(SECRET_KEYS.METADATA(email));
+
+        if (!refreshToken || !accessToken) {
+          const lower = email.toLowerCase();
+          if (lower !== email) {
+            refreshToken = await this.context.secrets.get(SECRET_KEYS.REFRESH_TOKEN(lower));
+            accessToken = await this.context.secrets.get(SECRET_KEYS.ACCESS_TOKEN(lower));
+            metaStr = await this.context.secrets.get(SECRET_KEYS.METADATA(lower));
+          }
+        }
+      } catch (secErr) {
+        Logger.getInstance().debug(`[AccountRepo] SecretStorage read failed for ${email}`, secErr);
+      }
+
+      if (refreshToken && accessToken) {
+        const meta = metaStr ? JSON.parse(metaStr) : { expiresAt: 0 };
+        return {
+          refreshToken,
+          accessToken,
+          expiresAt: meta.expiresAt
+        };
+      }
+
+      // Standalone / CLI token fallback
+      const cliAccountTokenPath = path.join(PathUtils.getCliAccountsDir(), email, 'antigravity-oauth-token');
+      if (fs.existsSync(cliAccountTokenPath)) {
+        try {
+          const raw = fs.readFileSync(cliAccountTokenPath, 'utf-8');
+          const data = JSON.parse(raw);
+          const t = data?.token;
+          if (t?.access_token && t?.refresh_token) {
+            let expiresAt = Math.floor(Date.now() / 1000) + 3600;
+            if (t.expiry) {
+              const parsed = Math.floor(new Date(t.expiry).getTime() / 1000);
+              if (!isNaN(parsed) && parsed > 0) expiresAt = parsed;
+            }
+            return {
+              accessToken: t.access_token,
+              refreshToken: t.refresh_token,
+              expiresAt
+            };
+          }
+        } catch (e) {
+          Logger.getInstance().debug(`[AccountRepo] Failed to parse CLI token for ${email}`, e);
         }
       }
 
-      if (!refreshToken || !accessToken) return null;
-
-      const meta = metaStr ? JSON.parse(metaStr) : { expiresAt: 0 };
-
-      return {
-        refreshToken,
-        accessToken,
-        expiresAt: meta.expiresAt
-      };
+      return null;
     } catch (e) {
       Logger.getInstance().error(`Failed to retrieve tokens for ${email}`, e);
       return null;
@@ -201,10 +306,14 @@ export class AccountRepositoryImpl implements IAccountRepository {
   }
 
   async storeDeviceProfile(email: string, profile: DeviceProfile): Promise<void> {
-    await this.context.secrets.store(
-      this.deviceProfileKey(email),
-      JSON.stringify(profile)
-    );
+    try {
+      await this.context.secrets.store(
+        this.deviceProfileKey(email),
+        JSON.stringify(profile)
+      );
+    } catch (e) {
+      Logger.getInstance().debug(`[AccountRepo] SecretStorage device profile store failed for ${email}`, e);
+    }
     // Mark account as having a device profile
     await this.updateAccount(email, { hasDeviceProfile: true } as Partial<Account>);
     Logger.getInstance().info(`Device profile stored securely for: ${email}`);
@@ -216,7 +325,7 @@ export class AccountRepositoryImpl implements IAccountRepository {
       if (!raw) return null;
       return JSON.parse(raw) as DeviceProfile;
     } catch (e) {
-      Logger.getInstance().error(`Failed to retrieve device profile for ${email}`, e);
+      Logger.getInstance().debug(`Failed to retrieve device profile for ${email}`, e);
       return null;
     }
   }

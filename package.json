@@ -47,6 +47,10 @@
     "onStartupFinished"
   ],
   "main": "./dist/extension.js",
+  "extensionKind": [
+    "workspace",
+    "ui"
+  ],
   "icon": "resources/icons/logo_with_title_bordered.png",
   "contributes": {
     "commands": [
