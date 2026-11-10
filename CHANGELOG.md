@@ -5,6 +5,18 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.54] - 2026-11-10
+
+### Arreglado
+- **En Ubuntu/Linux el cambio de cuenta no cambiaba el chat.** La extensión guardaba la credencial del agente con el nombre de Windows (`gemini:antigravity`), pero en Linux el agente la busca como dos atributos separados: `service=gemini` y `username=antigravity`. Se escribía una credencial que nadie leía, así que el panel cambiaba y el chat seguía gastando la cuota de la cuenta anterior. Ahora se escribe en la clave correcta (y también en la anterior, por compatibilidad) y se comprueba leyéndola de vuelta.
+- Al reiniciar el IDE desde la extensión en Linux/macOS se perdía el entorno de la sesión gráfica. Sin `XAUTHORITY` o `XDG_CURRENT_DESKTOP`, el IDE podía no arrancar o mostrar el aviso de que no encuentra el llavero de claves. Ahora se recuperan esas variables antes de relanzar.
+- El reinicio abría otra instalación si tenías dos copias de Antigravity: se relanza el mismo binario que está en ejecución.
+- Se detiene el proceso del agente (`agy --hub`) de forma más fiable, para que lea la credencial nueva.
+
+### Notas
+- Un único paquete universal: el mismo archivo funciona en Windows, Linux y macOS, y elige el método adecuado en cada sistema (Administrador de credenciales, llavero de macOS o libsecret).
+- Eliminados los scripts que generaban paquetes por plataforma.
+
 ## [0.3.53] - 2026-10-29
 
 ### Arreglado

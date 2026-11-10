@@ -21,6 +21,14 @@ export interface PendingResumeData {
   targetEmail: string;
   timestamp: number;
   conversationId?: string;
+  /**
+   * Folder (or `.code-workspace` file) of the window this session belongs to.
+   *
+   * Antigravity keeps several windows open at once, and every switch restarts all of
+   * them. Without this field the marker was a single record, so only one window could
+   * claim it and the other ones came back empty.
+   */
+  workspace?: string;
 }
 
 export interface RecentChatActivityResult {
@@ -31,6 +39,10 @@ export interface RecentChatActivityResult {
 }
 
 const RESUME_FILENAME = '.pending-chat-resume.json';
+const PEERS_FILENAME = '.window-peers.json';
+const RESUME_TTL_MS = 300_000;
+/** A window refreshes its record every 30s; two missed beats and it is gone. */
+const PEER_TTL_MS = 90_000;
 
 /**
  * Root folders where Antigravity keeps its agent data.
@@ -78,8 +90,12 @@ export class ChatResumeUtils {
   /**
    * Scans Antigravity's local brain directory to determine if the AI agent
    * was actively responding or interrupted by quota exhaustion.
+   *
+   * `workspaceOverride` restricts the search to that folder instead of the one this
+   * window has open. That is what lets a switch capture the state of every open
+   * window, not just the one that happened to trigger it.
    */
-  static detectRecentChatActivity(timeoutSec: number = 90): RecentChatActivityResult {
+  static detectRecentChatActivity(timeoutSec: number = 90, workspaceOverride?: string | null): RecentChatActivityResult {
     const empty: RecentChatActivityResult = { wasWorking: false, isQuotaError: false, elapsedSec: Infinity };
     try {
       const candidates: Array<{ mtime: number; id: string; transcript: string }> = [];
@@ -113,7 +129,8 @@ export class ChatResumeUtils {
       // Prefer the conversation of the workspace this window has open: the newest
       // transcript may belong to another window, and reopening that chat is what
       // made the switch jump into a conversation the user was not looking at.
-      const workspace = this.currentWorkspacePath();
+      const explicit = workspaceOverride !== undefined && workspaceOverride !== null;
+      const workspace = explicit ? normalizePath(workspaceOverride as string) : this.currentWorkspacePath();
       const fresh = candidates.filter(c => Date.now() - c.mtime <= 45 * 60_000);
       const pool = fresh.length > 0 ? fresh : candidates;
       const chosen = (workspace && pool.find(c => this.belongsToWorkspace(c.id, workspace))) || pool[0];
@@ -129,6 +146,12 @@ export class ChatResumeUtils {
         Logger.getInstance().info(
           `[ChatResume] Newest conversation ${chosen.id} belongs to another workspace; it will not be reopened.`
         );
+        // An explicit workspace with no chat of its own means this window had nothing
+        // in flight: reporting someone else's activity would send "continua" into the
+        // wrong chat once the window comes back.
+        if (explicit) {
+          return empty;
+        }
       }
 
       const now = Date.now();
@@ -319,63 +342,245 @@ export class ChatResumeUtils {
    * Synchronously persists the pending resume state to disk so it survives window restarts.
    */
   static savePendingResume(storageDir: string, data: PendingResumeData): void {
+    this.savePendingSessions(storageDir, [data]);
+  }
+
+  /**
+   * Persists one session per open window.
+   *
+   * Every window restarts with the switch, so the marker has to describe all of them;
+   * a single record could only ever be claimed once, which is why the other windows
+   * came back without their chat.
+   */
+  static savePendingSessions(storageDir: string, sessions: PendingResumeData[]): void {
     try {
+      const filePath = path.join(storageDir, RESUME_FILENAME);
+      const clean = sessions.filter(s => s && typeof s === 'object');
+      if (clean.length === 0) {
+        try { fs.unlinkSync(filePath); } catch {}
+        return;
+      }
       if (!fs.existsSync(storageDir)) {
         fs.mkdirSync(storageDir, { recursive: true });
       }
-      const filePath = path.join(storageDir, RESUME_FILENAME);
-      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+      const tmpPath = `${filePath}.tmp`;
+      fs.writeFileSync(tmpPath, JSON.stringify({ version: 2, sessions: clean }, null, 2), 'utf-8');
+      fs.renameSync(tmpPath, filePath);
       Logger.getInstance().info(
-        `[ChatResume] Saved pending resume marker: reason=${data.reason}, wasWorking=${data.wasWorking}, prompt="${data.prompt}", convId=${data.conversationId}`
+        `[ChatResume] Saved ${clean.length} pending resume session(s): `
+        + clean.map(s => `${path.basename(s.workspace || '?')}(wasWorking=${s.wasWorking}, conv=${s.conversationId || '-'})`).join(', ')
       );
     } catch (err: any) {
-      Logger.getInstance().error('[ChatResume] Failed to save pending resume marker', err);
+      Logger.getInstance().error('[ChatResume] Failed to save pending resume markers', err);
     }
+  }
+
+  /** Reads the marker file, accepting both the multi-window and the old single record. */
+  private static readPendingSessions(storageDir: string): PendingResumeData[] {
+    const filePath = path.join(storageDir, RESUME_FILENAME);
+    try {
+      if (!fs.existsSync(filePath)) return [];
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      const list: PendingResumeData[] = Array.isArray(parsed?.sessions)
+        ? parsed.sessions
+        : (parsed && typeof parsed === 'object' && 'reason' in parsed ? [parsed as PendingResumeData] : []);
+      const now = Date.now();
+      return list.filter(s => s && typeof s === 'object' && now - Number(s.timestamp || 0) <= RESUME_TTL_MS);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Takes the session that belongs to this window and leaves the rest on disk for the
+   * other windows starting up next to it. Claiming is destructive on purpose: a window
+   * must never resume a chat that another window is already driving.
+   */
+  static claimPendingResumeForWorkspace(storageDir: string): PendingResumeData | null {
+    const sessions = this.readPendingSessions(storageDir);
+    if (sessions.length === 0) {
+      try { fs.unlinkSync(path.join(storageDir, RESUME_FILENAME)); } catch {}
+      return null;
+    }
+
+    const target = this.windowTarget();
+    const normalizedTarget = target ? normalizePath(target) : null;
+    let index = normalizedTarget
+      ? sessions.findIndex(s => !!s.workspace && normalizePath(s.workspace) === normalizedTarget)
+      : -1;
+
+    if (index < 0 && sessions.length === 1 && !sessions[0].workspace) {
+      // Legacy marker written by an older build: it describes the window that
+      // triggered the switch, and that is the only one that can claim it.
+      index = 0;
+    }
+
+    this.savePendingSessions(storageDir, sessions.filter((_, i) => i !== index));
+    if (index < 0) {
+      Logger.getInstance().info(
+        `[ChatResume] No pending session for ${target || 'this window'}; leaving it to the editor.`
+      );
+      return null;
+    }
+    Logger.getInstance().info(
+      `[ChatResume] Claimed pending session for ${target} (conv=${sessions[index].conversationId || '-'}).`
+    );
+    return sessions[index];
   }
 
   /**
    * Retrieves the pending resume marker without deleting it.
    */
   static getPendingResume(storageDir: string): PendingResumeData | null {
-    try {
-      const filePath = path.join(storageDir, RESUME_FILENAME);
-      if (!fs.existsSync(filePath)) return null;
-
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const data = JSON.parse(content) as PendingResumeData;
-      if (Date.now() - data.timestamp > 300_000) {
-        return null;
-      }
-      return data;
-    } catch {
-      return null;
-    }
+    const sessions = this.readPendingSessions(storageDir);
+    return sessions.length > 0 ? sessions[0] : null;
   }
 
   /**
    * Reads and clears the pending resume marker from disk.
    */
   static readAndClearPendingResume(storageDir: string): PendingResumeData | null {
+    const session = this.claimPendingResumeForWorkspace(storageDir);
+    if (!session) {
+      Logger.getInstance().info('[ChatResume] No pending resume marker for this window.');
+    }
+    return session;
+  }
+
+  // ─── Open window registry ──────────────────────────────────────────────────
+  //
+  // Closing only the window that started the switch left the others running, so the
+  // worker force-killed them and could not know what to reopen: Antigravity came back
+  // as a single window. Each window now records the folder it has open, and the
+  // worker replays that list with `--new-window`.
+
+  /** Folder (or `.code-workspace` file) of this window, i.e. what to pass as an argument. */
+  static windowTarget(): string | null {
     try {
-      const filePath = path.join(storageDir, RESUME_FILENAME);
-      if (!fs.existsSync(filePath)) return null;
-
-      const content = fs.readFileSync(filePath, 'utf-8');
-      try {
-        fs.unlinkSync(filePath);
-      } catch {}
-
-      const data = JSON.parse(content) as PendingResumeData;
-      // Expire if older than 5 minutes
-      if (Date.now() - data.timestamp > 300_000) {
-        Logger.getInstance().info('[ChatResume] Discarding expired pending resume marker.');
-        return null;
-      }
-      return data;
-    } catch (err: any) {
-      Logger.getInstance().debug('[ChatResume] Failed to read pending resume marker', err);
+      const workspaceFile = vscode.workspace.workspaceFile;
+      if (workspaceFile && workspaceFile.scheme === 'file') return workspaceFile.fsPath;
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders || folders.length === 0) return null;
+      if (folders[0].uri.scheme !== 'file') return null;
+      return folders[0].uri.fsPath;
+    } catch {
       return null;
     }
+  }
+
+  /** Records (or refreshes) this window so a switch can bring it back. */
+  static registerWindowPeer(storageDir: string): void {
+    const target = this.windowTarget();
+    if (!target) return;
+    try {
+      if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
+      const peers = this.readWindowPeers(storageDir).filter(p => p.pid !== process.pid);
+      peers.push({ target, pid: process.pid, updatedAt: Date.now() });
+      fs.writeFileSync(
+        path.join(storageDir, PEERS_FILENAME),
+        JSON.stringify({ version: 1, peers }, null, 2),
+        'utf-8'
+      );
+    } catch (err: any) {
+      Logger.getInstance().debug('[ChatResume] Could not register this window', err);
+    }
+  }
+
+  private static readWindowPeers(storageDir: string): Array<{ target: string; pid: number; updatedAt: number }> {
+    try {
+      const raw = JSON.parse(fs.readFileSync(path.join(storageDir, PEERS_FILENAME), 'utf-8'));
+      const list = Array.isArray(raw?.peers) ? raw.peers : [];
+      const now = Date.now();
+      return list.filter((p: any) =>
+        p && typeof p.target === 'string' && p.target
+        && Number.isFinite(Number(p.updatedAt)) && now - Number(p.updatedAt) <= PEER_TTL_MS);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Folders that must come back after the restart, current window first.
+   *
+   * Live peers are the primary source. If this build has none (first switch after an
+   * update), the window layout Antigravity persisted in `storage.json`
+   * (`windowsState.openedWindows` / `backupWorkspaces`) is used instead.
+   */
+  static collectWindowTargets(storageDir: string): string[] {
+    const targets: string[] = [];
+    const push = (value?: string | null) => {
+      if (!value) return;
+      try {
+        if (!fs.existsSync(value)) return;
+      } catch {
+        return;
+      }
+      const normalized = normalizePath(value);
+      if (targets.some(t => normalizePath(t) === normalized)) return;
+      targets.push(value);
+    };
+
+    push(this.windowTarget());
+    for (const peer of this.readWindowPeers(storageDir)) push(peer.target);
+
+    if (targets.length <= 1) {
+      for (const fallback of this.targetsFromStorageJson(storageDir)) push(fallback);
+    }
+    return targets;
+  }
+
+  private static targetsFromStorageJson(storageDir: string): string[] {
+    const out: string[] = [];
+    const addUri = (raw?: string) => {
+      if (!raw) return;
+      const asPath = uriToPath(raw);
+      if (asPath) out.push(asPath);
+      else if (/^[a-zA-Z]:[\\/]/.test(raw) || raw.startsWith('/')) out.push(raw);
+    };
+    try {
+      const storagePath = path.join(storageDir, 'storage.json');
+      if (!fs.existsSync(storagePath)) return out;
+      const state = JSON.parse(fs.readFileSync(storagePath, 'utf-8'));
+      for (const window of state?.windowsState?.openedWindows ?? []) {
+        if (window?.folder) addUri(window.folder);
+        else if (window?.workspace?.configURIPath) addUri(window.workspace.configURIPath);
+      }
+      for (const folder of state?.backupWorkspaces?.folders ?? []) addUri(folder?.folderUri);
+      for (const workspace of state?.backupWorkspaces?.workspaces ?? []) addUri(workspace?.configURIPath);
+    } catch {
+      // no usable layout on disk
+    }
+    return out;
+  }
+
+  /**
+   * Builds the resume marker for every open window.
+   *
+   * Only a `depleted` switch may send a prompt, and only into a window whose chat was
+   * actually interrupted: the other windows are reopened, they are not put back to work.
+   */
+  static buildSessionsForOpenWindows(
+    storageDir: string,
+    options: { prompt: string; targetEmail: string; reason: 'depleted' | 'manual'; timeoutSec?: number }
+  ): PendingResumeData[] {
+    const targets = this.collectWindowTargets(storageDir);
+    const now = Date.now();
+    return targets.map(target => {
+      // A multi-root `.code-workspace` file never appears inside a conversation, so the
+      // folder that contains it is what identifies the chats of that window.
+      const workspaceForChats = target.toLowerCase().endsWith('.code-workspace') ? path.dirname(target) : target;
+      const activity = this.detectRecentChatActivity(options.timeoutSec ?? 90, workspaceForChats);
+      const wasWorking = options.reason === 'depleted' && (activity.wasWorking || activity.isQuotaError);
+      return {
+        reason: options.reason,
+        wasWorking,
+        prompt: options.prompt,
+        targetEmail: options.targetEmail,
+        timestamp: now,
+        conversationId: activity.conversationId,
+        workspace: target
+      };
+    });
   }
 
   /**
@@ -445,13 +650,45 @@ export class ChatResumeUtils {
   }
 
   /**
+   * True when the IDE actually exposes that command.
+   *
+   * A command declared in `contributes.commands` is not necessarily registered at
+   * runtime: `antigravity.panel.focus` is declared by the bundled `agy` extension but
+   * no file in the installed build registers it, so executing it only throws. Checking
+   * first turns a silent no-op into a single clear log line.
+   */
+  private static async commandExists(id: string): Promise<boolean> {
+    try {
+      const commands = await vscode.commands.getCommands(true);
+      return Array.isArray(commands) && commands.includes(id);
+    } catch {
+      return false;
+    }
+  }
+
+  private static async runIfAvailable(id: string, ...args: unknown[]): Promise<boolean> {
+    if (!(await this.commandExists(id))) {
+      Logger.getInstance().warn(`[ChatResume] Command "${id}" is not registered in this Antigravity build; skipped.`);
+      return false;
+    }
+    await vscode.commands.executeCommand(id, ...args);
+    return true;
+  }
+
+  /**
    * Executes the chat restore and resume logic after the window reloads.
    *
-   * Antigravity 1.107 exposes real commands for this (verified in the installed
-   * `agy` extension), unlike the ones used before:
-   *   - `antigravity.openConversation(cascadeId)` → reopens that exact chat
-   *   - `antigravity.panel.focus`                → brings the agent panel forward
-   *   - `antigravity.triggerSend`                → sends whatever is in the input box
+   * Commands verified against the installed 1.107 build (`extensions/agy/vscode/extension.js`):
+   *   - `antigravity.openConversation(cascadeId, path)` → registered as
+   *     `${naming.prefix}.openConversation`, focuses the chat and calls
+   *     `api.openConversation({ cascadeId })`
+   *   - `antigravity.addContext(...items)`            → registered; accepts plain strings
+   *   - `antigravity.triggerSend()`                   → registered; sends the composer content
+   *   - `antigravity.panel.focus`                     → declared but NOT registered
+   *
+   * `ensureMainInstance()` resolves to `this.mainViews[0]`, i.e. the chat view of ***this***
+   * window's extension host, which is what allows several windows to each resume their
+   * own conversation.
    */
   static async executePendingResume(data: PendingResumeData): Promise<void> {
     const config = ExtensionConfig.getInstance();
@@ -474,8 +711,10 @@ export class ChatResumeUtils {
 
       if (data.conversationId && this.conversationExists(data.conversationId)) {
         try {
-          await vscode.commands.executeCommand('antigravity.openConversation', data.conversationId);
-          Logger.getInstance().info(`[ChatResume] Reopened conversation ${data.conversationId}.`);
+          const opened = await this.runIfAvailable('antigravity.openConversation', data.conversationId);
+          if (opened) {
+            Logger.getInstance().info(`[ChatResume] Reopened conversation ${data.conversationId}.`);
+          }
         } catch (openErr) {
           Logger.getInstance().warn('[ChatResume] antigravity.openConversation failed', openErr);
         }
@@ -485,9 +724,12 @@ export class ChatResumeUtils {
         Logger.getInstance().info('[ChatResume] No verified conversation to reopen; keeping the panel as is.');
       }
 
+      // `openConversation` already focuses the chat view, so this is only a fallback for
+      // builds that register the command (this one does not).
       try {
-        await vscode.commands.executeCommand('antigravity.panel.focus');
-        Logger.getInstance().info('[ChatResume] Agent panel focused.');
+        if (await this.runIfAvailable('antigravity.panel.focus')) {
+          Logger.getInstance().info('[ChatResume] Agent panel focused.');
+        }
       } catch (focusErr) {
         Logger.getInstance().debug('[ChatResume] antigravity.panel.focus failed', focusErr);
       }
@@ -500,10 +742,14 @@ export class ChatResumeUtils {
           // `antigravity.triggerSend` sends whatever sits in the composer, which is empty
           // after a restart, so pressing it alone did nothing. `antigravity.addContext`
           // is the command the agent itself uses to put text there: write it first.
-          await vscode.commands.executeCommand('antigravity.addContext', data.prompt);
+          const wrote = await this.runIfAvailable('antigravity.addContext', data.prompt);
           await wait(800);
-          await vscode.commands.executeCommand('antigravity.triggerSend');
-          Logger.getInstance().info(`[ChatResume] Wrote "${data.prompt}" and sent it to the interrupted agent.`);
+          const sent = wrote ? await this.runIfAvailable('antigravity.triggerSend') : false;
+          if (sent) {
+            Logger.getInstance().info(`[ChatResume] Wrote "${data.prompt}" and sent it to the interrupted agent.`);
+          } else {
+            Logger.getInstance().warn('[ChatResume] Could not resume the interrupted agent: chat commands unavailable.');
+          }
         } catch (sendErr) {
           Logger.getInstance().warn('[ChatResume] Could not resume the interrupted agent', sendErr);
         }

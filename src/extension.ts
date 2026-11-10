@@ -47,13 +47,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<Antigr
   // ── Auto-Heal Service Worker Stale Locks (Prevents Webview InvalidStateError) ──
   PathUtils.repairServiceWorkerIfCorrupted(context);
 
-  // ── Execute Pending Chat Resume (on account switch / quota depletion) ──
+  // ── Announce this window and execute its pending chat resume ──
+  // Antigravity can have several windows open (one per project). Each one records the
+  // folder it has open so a switch can bring them all back, and each one claims only
+  // the resume entry that belongs to its own project.
   try {
     const storageDir = PathUtils.getAntigravityDataPath(context);
-    let pendingResume = ChatResumeUtils.readAndClearPendingResume(storageDir);
-    if (!pendingResume) {
-      pendingResume = ChatResumeUtils.readAndClearPendingResume(PathUtils.getAntigravityDataPath());
-    }
+    ChatResumeUtils.registerWindowPeer(storageDir);
+    const peerTimer = setInterval(() => {
+      try { ChatResumeUtils.registerWindowPeer(storageDir); } catch { /* best effort */ }
+    }, 30000);
+    context.subscriptions.push(
+      { dispose: () => clearInterval(peerTimer) },
+      vscode.window.onDidChangeWindowState(state => {
+        if (!state.focused) return;
+        try { ChatResumeUtils.registerWindowPeer(storageDir); } catch { /* best effort */ }
+      })
+    );
+
+    const pendingResume = ChatResumeUtils.claimPendingResumeForWorkspace(storageDir);
     if (pendingResume && config.isAutoResumeChatEnabled()) {
       logger.info(
         `[ChatResume] Restoring chat after account switch to ${pendingResume.targetEmail} (wasWorking=${pendingResume.wasWorking}, prompt="${pendingResume.prompt}")`

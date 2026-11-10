@@ -2,7 +2,7 @@
   "name": "antigravity-account",
   "displayName": "Antigravity Account",
   "description": "Manage multiple Antigravity accounts seamlessly - switch, monitor credits, and auto-rotate with one click.",
-  "version": "0.3.53",
+  "version": "0.3.54",
   "publisher": "Davissss2",
   "author": {
     "name": "Davissss2",
@@ -358,11 +358,7 @@
     "watch": "node scripts/build.js --watch",
     "compile": "tsc -p ./",
     "lint": "eslint src --ext ts",
-    "package": "npx -y @vscode/vsce package",
-    "package:win": "npx -y @vscode/vsce package --target win32-x64",
-    "package:mac": "npx -y @vscode/vsce package --target darwin-arm64 --target darwin-x64",
-    "package:linux": "npx -y @vscode/vsce package --target linux-x64",
-    "package:all": "npm run package:win && npm run package:mac && npm run package:linux"
+    "package": "npx -y @vscode/vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

@@ -213,7 +213,7 @@ export class AccountService {
    * Workflow: Switch active account
    * Validates/refreshes token, injects into SQLite, and marks active.
    */
-  async switchAccountWorkflow(email: string, options?: { skipPrompt?: boolean }): Promise<'success' | 'cancelled' | 'error'> {
+  async switchAccountWorkflow(email: string, options?: { skipPrompt?: boolean; reason?: 'depleted' | 'manual' }): Promise<'success' | 'cancelled' | 'error'> {
     const account = await this.accountRepo.getAccount(email);
     if (!account) return 'error';
 
@@ -306,7 +306,13 @@ export class AccountService {
     tokens = verifiedTokens;
 
     // Inject into Database (tokens + device profile + telemetry)
-    const result = await this.stateDbService.injectAccountState(account, tokens, deviceProfile, options?.skipPrompt);
+    const result = await this.stateDbService.injectAccountState(
+      account,
+      tokens,
+      deviceProfile,
+      options?.skipPrompt,
+      options?.reason ?? 'manual'
+    );
     
     if (result === 'success') {
       try {
@@ -1936,26 +1942,11 @@ export class AccountService {
 
     const config = ExtensionConfig.getInstance();
 
-    // 1. Detect if the AI was actively working and persist chat resume marker
-    if (config.isAutoResumeChatEnabled()) {
-      try {
-        const timeoutSec = config.getAutoResumeTimeoutSeconds();
-        const activity = ChatResumeUtils.detectRecentChatActivity(timeoutSec);
-        const storageDir = PathUtils.getAntigravityDataPath(config.getContext());
-        ChatResumeUtils.savePendingResume(storageDir, {
-          reason: 'depleted',
-          wasWorking: activity.wasWorking || activity.isQuotaError,
-          prompt: config.getAutoResumePrompt(),
-          targetEmail: nextAccount.email,
-          timestamp: Date.now(),
-          conversationId: activity.conversationId
-        });
-      } catch (resumeErr) {
-        Logger.getInstance().debug('[Auto-Switch] Could not save pending chat resume marker', resumeErr);
-      }
-    }
+    // The resume marker (one entry per open window) is written by StateDbService right
+    // before closing, because only there is the full window list known. Nothing to do
+    // here beyond deciding whether the switch was triggered by depleted quota.
 
-    // 2. Configurable pre-switch notice countdown (default 0s = instant reload)
+    // Configurable pre-switch notice countdown (default 0s = instant reload)
     const noticeSeconds = config.getNoticeDurationSeconds();
     if (noticeSeconds > 0) {
       let isCancelled = false;
@@ -1991,7 +1982,7 @@ export class AccountService {
 
     try {
       // Immediate automatic switch and reload
-      await this.switchAccountWorkflow(nextAccount.email, { skipPrompt: true });
+      await this.switchAccountWorkflow(nextAccount.email, { skipPrompt: true, reason: 'depleted' });
     } finally {
       this._isSwitching = false;
     }
