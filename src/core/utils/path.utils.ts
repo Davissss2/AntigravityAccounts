@@ -68,6 +68,44 @@ export class PathUtils {
   }
 
   /**
+   * Gets the path to the standalone OAuth token file used by `agy --hub` when running over SSH or headless.
+   */
+  static getStandaloneTokenPath(): string {
+    return path.join(os.homedir(), '.gemini', 'jetski-standalone-oauth-token');
+  }
+
+  /**
+   * Gets the path to the directory where CLI accounts are stored.
+   */
+  static getCliAccountsDir(): string {
+    return path.join(os.homedir(), '.gemini', 'antigravity-cli', 'accounts');
+  }
+
+  /**
+   * Gets the path to the active CLI oauth token file.
+   */
+  static getCliOAuthTokenPath(): string {
+    return path.join(os.homedir(), '.gemini', 'antigravity-cli', 'antigravity-oauth-token');
+  }
+
+  /**
+   * Checks whether the current environment is running in headless / remote standalone mode
+   * (e.g. Remote SSH session without a local Electron state.vscdb SQLite database).
+   */
+  static isRemoteStandaloneMode(context?: vscode.ExtensionContext): boolean {
+    const vscdb = this.getVscdbPath(context);
+    if (fs.existsSync(vscdb)) {
+      return false;
+    }
+    if (vscode.env.remoteName) {
+      return true;
+    }
+    const standalone = this.getStandaloneTokenPath();
+    const cliDir = this.getCliAccountsDir();
+    return fs.existsSync(standalone) || fs.existsSync(cliDir);
+  }
+
+  /**
    * Checks if a path is absolute, if not resolves it against the extension root.
    */
   static resolveExtensionPath(extensionPath: string, relativePath: string): string {

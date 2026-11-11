@@ -2,7 +2,7 @@
   "name": "antigravity-account",
   "displayName": "Antigravity Account",
   "description": "Manage multiple Antigravity accounts seamlessly - switch, monitor credits, and auto-rotate with one click.",
-  "version": "0.3.54",
+  "version": "0.3.55",
   "publisher": "Davissss2",
   "author": {
     "name": "Davissss2",
@@ -47,6 +47,10 @@
     "onStartupFinished"
   ],
   "main": "./dist/extension.js",
+  "extensionKind": [
+    "workspace",
+    "ui"
+  ],
   "icon": "resources/icons/logo_with_title_bordered.png",
   "contributes": {
     "commands": [

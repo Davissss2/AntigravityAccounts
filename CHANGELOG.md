@@ -5,6 +5,18 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.55] - 2026-11-11
+
+### Añadido
+- **Soporte nativo para Remote SSH y servidores Linux headless:**
+  - Compatibilidad completa en sesiones remotas donde no existe `state.vscdb` ni llaveros de escritorio (DBus / GNOME Keyring).
+  - Lectura e inyección directa en el almacenamiento standalone del agente (`~/.gemini/jetski-standalone-oauth-token`) y sincronización con cuentas CLI (`~/.gemini/antigravity-cli/`).
+  - Detección precisa de sesiones remotas con la API oficial de VS Code (`vscode.env.remoteName`).
+  - Generación dinámica de `writer_id` aleatorio y permisos estrictos (`0o600` / `0o700`) para proteger los tokens OAuth en sistemas compartidos.
+  - Reinicio seguro del agente `agy --hub` acotado exclusivamente a los procesos del usuario actual.
+  - Añadido `extensionKind: ["workspace", "ui"]` en el manifiesto para ejecución remota en sesiones SSH.
+  - Agradecimiento especial a [@Dinod-Methnula](https://github.com/Dinod-Methnula) (PR #1).
+
 ## [0.3.54] - 2026-11-10
 
 ### Arreglado

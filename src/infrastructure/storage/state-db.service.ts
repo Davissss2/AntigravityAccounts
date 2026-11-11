@@ -17,6 +17,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as crypto from 'crypto';
 import { spawn, execSync } from 'child_process';
 import { Logger } from '../../core/utils/logger';
 import { I18nService } from '../../i18n/i18n.service';
@@ -96,6 +97,9 @@ export class StateDbService {
 
     const dbPath = PathUtils.getVscdbPath(this.context);
     if (!fs.existsSync(dbPath)) {
+      if (PathUtils.isRemoteStandaloneMode(this.context)) {
+        return await this.injectStandaloneAccountState(account, tokens, skipPrompt);
+      }
       const i18n = I18nService.getInstance();
       Logger.getInstance().error(`State database not found at ${dbPath}`);
       vscode.window.showErrorMessage(
@@ -1191,6 +1195,31 @@ inject().catch((err) => {
   async readCurrentEmailFromDb(): Promise<string | null> {
     const dbPath = PathUtils.getVscdbPath(this.context);
     if (!fs.existsSync(dbPath)) {
+      if (PathUtils.isRemoteStandaloneMode(this.context)) {
+        try {
+          const standalonePath = PathUtils.getStandaloneTokenPath();
+          if (fs.existsSync(standalonePath)) {
+            const data = JSON.parse(fs.readFileSync(standalonePath, 'utf-8'));
+            if (data?.id_token_email) {
+              Logger.getInstance().info(`[Standalone] Detected active Antigravity account: ${data.id_token_email}`);
+              return data.id_token_email;
+            }
+          }
+          const cliActiveTokenPath = PathUtils.getCliOAuthTokenPath();
+          if (fs.existsSync(cliActiveTokenPath)) {
+            const data = JSON.parse(fs.readFileSync(cliActiveTokenPath, 'utf-8'));
+            if (data?.id_token) {
+              const email = this.extractEmailFromJwt(data.id_token);
+              if (email) {
+                Logger.getInstance().info(`[Standalone] Detected active Antigravity account from CLI token: ${email}`);
+                return email;
+              }
+            }
+          }
+        } catch (e) {
+          Logger.getInstance().error('[Standalone] Failed to read active email', e);
+        }
+      }
       Logger.getInstance().info('state.vscdb not found, cannot detect active account.');
       return null;
     }
@@ -1280,6 +1309,46 @@ inject().catch((err) => {
   async readActiveTokensFromDb(): Promise<{ accessToken: string; refreshToken: string; expiresAt: number } | null> {
     const dbPath = PathUtils.getVscdbPath(this.context);
     if (!fs.existsSync(dbPath)) {
+      if (PathUtils.isRemoteStandaloneMode(this.context)) {
+        try {
+          const standalonePath = PathUtils.getStandaloneTokenPath();
+          if (fs.existsSync(standalonePath)) {
+            const data = JSON.parse(fs.readFileSync(standalonePath, 'utf-8'));
+            const tokenObj = data?.token;
+            if (tokenObj?.access_token && tokenObj?.refresh_token) {
+              let expiresAt = Math.floor(Date.now() / 1000) + 3600;
+              if (tokenObj.expiry) {
+                const parsed = Math.floor(new Date(tokenObj.expiry).getTime() / 1000);
+                if (!isNaN(parsed) && parsed > 0) expiresAt = parsed;
+              }
+              return {
+                accessToken: tokenObj.access_token,
+                refreshToken: tokenObj.refresh_token,
+                expiresAt
+              };
+            }
+          }
+          const cliActiveTokenPath = PathUtils.getCliOAuthTokenPath();
+          if (fs.existsSync(cliActiveTokenPath)) {
+            const data = JSON.parse(fs.readFileSync(cliActiveTokenPath, 'utf-8'));
+            const tokenObj = data?.token;
+            if (tokenObj?.access_token && tokenObj?.refresh_token) {
+              let expiresAt = Math.floor(Date.now() / 1000) + 3600;
+              if (tokenObj.expiry) {
+                const parsed = Math.floor(new Date(tokenObj.expiry).getTime() / 1000);
+                if (!isNaN(parsed) && parsed > 0) expiresAt = parsed;
+              }
+              return {
+                accessToken: tokenObj.access_token,
+                refreshToken: tokenObj.refresh_token,
+                expiresAt
+              };
+            }
+          }
+        } catch (e) {
+          Logger.getInstance().error('[Standalone] Failed to read active tokens', e);
+        }
+      }
       Logger.getInstance().info('state.vscdb not found, cannot read active tokens.');
       return null;
     }
@@ -1309,6 +1378,56 @@ inject().catch((err) => {
   async readActiveAccountInfoFromDb(): Promise<{ email: string | null; tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null; avatarUrl?: string | null } | null> {
     const dbPath = PathUtils.getVscdbPath(this.context);
     if (!fs.existsSync(dbPath)) {
+      if (PathUtils.isRemoteStandaloneMode(this.context)) {
+        try {
+          const standalonePath = PathUtils.getStandaloneTokenPath();
+          if (fs.existsSync(standalonePath)) {
+            const data = JSON.parse(fs.readFileSync(standalonePath, 'utf-8'));
+            const email = data?.id_token_email || null;
+            const tokenObj = data?.token;
+            if (email && tokenObj?.access_token && tokenObj?.refresh_token) {
+              let expiresAt = Math.floor(Date.now() / 1000) + 3600;
+              if (tokenObj.expiry) {
+                const parsed = Math.floor(new Date(tokenObj.expiry).getTime() / 1000);
+                if (!isNaN(parsed) && parsed > 0) expiresAt = parsed;
+              }
+              return {
+                email,
+                tokens: {
+                  accessToken: tokenObj.access_token,
+                  refreshToken: tokenObj.refresh_token,
+                  expiresAt
+                },
+                avatarUrl: null
+              };
+            }
+          }
+          const cliActiveTokenPath = PathUtils.getCliOAuthTokenPath();
+          if (fs.existsSync(cliActiveTokenPath)) {
+            const data = JSON.parse(fs.readFileSync(cliActiveTokenPath, 'utf-8'));
+            const tokenObj = data?.token;
+            const email = data?.id_token ? this.extractEmailFromJwt(data.id_token) : null;
+            if (email && tokenObj?.access_token && tokenObj?.refresh_token) {
+              let expiresAt = Math.floor(Date.now() / 1000) + 3600;
+              if (tokenObj.expiry) {
+                const parsed = Math.floor(new Date(tokenObj.expiry).getTime() / 1000);
+                if (!isNaN(parsed) && parsed > 0) expiresAt = parsed;
+              }
+              return {
+                email,
+                tokens: {
+                  accessToken: tokenObj.access_token,
+                  refreshToken: tokenObj.refresh_token,
+                  expiresAt
+                },
+                avatarUrl: null
+              };
+            }
+          }
+        } catch (e) {
+          Logger.getInstance().error('[Standalone] Failed to read active account info', e);
+        }
+      }
       Logger.getInstance().info('state.vscdb not found, cannot detect active account/tokens.');
       return null;
     }
@@ -1371,7 +1490,23 @@ inject().catch((err) => {
    */
   async findSecretAccountEmails(): Promise<string[]> {
     const dbPath = PathUtils.getVscdbPath(this.context);
-    if (!fs.existsSync(dbPath)) return [];
+    if (!fs.existsSync(dbPath)) {
+      if (PathUtils.isRemoteStandaloneMode(this.context)) {
+        const cliAccountsDir = PathUtils.getCliAccountsDir();
+        if (fs.existsSync(cliAccountsDir)) {
+          try {
+            const entries = fs.readdirSync(cliAccountsDir, { withFileTypes: true });
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return entries
+              .filter(dirent => dirent.isDirectory() && emailRegex.test(dirent.name))
+              .map(dirent => dirent.name);
+          } catch (e) {
+            Logger.getInstance().error('[Standalone] Failed to scan CLI accounts', e);
+          }
+        }
+      }
+      return [];
+    }
 
     try {
       const SQL = await this.getSqlJs();
@@ -1657,6 +1792,150 @@ inject().catch((err) => {
       fs.copyFileSync(dbPath, `${dbPath}.backup.1`);
     } catch (e) {
       Logger.getInstance().error('Failed to create backup', e);
+    }
+  }
+
+  private extractEmailFromJwt(jwt: string): string | null {
+    try {
+      const parts = jwt.split('.');
+      if (parts.length >= 2) {
+        const payloadBase64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        const json = Buffer.from(payloadBase64, 'base64').toString('utf-8');
+        const parsed = JSON.parse(json);
+        if (parsed?.email && typeof parsed.email === 'string') {
+          return parsed.email.trim().toLowerCase();
+        }
+      }
+    } catch {}
+    return null;
+  }
+
+  private async injectStandaloneAccountState(
+    account: Account,
+    tokens: AccountTokens,
+    skipPrompt: boolean = false
+  ): Promise<'success' | 'cancelled' | 'error'> {
+    const config = ExtensionConfig.getInstance();
+    const shouldPrompt = !skipPrompt && config.isConfirmOnSwitchEnabled();
+
+    if (shouldPrompt) {
+      const i18n = I18nService.getInstance();
+      const actionYes = i18n.t('switchPrompt.actionYes');
+      const actionNo = i18n.t('switchPrompt.actionNo');
+
+      const choice = await vscode.window.showInformationMessage(
+        i18n.t('switchPrompt.title', { email: account.email }),
+        {
+          modal: true,
+          detail: 'Switching accounts will update the active remote session and reload the window.',
+        },
+        actionYes,
+        actionNo
+      );
+
+      if (choice !== actionYes) {
+        Logger.getInstance().info('User cancelled standalone account switch.');
+        return 'cancelled';
+      }
+    } else {
+      Logger.getInstance().info(`Auto-switching to ${account.email} (standalone mode)...`);
+    }
+
+    try {
+      // 1. Prepare and write standalone token file (~/.gemini/jetski-standalone-oauth-token)
+      const standalonePath = PathUtils.getStandaloneTokenPath();
+      const expiryIso = this.formatCredentialExpiry(tokens.expiresAt);
+
+      let writerId = '';
+      if (fs.existsSync(standalonePath)) {
+        try {
+          const old = JSON.parse(fs.readFileSync(standalonePath, 'utf-8'));
+          if (old?.writer_id && typeof old.writer_id === 'string') {
+            writerId = old.writer_id;
+          }
+        } catch {}
+      }
+      if (!writerId) {
+        writerId = crypto.randomBytes(32).toString('base64url');
+      }
+
+      const standalonePayload = {
+        token: {
+          access_token: tokens.accessToken,
+          token_type: 'Bearer',
+          refresh_token: tokens.refreshToken,
+          expiry: expiryIso,
+          expires_in: 3599
+        },
+        auth_method: 'consumer',
+        id_token_email: account.email,
+        writer_id: writerId
+      };
+
+      const dir = path.dirname(standalonePath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      fs.writeFileSync(standalonePath, JSON.stringify(standalonePayload, null, 2), { encoding: 'utf-8', mode: 0o600 });
+      try { fs.chmodSync(standalonePath, 0o600); } catch {}
+      Logger.getInstance().info(`[Standalone] Updated standalone token at ${standalonePath} for ${account.email}`);
+
+      // 2. Sync to active CLI token (~/.gemini/antigravity-cli/antigravity-oauth-token)
+      const cliAccountTokenPath = path.join(PathUtils.getCliAccountsDir(), account.email, 'antigravity-oauth-token');
+      let idToken = '';
+      if (fs.existsSync(cliAccountTokenPath)) {
+        try {
+          const accData = JSON.parse(fs.readFileSync(cliAccountTokenPath, 'utf-8'));
+          idToken = accData?.id_token || '';
+        } catch {}
+      }
+
+      const cliActiveTokenPath = PathUtils.getCliOAuthTokenPath();
+      const cliPayload = {
+        token: {
+          access_token: tokens.accessToken,
+          token_type: 'Bearer',
+          refresh_token: tokens.refreshToken,
+          expiry: expiryIso
+        },
+        auth_method: 'consumer',
+        id_token: idToken
+      };
+
+      try {
+        const cliDir = path.dirname(cliActiveTokenPath);
+        if (!fs.existsSync(cliDir)) fs.mkdirSync(cliDir, { recursive: true, mode: 0o700 });
+        fs.writeFileSync(cliActiveTokenPath, JSON.stringify(cliPayload, null, 2), { encoding: 'utf-8', mode: 0o600 });
+        try { fs.chmodSync(cliActiveTokenPath, 0o600); } catch {}
+        Logger.getInstance().info(`[Standalone] Updated active CLI token at ${cliActiveTokenPath}`);
+      } catch (e) {
+        Logger.getInstance().warn('[Standalone] Failed to write active CLI token', e);
+      }
+
+      // 3. Kill running agy --hub process on Unix to force instant reload with new credentials
+      if (process.platform !== 'win32') {
+        try {
+          const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+          const pkillCmd = uid !== null
+            ? `pkill -u ${uid} -9 -f 'agy.*--hub' || true`
+            : `pkill -9 -f 'agy.*--hub' || true`;
+          execSync(pkillCmd, { stdio: 'ignore' });
+          Logger.getInstance().info('[Standalone] Signaled agy --hub to restart');
+        } catch (e) {
+          Logger.getInstance().warn('[Standalone] Could not execute pkill for agy --hub', e);
+        }
+      }
+
+      // 4. Reload window to refresh IDE remote extension host state
+      Logger.getInstance().info(`[Standalone] Switch to ${account.email} complete. Scheduling window reload...`);
+      setTimeout(() => {
+        vscode.commands.executeCommand('workbench.action.reloadWindow');
+      }, 500);
+
+      return 'success';
+    } catch (err: any) {
+      Logger.getInstance().error('[Standalone] Failed to inject standalone account state', err);
+      const i18n = I18nService.getInstance();
+      vscode.window.showErrorMessage(i18n.t('stateDb.injectionFailed', { error: err.message }));
+      return 'error';
     }
   }
 }
