@@ -5,6 +5,19 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.56] - 2026-11-11
+
+### Arreglado
+- **El cambio manual de cuenta ya no se revierte solo:**
+  - Al cambiar manualmente de cuenta (incluso si está al 0% o agotada), se guarda un bloqueo temporal persistente (*hold*) de 15 minutos en `globalState` que sobrevive al reinicio/recarga de la ventana del IDE.
+  - El monitor rápido (`Fast Monitor`) y la auto-rotación respetan este bloqueo y pausan el cambio automático con el registro `Auto-rotation paused: ... was selected manually`.
+  - El bloqueo se libera automáticamente si la cuenta recupera cuota antes de expirar el tiempo.
+- **Fin al bucle de tokens y errores 401 Unauthorized:**
+  - Se eliminó la condición ciega en la sincronización de tokens que comparaba hashes y sobrescribía tokens frescos recién refrescados en `SecretStorage` con credenciales caducadas de `state.vscdb`.
+  - La sincronización ahora solo escribe si el token entrante es estrictamente más reciente (`expiresAt` mayor y vigente) o si aporta un `refreshToken` ausente.
+  - Blindaje estricto en el repositorio: los `refreshToken` nunca se sobrescriben con cadenas vacías o valores nulos, ni en `SecretStorage` ni en los tokens CLI exportados.
+  - `adoptSessionTokens` fusiona de manera segura las credenciales de la sesión activa con el `refreshToken` persistente.
+
 ## [0.3.55] - 2026-11-11
 
 ### Añadido

@@ -184,10 +184,17 @@ export class AccountRepositoryImpl implements IAccountRepository {
 
   async storeTokens(email: string, tokens: AccountTokens): Promise<void> {
     try {
-      await this.context.secrets.store(SECRET_KEYS.REFRESH_TOKEN(email), tokens.refreshToken);
-      await this.context.secrets.store(SECRET_KEYS.ACCESS_TOKEN(email), tokens.accessToken);
+      // Never overwrite a valid refresh token with an empty or whitespace string
+      if (tokens.refreshToken && tokens.refreshToken.trim()) {
+        await this.context.secrets.store(SECRET_KEYS.REFRESH_TOKEN(email), tokens.refreshToken.trim());
+      }
+      if (tokens.accessToken && tokens.accessToken.trim()) {
+        await this.context.secrets.store(SECRET_KEYS.ACCESS_TOKEN(email), tokens.accessToken.trim());
+      }
       // Expiration metadata
-      await this.context.secrets.store(SECRET_KEYS.METADATA(email), JSON.stringify({ expiresAt: tokens.expiresAt }));
+      if (tokens.expiresAt) {
+        await this.context.secrets.store(SECRET_KEYS.METADATA(email), JSON.stringify({ expiresAt: tokens.expiresAt }));
+      }
     } catch (err) {
       Logger.getInstance().debug(`[AccountRepo] SecretStorage store failed for ${email} (headless environment):`, err);
     }
@@ -200,17 +207,20 @@ export class AccountRepositoryImpl implements IAccountRepository {
       }
       const tokenFile = path.join(accountDir, 'antigravity-oauth-token');
       let idToken = '';
+      let existingRefreshToken = '';
       if (fs.existsSync(tokenFile)) {
         try {
           const existing = JSON.parse(fs.readFileSync(tokenFile, 'utf-8'));
           idToken = existing?.id_token || '';
+          existingRefreshToken = existing?.token?.refresh_token || '';
         } catch {}
       }
+      const finalRefreshToken = tokens.refreshToken?.trim() || existingRefreshToken;
       const payload = {
         token: {
           access_token: tokens.accessToken,
           token_type: 'Bearer',
-          refresh_token: tokens.refreshToken,
+          refresh_token: finalRefreshToken,
           expiry: new Date(tokens.expiresAt * 1000).toISOString()
         },
         auth_method: 'consumer',

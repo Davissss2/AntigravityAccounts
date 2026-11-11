@@ -305,6 +305,15 @@ export class AccountService {
     }
     tokens = verifiedTokens;
 
+    // If the switch was initiated manually, set a hold so auto-rotation won't revert it
+    const isManual = !options?.reason || options.reason === 'manual';
+    if (isManual) {
+      await ExtensionConfig.getInstance().setManualSwitchHold({
+        email: email.toLowerCase(),
+        until: Date.now() + 15 * 60 * 1000 // 15 minutes hold
+      });
+    }
+
     // Inject into Database (tokens + device profile + telemetry)
     const result = await this.stateDbService.injectAccountState(
       account,
@@ -321,12 +330,17 @@ export class AccountService {
       this._onAccountsChanged.fire();
       // NOTE: Window reload is handled by StateDbService if user consents
       return 'success';
-    } else if (result === 'cancelled') {
-      return 'cancelled';
     } else {
-      const i18n = I18nService.getInstance();
-      vscode.window.showErrorMessage(i18n.t('service.switchFailed', { email }));
-      return 'error';
+      if (isManual) {
+        await ExtensionConfig.getInstance().clearManualSwitchHold();
+      }
+      if (result === 'cancelled') {
+        return 'cancelled';
+      } else {
+        const i18n = I18nService.getInstance();
+        vscode.window.showErrorMessage(i18n.t('service.switchFailed', { email }));
+        return 'error';
+      }
     }
   }
 
@@ -1001,9 +1015,10 @@ export class AccountService {
     const activeInfo = await this.getActiveAntigravityAccountInfo();
     // Only adopt the session credentials when they provably belong to this account.
     const adopted = await this.adoptSessionTokens(activeEmail, activeInfo);
-    let tokens = adopted && activeInfo?.tokens
-      ? activeInfo.tokens
-      : await this.accountRepo.getTokens(activeEmail);
+    let tokens = await this.accountRepo.getTokens(activeEmail);
+    if (!tokens && adopted && activeInfo?.tokens) {
+      tokens = activeInfo.tokens;
+    }
 
     if (tokens?.refreshToken && (tokens.expiresAt < (Math.floor(Date.now() / 1000) + 120) || !tokens.accessToken)) {
       try {
@@ -1086,8 +1101,14 @@ export class AccountService {
       // Check for auto-switch on depletion!
       const config = ExtensionConfig.getInstance();
       if (config.isAutoRotateEnabled() && newStatus === AccountStatus.DEPLETED) {
-        Logger.getInstance().info(`[Fast Monitor] Active account ${activeEmail} depleted. Triggering auto-switch.`);
-        await this.triggerAutoRotation(activeEmail, true);
+        if (config.isManualSwitchHeld(activeEmail)) {
+          Logger.getInstance().info(`[Fast Monitor] Auto-rotation paused: ${activeEmail} was selected manually.`);
+        } else {
+          Logger.getInstance().info(`[Fast Monitor] Active account ${activeEmail} depleted. Triggering auto-switch.`);
+          await this.triggerAutoRotation(activeEmail, true);
+        }
+      } else if (newStatus !== AccountStatus.DEPLETED && config.isManualSwitchHeld(activeEmail)) {
+        await config.clearManualSwitchHold();
       }
 
       return await this.accountRepo.getAccount(activeEmail);
@@ -1609,7 +1630,14 @@ export class AccountService {
       return false;
     }
 
-    await this.accountRepo.storeTokens(email, tokens);
+    const stored = await this.accountRepo.getTokens(email);
+    const mergedTokens = {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken?.trim() || stored?.refreshToken || '',
+      expiresAt: tokens.expiresAt || stored?.expiresAt || 0
+    };
+
+    await this.accountRepo.storeTokens(email, mergedTokens);
     return true;
   }
 
@@ -1920,6 +1948,12 @@ export class AccountService {
       return;
     }
 
+    const config = ExtensionConfig.getInstance();
+    if (config.isManualSwitchHeld(depletedEmail)) {
+      Logger.getInstance().info(`[Auto-Switch] Auto-rotation paused: ${depletedEmail} was selected manually.`);
+      return;
+    }
+
     const allAccounts = await this.accountRepo.getAllAccounts();
     if (allAccounts.length <= 1) {
       Logger.getInstance().info('Auto-rotation skipped: only one account registered.');
@@ -1939,8 +1973,6 @@ export class AccountService {
 
     this._isSwitching = true;
     Logger.getInstance().info(`[Auto-Switch] Selected best candidate ${nextAccount.email} for depleted ${depletedEmail}`);
-
-    const config = ExtensionConfig.getInstance();
 
     // The resume marker (one entry per open window) is written by StateDbService right
     // before closing, because only there is the full window list known. Nothing to do

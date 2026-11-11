@@ -51,6 +51,7 @@ export const STORAGE_KEYS = {
   PENDING_REFRESH_EMAILS: 'antigravity.accounts.pendingRefreshEmails',
   WORKFLOWS: 'antigravity.accounts.workflows',
   ACTIVE_WORKFLOW: 'antigravity.accounts.activeWorkflow',
+  MANUAL_SWITCH_HOLD: 'antigravity.accounts.manualSwitchHold',
 } as const;
 
 // ── Secret Storage Key Prefixes ──

@@ -6,6 +6,7 @@
  */
 
 import * as vscode from 'vscode';
+import { STORAGE_KEYS } from '../constants/app.constants';
 
 const CONFIG_SECTION = 'antigravityAccount';
 
@@ -27,6 +28,37 @@ export class ExtensionConfig {
    */
   initialize(context: vscode.ExtensionContext): void {
     this.context = context;
+  }
+
+  /**
+   * Holds auto-rotation for an account selected manually.
+   * Survives window reload via globalState.
+   */
+  async setManualSwitchHold(hold: { email: string; until: number } | null): Promise<void> {
+    if (!this.context) return;
+    await this.context.globalState.update(STORAGE_KEYS.MANUAL_SWITCH_HOLD, hold || undefined);
+  }
+
+  getManualSwitchHold(): { email: string; until: number } | null {
+    if (!this.context) return null;
+    const hold = this.context.globalState.get<{ email: string; until: number }>(STORAGE_KEYS.MANUAL_SWITCH_HOLD);
+    if (!hold) return null;
+    if (Date.now() > hold.until) {
+      this.clearManualSwitchHold().catch(() => {});
+      return null;
+    }
+    return hold;
+  }
+
+  async clearManualSwitchHold(): Promise<void> {
+    await this.setManualSwitchHold(null);
+  }
+
+  isManualSwitchHeld(email?: string): boolean {
+    const hold = this.getManualSwitchHold();
+    if (!hold) return false;
+    if (!email) return true;
+    return hold.email.trim().toLowerCase() === email.trim().toLowerCase();
   }
 
   /**

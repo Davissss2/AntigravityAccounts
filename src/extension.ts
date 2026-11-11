@@ -230,9 +230,26 @@ function registerCommands(
       if (currentActive && activeInfo?.tokens) {
         const tokens = activeInfo.tokens;
         const storedTokens = await accountRepo.getTokens(currentActive);
-        if (!storedTokens || storedTokens.accessToken !== tokens.accessToken || (!storedTokens.refreshToken && tokens.refreshToken)) {
+        const nowSec = Math.floor(Date.now() / 1000);
+
+        if (!storedTokens) {
           await accountRepo.storeTokens(currentActive, tokens);
-          logger.info(`Synchronized active tokens for ${currentActive} to repository.`);
+          logger.info(`Synchronized active tokens for ${currentActive} to repository (initial).`);
+        } else {
+          // Never overwrite a freshly refreshed token with a stale one from state.vscdb / native session.
+          // Only sync if incoming token is strictly fresher/newer, OR stored is missing refresh token and incoming has it.
+          const incomingIsFresher = (tokens.expiresAt || 0) > (storedTokens.expiresAt || 0) && (tokens.expiresAt || 0) > nowSec;
+          const missingStoredRefresh = !storedTokens.refreshToken && !!tokens.refreshToken;
+
+          if (incomingIsFresher || missingStoredRefresh) {
+            const mergedTokens = {
+              accessToken: incomingIsFresher ? tokens.accessToken : storedTokens.accessToken,
+              refreshToken: tokens.refreshToken?.trim() || storedTokens.refreshToken || '',
+              expiresAt: incomingIsFresher ? tokens.expiresAt : storedTokens.expiresAt
+            };
+            await accountRepo.storeTokens(currentActive, mergedTokens);
+            logger.info(`Synchronized active tokens for ${currentActive} to repository.`);
+          }
         }
       }
 
