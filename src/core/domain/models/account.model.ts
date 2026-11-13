@@ -19,6 +19,12 @@ export enum AccountStatus {
   LOW_BALANCE = 'low_balance',
   DEPLETED = 'depleted',
   TOKEN_EXPIRED = 'token_expired',
+  /**
+   * The stored token works for quota calls but lacks the `aicode` scope the
+   * Antigravity agent needs, so the agent signs the account out. The card must
+   * not claim the account is usable until it is re-consented in place.
+   */
+  SCOPE_MISSING = 'scope_missing',
   ERROR = 'error',
   INELIGIBLE = 'ineligible',
 }
@@ -88,6 +94,11 @@ export interface AccountTokens {
   accessToken: string;
   refreshToken: string;
   expiresAt: number; // Unix timestamp in seconds
+  /**
+   * Scopes Google granted to this token set, as reported by the token endpoint.
+   * Undefined means "not observed yet"; an empty list is never assumed.
+   */
+  scopes?: string[];
 }
 
 /** Summary for quick-pick / status bar display */

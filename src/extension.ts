@@ -245,7 +245,8 @@ function registerCommands(
             const mergedTokens = {
               accessToken: incomingIsFresher ? tokens.accessToken : storedTokens.accessToken,
               refreshToken: tokens.refreshToken?.trim() || storedTokens.refreshToken || '',
-              expiresAt: incomingIsFresher ? tokens.expiresAt : storedTokens.expiresAt
+              expiresAt: incomingIsFresher ? tokens.expiresAt : storedTokens.expiresAt,
+              scopes: storedTokens.scopes
             };
             await accountRepo.storeTokens(currentActive, mergedTokens);
             logger.info(`Synchronized active tokens for ${currentActive} to repository.`);
@@ -691,6 +692,25 @@ async function migrateAndSanitizeStorage(context: vscode.ExtensionContext): Prom
 
     const globalState = context.globalState;
     const secrets = context.secrets;
+
+    // ── Migration v5: Repair accounts falsely marked with 'scope_missing' ──
+    const MIGRATION_V5_FLAG = 'antigravityAccount.storageMigration_v5_done';
+    if (!globalState.get<boolean>(MIGRATION_V5_FLAG, false)) {
+      const stored = globalState.get<any[]>('antigravity.accounts.list', []);
+      let changed = false;
+      const cleaned = stored.map(acc => {
+        if (acc.status === 'scope_missing') {
+          changed = true;
+          return { ...acc, status: 'active' };
+        }
+        return acc;
+      });
+      if (changed) {
+        await globalState.update('antigravity.accounts.list', cleaned);
+        logger.info('Migrated accounts previously marked as scope_missing back to active.');
+      }
+      await globalState.update(MIGRATION_V5_FLAG, true);
+    }
 
     const MIGRATION_FLAG = 'antigravityAccount.storageMigration_v4_done';
     if (globalState.get<boolean>(MIGRATION_FLAG, false)) {

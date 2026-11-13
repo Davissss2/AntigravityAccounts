@@ -16,16 +16,26 @@ export const OAUTH = {
   CLIENT_SECRET: 'GOCSPX-K58' + 'FWR486LdLJ1mLB8sXC4z6qDAf',
   REDIRECT_PATH: '/oauth-callback',
   PORTS: [8888, 8889, 8890, 8891, 8892],
+  /**
+   * Scope the Antigravity agent requires to keep the session alive.
+   * Tokens minted without it are signed out by `agy.exe` (`rpcs_auth.go:513`),
+   * which surfaces in the IDE as "session not started" even though the quota
+   * API still answers and the card looks healthy.
+   */
+  AICODE_SCOPE: 'https://www.googleapis.com/auth/aicode',
   SCOPES: [
     'https://www.googleapis.com/auth/cloud-platform',
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile',
     'https://www.googleapis.com/auth/cclog',
     'https://www.googleapis.com/auth/experimentsandconfigs',
+    'https://www.googleapis.com/auth/aicode',
   ],
   TOKEN_URL: 'https://oauth2.googleapis.com/token',
   AUTH_URL: 'https://accounts.google.com/o/oauth2/v2/auth',
   USERINFO_URL: 'https://www.googleapis.com/oauth2/v2/userinfo',
+  /** Reports the scopes granted to an access token (used to detect legacy tokens). */
+  TOKENINFO_URL: 'https://oauth2.googleapis.com/tokeninfo',
 } as const;
 
 // ── Antigravity Internal APIs ──

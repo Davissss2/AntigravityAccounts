@@ -72,7 +72,8 @@
       "depleted": "额度耗尽",
       "expired": "令牌过期",
       "error": "连接错误",
-      "ineligible": "不符合条件"
+      "ineligible": "不符合条件",
+      "scopeMissing": "缺少权限"
     },
     "sort": {
       "byBalance": "按余额排序",
@@ -119,7 +120,9 @@
     "activate": "激活",
     "remove": "删除",
     "reAuthenticate": "重新登录",
+    "reAuthorize": "重新授权",
     "expiredBanner": "会话已过期。请重新登录以恢复访问权限。",
+    "scopeMissingBanner": "此账户的令牌缺少 Antigravity 代理权限，因此 IDE 无法启动会话。请在卡片上就地重新授权，无需删除账户。",
     "ineligibleBanner": "此 Google 账号不符合使用 Antigravity 的资格。请关联受支持的账号。",
     "noAvailableModels": "无可用模型",
     "noAccountsRegistered": "尚未注册任何账号。",
@@ -252,7 +255,8 @@
     "reAuthFailed": "❌ {{email}} 重新认证失败：{{error}}",
     "reAuthEmailMismatch": "登录的账号 ({{actual}}) 与预期的账号 ({{expected}}) 不一致，请使用正确的 Google 账号登录。",
     "accountIneligible": "账号 {{email}} 不符合使用 Antigravity 的资格，请更换账号登录。",
-    "switchIneligibleAccount": "无法切换到账号 {{email}}，因为它不符合资格。"
+    "switchIneligibleAccount": "无法切换到账号 {{email}}，因为它不符合资格。",
+    "scopeMissingSwitch": "账户 {{email}} 缺少 Antigravity 代理权限。请在其卡片上点击“重新授权”就地修复。"
   },
   "stateDb": {
     "outdatedAntigravity": "安装的 Antigravity 版本早于 {{minVersion}}，不受支持。\n请升级到 {{minVersion}} 或更高版本以使用账号切换功能。",

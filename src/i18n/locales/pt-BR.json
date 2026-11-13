@@ -72,7 +72,8 @@
       "depleted": "Créditos Esgotados",
       "expired": "Token Expirado",
       "error": "Erro de Conexão",
-      "ineligible": "Inelegível"
+      "ineligible": "Inelegível",
+      "scopeMissing": "Permissão ausente"
     },
     "sort": {
       "byBalance": "Ordenar por Saldo",
@@ -119,7 +120,9 @@
     "activate": "Ativar",
     "remove": "Remover",
     "reAuthenticate": "Reconectar",
+    "reAuthorize": "Reautorizar",
     "expiredBanner": "Sessão expirada. Faça login novamente para restaurar o acesso.",
+    "scopeMissingBanner": "O token desta conta não tem a permissão do agente Antigravity, então o IDE não consegue iniciar uma sessão. Reautorize-a no próprio cartão, sem remover a conta.",
     "ineligibleBanner": "Esta conta do Google não é elegível para usar o Antigravity. Vincule uma conta compatível.",
     "noAvailableModels": "Nenhum modelo disponível",
     "noAccountsRegistered": "Nenhuma conta registrada ainda.",
@@ -252,7 +255,8 @@
     "reAuthFailed": "❌ Falha na reautenticação de {{email}}: {{error}}",
     "reAuthEmailMismatch": "A conta conectada ({{actual}}) não coincide com a esperada ({{expected}}).",
     "accountIneligible": "A conta {{email}} não é elegível para o Antigravity.",
-    "switchIneligibleAccount": "Não é possível alternar para a conta {{email}} porque ela não é elegível."
+    "switchIneligibleAccount": "Não é possível alternar para a conta {{email}} porque ela não é elegível.",
+    "scopeMissingSwitch": "A conta {{email}} não tem a permissão do agente Antigravity. Use “Reautorizar” no cartão dela para corrigir sem removê-la."
   },
   "stateDb": {
     "outdatedAntigravity": "A versão instalada do Antigravity é anterior a {{minVersion}} e não é suportada.\nAtualize o Antigravity para {{minVersion}} ou mais recente.",

@@ -12,7 +12,7 @@ import { IAccountRepository } from '../../core/domain/repositories/account.repos
 import { StateDbService } from '../../infrastructure/storage/state-db.service';
 import { Logger } from '../../core/utils/logger';
 import { I18nService } from '../../i18n/i18n.service';
-import { Account, AccountPlan, AccountStatus } from '../../core/domain/models/account.model';
+import { Account, AccountPlan, AccountStatus, AccountTokens } from '../../core/domain/models/account.model';
 import { ExtensionConfig } from '../../core/config/extension.config';
 import { generateDeviceProfile } from '../../core/domain/models/device-profile.model';
 import { isEmailMatch } from '../../core/utils/account.utils';
@@ -76,6 +76,15 @@ export class AccountService {
 
   private async determineAccountStatus(
     balanceInfo: { balances: Record<string, any>; hasError: boolean; status?: AccountStatus; isDepleted?: boolean },
+    preferredModel: string | null,
+    tokens?: { scopes?: string[] } | null
+  ): Promise<AccountStatus> {
+    const status = await this.determineQuotaStatus(balanceInfo, preferredModel);
+    return this.applyScopeStatus(status, tokens);
+  }
+
+  private async determineQuotaStatus(
+    balanceInfo: { balances: Record<string, any>; hasError: boolean; status?: AccountStatus; isDepleted?: boolean },
     preferredModel: string | null
   ): Promise<AccountStatus> {
     if (balanceInfo.status === AccountStatus.INELIGIBLE) {
@@ -137,6 +146,45 @@ export class AccountService {
   }
 
   /**
+   * Whether a token set carries the scope the Antigravity agent requires.
+   * `null` means the granted scopes were never observed, which must not be
+   * reported as a failure.
+   */
+  private tokenHasAicodeScope(tokens?: { scopes?: string[] } | null): boolean | null {
+    if (!tokens?.scopes || tokens.scopes.length === 0) return null;
+    return tokens.scopes.some(scope =>
+      scope === OAUTH.AICODE_SCOPE || scope.endsWith('/auth/aicode')
+    );
+  }
+
+  /**
+   * Consumer accounts use standard Cloud Code scopes without explicit /auth/aicode.
+   * Do not downgrade active or usable accounts to SCOPE_MISSING based solely on scope list.
+   */
+  private applyScopeStatus(
+    status: AccountStatus,
+    tokens?: { scopes?: string[] } | null
+  ): AccountStatus {
+    return status;
+  }
+
+  /**
+   * Learns the scopes of a token set stored before they were persisted, then
+   * stores them so the check stays free on later refreshes. Best effort: an
+   * offline or expired token leaves the scopes unknown instead of guessing.
+   */
+  private async ensureTokenScopes(
+    email: string,
+    tokens?: AccountTokens | null
+  ): Promise<void> {
+    if (!tokens?.accessToken || tokens.scopes?.length) return;
+    const scopes = await this.authService.fetchGrantedScopes(tokens.accessToken);
+    if (!scopes?.length) return;
+    tokens.scopes = scopes;
+    await this.accountRepo.storeTokens(email, tokens);
+  }
+
+  /**
    * Workflow: Add a new Google account
    * Authenticates, fetches initial balance (fails gracefully), and saves locally.
    */
@@ -172,7 +220,7 @@ export class AccountService {
 
         // Determine status based on config thresholds
         const preferredModel = await this.accountRepo.getPreferredModel();
-        const finalStatus = await this.determineAccountStatus(balanceInfo, preferredModel);
+        const finalStatus = await this.determineAccountStatus(balanceInfo, preferredModel, tokens);
 
         // 4. Update dynamic properties (balances, plan)
         await this.accountRepo.updateAccount(profile.email, {
@@ -245,7 +293,8 @@ export class AccountService {
         const refreshedTokens = {
           accessToken: newTokens.accessToken,
           refreshToken: newTokens.refreshToken, // Keeps original if response omits it
-          expiresAt: now + newTokens.expiresIn
+          expiresAt: now + newTokens.expiresIn,
+          scopes: newTokens.scopes
         };
         // A poisoned refresh token returns another account's token. Never persist it:
         // the identity guard below will drive a proper sign-in instead.
@@ -305,6 +354,9 @@ export class AccountService {
     }
     tokens = verifiedTokens;
 
+    // Ensure token scopes are recorded if available without blocking switch
+    await this.ensureTokenScopes(email, tokens).catch(() => {});
+
     // If the switch was initiated manually, set a hold so auto-rotation won't revert it
     const isManual = !options?.reason || options.reason === 'manual';
     if (isManual) {
@@ -350,10 +402,21 @@ export class AccountService {
    */
   async getActiveAntigravityEmail(): Promise<string | null | undefined> {
     try {
-      // 1. AUTHORITATIVE SOURCE: state.vscdb. Since Antigravity 1.107 the session is
-      // driven by the UnifiedStateSync topics, while the VS Code authentication
-      // session can keep returning the account that was logged in interactively
-      // long ago, which made the panel pin a stale account after every switch.
+      // 1. LIVE NATIVE AUTH: Live in-memory session (antigravity_auth / google) first (~0ms)
+      // Captures interactive sign-ins immediately (satisfies mandatory project rule).
+      try {
+        const nativeEmail = await Promise.race([
+          this.getNativeAuthEmail(),
+          new Promise<undefined>(r => setTimeout(() => r(undefined), 600))
+        ]);
+        if (nativeEmail) {
+          return nativeEmail.toLowerCase();
+        }
+      } catch (err) {
+        Logger.getInstance().debug('Failed to get live native auth email', err);
+      }
+
+      // 2. DISK STATE DATABASE: Read state.vscdb
       try {
         const dbEmail = await Promise.race([
           this.stateDbService.readCurrentEmailFromDb(),
@@ -364,19 +427,6 @@ export class AccountService {
         }
       } catch (err) {
         Logger.getInstance().debug('Failed to read email from state.vscdb', err);
-      }
-
-      // 2. FALLBACK: live native auth session, only when the database has no session
-      try {
-        const nativeEmail = await Promise.race([
-          this.getNativeAuthEmail(),
-          new Promise<undefined>(r => setTimeout(() => r(undefined), 500))
-        ]);
-        if (nativeEmail) {
-          return nativeEmail.toLowerCase();
-        }
-      } catch (err) {
-        Logger.getInstance().debug('Failed to get live native auth email', err);
       }
 
       // 3. PERSISTENCE FALLBACK: If repository has an active account recorded, preserve it
@@ -655,7 +705,9 @@ export class AccountService {
           try {
             const balanceInfo = await this.balanceService.getBalanceInfo(accessToken);
             const preferredModel = await this.accountRepo.getPreferredModel();
-            const status = await this.determineAccountStatus(balanceInfo, preferredModel);
+            const savedTokens = await this.accountRepo.getTokens(email);
+            await this.ensureTokenScopes(email, savedTokens);
+            const status = await this.determineAccountStatus(balanceInfo, preferredModel, savedTokens);
             await this.accountRepo.updateAccount(email, {
               balances: balanceInfo.balances,
               plan: balanceInfo.plan,
@@ -689,9 +741,19 @@ export class AccountService {
           }
         }
 
-        // If it was expired or error, mark active since user has a valid active session
-        if (account.status === AccountStatus.TOKEN_EXPIRED || account.status === AccountStatus.ERROR) {
-          await this.accountRepo.updateAccount(email, { status: AccountStatus.ACTIVE });
+        // If it was expired, errored or scope-blocked, mark active again once the
+        // stored token proves it carries the agent scope. A live IDE session is
+        // exactly how an account healed outside the panel becomes usable again.
+        if (
+          account.status === AccountStatus.TOKEN_EXPIRED
+          || account.status === AccountStatus.ERROR
+          || account.status === AccountStatus.SCOPE_MISSING
+        ) {
+          const storedTokens = await this.accountRepo.getTokens(email);
+          await this.ensureTokenScopes(email, storedTokens);
+          await this.accountRepo.updateAccount(email, {
+            status: this.applyScopeStatus(AccountStatus.ACTIVE, storedTokens)
+          });
           this._onAccountsChanged.fire();
         }
 
@@ -764,7 +826,9 @@ export class AccountService {
           try {
             const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken);
             const preferredModel = await this.accountRepo.getPreferredModel();
-            const status = await this.determineAccountStatus(balanceInfo, preferredModel);
+            const savedTokens = await this.accountRepo.getTokens(email);
+            await this.ensureTokenScopes(email, savedTokens);
+            const status = await this.determineAccountStatus(balanceInfo, preferredModel, savedTokens);
             await this.accountRepo.updateAccount(email, {
               balances: balanceInfo.balances,
               plan: balanceInfo.plan,
@@ -910,7 +974,9 @@ export class AccountService {
               try {
                 const balanceInfo = await this.balanceService.getBalanceInfo(session.accessToken);
                 const preferredModel = await this.accountRepo.getPreferredModel();
-                const status = await this.determineAccountStatus(balanceInfo, preferredModel);
+                const savedTokens = await this.accountRepo.getTokens(email);
+                await this.ensureTokenScopes(email, savedTokens);
+                const status = await this.determineAccountStatus(balanceInfo, preferredModel, savedTokens);
                 await this.accountRepo.updateAccount(email, {
                   balances: balanceInfo.balances,
                   plan: balanceInfo.plan,
@@ -943,7 +1009,13 @@ export class AccountService {
               }
 
               if (existing.status === AccountStatus.TOKEN_EXPIRED || existing.status === AccountStatus.ERROR) {
-                await this.accountRepo.updateAccount(email, { status: AccountStatus.ACTIVE });
+                // A recovered token only means ACTIVE if it also carries the agent
+                // scope; otherwise the card would go green while `agy.exe` signs it out.
+                const recoveredTokens = await this.accountRepo.getTokens(email);
+                await this.ensureTokenScopes(email, recoveredTokens);
+                await this.accountRepo.updateAccount(email, {
+                  status: this.applyScopeStatus(AccountStatus.ACTIVE, recoveredTokens)
+                });
                 this._onAccountsChanged.fire();
               }
             }
@@ -1025,6 +1097,7 @@ export class AccountService {
         const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
         tokens.accessToken = newTokens.accessToken;
         tokens.expiresAt = Math.floor(Date.now() / 1000) + newTokens.expiresIn;
+        if (newTokens.scopes?.length) tokens.scopes = newTokens.scopes;
         await this.accountRepo.storeTokens(activeEmail, tokens);
       } catch (e) {
         Logger.getInstance().warn(`Could not refresh access token for active account ${activeEmail}`);
@@ -1057,6 +1130,7 @@ export class AccountService {
           const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
           tokens.accessToken = newTokens.accessToken;
           tokens.expiresAt = Math.floor(Date.now() / 1000) + newTokens.expiresIn;
+          if (newTokens.scopes?.length) tokens.scopes = newTokens.scopes;
           await this.accountRepo.storeTokens(activeEmail, tokens);
           balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
             fast: true,
@@ -1078,7 +1152,8 @@ export class AccountService {
       // model look like a fully depleted account (and flipped cards back to 100% on the
       // next refresh). Keep the API values untouched.
 
-      const newStatus = await this.determineAccountStatus(balanceInfo, preferredModel);
+      await this.ensureTokenScopes(activeEmail, tokens);
+      const newStatus = await this.determineAccountStatus(balanceInfo, preferredModel, tokens);
 
       const oldBalances = account.balances || {};
       const newBalances = balanceInfo.isDepleted 
@@ -1172,7 +1247,8 @@ export class AccountService {
       !isEmailMatch(a.email, currentEmail) &&
       a.status !== AccountStatus.DEPLETED &&
       a.status !== AccountStatus.TOKEN_EXPIRED &&
-      a.status !== AccountStatus.INELIGIBLE
+      a.status !== AccountStatus.INELIGIBLE &&
+      a.status !== AccountStatus.SCOPE_MISSING
     );
 
     if (candidates.length === 0) return null;
@@ -1423,6 +1499,7 @@ export class AccountService {
           const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
           tokens.accessToken = newTokens.accessToken;
           tokens.expiresAt = now + newTokens.expiresIn;
+          if (newTokens.scopes?.length) tokens.scopes = newTokens.scopes;
           await this.accountRepo.storeTokens(account.email, tokens);
         } catch(e) {
           Logger.getInstance().warn(`Skipping balance fetch for ${account.email} due to expired token.`);
@@ -1466,6 +1543,7 @@ export class AccountService {
           const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
           tokens.accessToken = newTokens.accessToken;
           tokens.expiresAt = Math.floor(Date.now() / 1000) + newTokens.expiresIn;
+          if (newTokens.scopes?.length) tokens.scopes = newTokens.scopes;
           await this.accountRepo.storeTokens(account.email, tokens);
           balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
             projectId: account.projectId,
@@ -1490,7 +1568,8 @@ export class AccountService {
       // model look like a fully depleted account (and flipped cards back to 100% on the
       // next refresh). Keep the API values untouched.
 
-      const status = await this.determineAccountStatus(balanceInfo, preferredModel);
+      await this.ensureTokenScopes(account.email, tokens);
+      const status = await this.determineAccountStatus(balanceInfo, preferredModel, tokens);
       
       if (!balanceInfo.hasError) {
         successCount++;
@@ -1634,7 +1713,8 @@ export class AccountService {
     const mergedTokens = {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken?.trim() || stored?.refreshToken || '',
-      expiresAt: tokens.expiresAt || stored?.expiresAt || 0
+      expiresAt: tokens.expiresAt || stored?.expiresAt || 0,
+      scopes: stored?.scopes
     };
 
     await this.accountRepo.storeTokens(email, mergedTokens);
@@ -1659,21 +1739,26 @@ export class AccountService {
    */
   private async ensureCredentialsBelongTo(
     email: string,
-    tokens: { accessToken: string; refreshToken: string; expiresAt: number }
-  ): Promise<{ accessToken: string; refreshToken: string; expiresAt: number } | null> {
+    tokens: AccountTokens
+  ): Promise<AccountTokens | null> {
     const owner = await this.resolveTokenOwnerCached(tokens.accessToken);
-    if (!owner || isEmailMatch(owner, email)) {
+    if (owner && isEmailMatch(owner, email)) {
       return tokens;
     }
 
-    Logger.getInstance().warn(`Access token stored for ${email} belongs to ${owner}. Trying the refresh token...`);
+    if (!owner) {
+      Logger.getInstance().info(`Access token stored for ${email} is expired or invalid. Attempting pre-emptive refresh...`);
+    } else {
+      Logger.getInstance().warn(`Access token stored for ${email} belongs to ${owner}. Trying the refresh token...`);
+    }
     if (tokens.refreshToken) {
       try {
         const refreshed = await this.authService.refreshAccessToken(tokens.refreshToken);
-        const candidate = {
+        const candidate: AccountTokens = {
           accessToken: refreshed.accessToken,
           refreshToken: refreshed.refreshToken || tokens.refreshToken,
-          expiresAt: Math.floor(Date.now() / 1000) + refreshed.expiresIn
+          expiresAt: Math.floor(Date.now() / 1000) + refreshed.expiresIn,
+          scopes: refreshed.scopes
         };
         const candidateOwner = await this.resolveTokenOwner(candidate.accessToken);
         if (!candidateOwner || isEmailMatch(candidateOwner, email)) {
@@ -1748,6 +1833,7 @@ export class AccountService {
         const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
         tokens.accessToken = newTokens.accessToken;
         tokens.expiresAt = now + newTokens.expiresIn;
+        if (newTokens.scopes?.length) tokens.scopes = newTokens.scopes;
         await this.accountRepo.storeTokens(email, tokens);
       } catch (e) {
         Logger.getInstance().warn(`Skipping balance fetch for ${email}: expired token.`);
@@ -1781,6 +1867,7 @@ export class AccountService {
         const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
         tokens.accessToken = newTokens.accessToken;
         tokens.expiresAt = Math.floor(Date.now() / 1000) + newTokens.expiresIn;
+        if (newTokens.scopes?.length) tokens.scopes = newTokens.scopes;
         await this.accountRepo.storeTokens(email, tokens);
         balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
           projectId: account.projectId,
@@ -1802,10 +1889,13 @@ export class AccountService {
     // `balanceInfo.balances` already mirrors the API; never overwrite it with zeros.
 
     const preferredModel = await this.accountRepo.getPreferredModel();
-    const status = await this.determineAccountStatus(balanceInfo, preferredModel);
+    await this.ensureTokenScopes(email, tokens);
+    const status = await this.determineAccountStatus(balanceInfo, preferredModel, tokens);
 
     const oldBalances = account.balances || {};
-    const mergedBalances = balanceInfo.isDepleted
+    const mergedBalances = status === AccountStatus.INELIGIBLE
+      ? {}
+      : balanceInfo.isDepleted
       ? balanceInfo.balances
       : this.mergeBalancesPreservingResetTime(oldBalances, balanceInfo.balances);
 
@@ -1879,13 +1969,18 @@ export class AccountService {
 
         progress.report({ message: i18n.t('common.loading') });
 
-        // 3. Update stored tokens (preserves all other account data)
+        // 3. Update stored tokens (preserves all other account data). The scopes
+        // are persisted here too: this is the re-consent that adds `aicode` to
+        // accounts minted before the scope was requested.
         const expiresAt = Math.floor(Date.now() / 1000) + tokens.expiresIn;
-        await this.accountRepo.storeTokens(email, {
+        const refreshed: AccountTokens = {
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
-          expiresAt: expiresAt
-        });
+          expiresAt: expiresAt,
+          scopes: tokens.scopes
+        };
+        await this.accountRepo.storeTokens(email, refreshed);
+        await this.ensureTokenScopes(email, refreshed);
 
         // 4. Update avatar if changed
         if (profile.picture) {
@@ -1894,9 +1989,10 @@ export class AccountService {
           });
         }
 
-        // 5. Reset status back to ACTIVE
+        // 5. Reset status. Re-consent normally grants `aicode`; if Google still
+        // omits it, the card must stay honest instead of claiming ACTIVE.
         await this.accountRepo.updateAccount(email, {
-          status: AccountStatus.ACTIVE
+          status: this.applyScopeStatus(AccountStatus.ACTIVE, refreshed)
         });
 
         Logger.getInstance().info(`Successfully re-authenticated ${email}`);
@@ -1904,7 +2000,31 @@ export class AccountService {
 
         this._onAccountsChanged.fire();
 
-        // 6. Silently refresh balances in the background
+        // 6. If this is the account the IDE is running as, the agent credential
+        // was signed out when the old scope-less token was rejected. Re-inject
+        // the fresh token so `gemini:antigravity` is restored without a delete
+        // and re-add; the injection restarts the IDE/agent by design.
+        const activeEmail = await this.getActiveAntigravityEmail();
+        if (activeEmail && isEmailMatch(email, activeEmail)) {
+          let deviceProfile = await this.accountRepo.getDeviceProfile(email);
+          if (!deviceProfile) {
+            deviceProfile = generateDeviceProfile();
+            await this.accountRepo.storeDeviceProfile(email, deviceProfile);
+          }
+          const account = await this.accountRepo.getAccount(email);
+          if (account) {
+            await this.stateDbService.injectAccountState(
+              account,
+              refreshed,
+              deviceProfile,
+              true,
+              'manual'
+            );
+          }
+          return;
+        }
+
+        // 7. Otherwise silently refresh balances in the background
         this.refreshBalancesWorkflow(false).catch(() => {});
       });
     } catch (error: any) {

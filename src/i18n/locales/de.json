@@ -72,7 +72,8 @@
       "depleted": "Credits aufgebraucht",
       "expired": "Token abgelaufen",
       "error": "Verbindungsfehler",
-      "ineligible": "Nicht berechtigt"
+      "ineligible": "Nicht berechtigt",
+      "scopeMissing": "Berechtigung fehlt"
     },
     "sort": {
       "byBalance": "Nach Guthaben sortieren",
@@ -119,7 +120,9 @@
     "activate": "Aktivieren",
     "remove": "Entfernen",
     "reAuthenticate": "Erneut anmelden",
+    "reAuthorize": "Neu autorisieren",
     "expiredBanner": "Sitzung abgelaufen. Bitte erneut anmelden.",
+    "scopeMissingBanner": "Dem Token dieses Kontos fehlt die Berechtigung des Antigravity-Agenten, daher kann die IDE keine Sitzung starten. Autorisieren Sie es direkt neu – das Konto muss nicht entfernt werden.",
     "ineligibleBanner": "Dieses Google-Konto ist nicht für Antigravity berechtigt.",
     "noAvailableModels": "Keine Modelle verfügbar",
     "noAccountsRegistered": "Noch keine Konten registriert.",
@@ -252,7 +255,8 @@
     "reAuthFailed": "❌ Erneute Authentifizierung für {{email}} fehlgeschlagen: {{error}}",
     "reAuthEmailMismatch": "Das angemeldete Konto ({{actual}}) stimmt nicht mit dem erwarteten Konto ({{expected}}) überein.",
     "accountIneligible": "Konto {{email}} ist für Antigravity nicht berechtigt.",
-    "switchIneligibleAccount": "Zu Konto {{email}} kann nicht gewechselt werden, da es nicht berechtigt ist."
+    "switchIneligibleAccount": "Zu Konto {{email}} kann nicht gewechselt werden, da es nicht berechtigt ist.",
+    "scopeMissingSwitch": "Dem Konto {{email}} fehlt die Berechtigung des Antigravity-Agenten. Verwenden Sie „Neu autorisieren“ auf der Karte, um es direkt zu reparieren."
   },
   "stateDb": {
     "outdatedAntigravity": "Die installierte Antigravity-Version ist älter als {{minVersion}} und wird nicht unterstützt.\nBitte aktualisieren Sie auf {{minVersion}} oder neuer.",

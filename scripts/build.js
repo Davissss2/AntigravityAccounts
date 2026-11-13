@@ -51,6 +51,76 @@ function copyCredentialHelper() {
   }
 }
 
+/**
+ * The IDE keys extensions by folder name, the version inside package.json, and the
+ * extensions.json/.obsolete registries. Writing a new package.json into an old
+ * folder leaves those three disagreeing, and the IDE then reports the extension
+ * as removed. Rename the folder and repair the registries before syncing.
+ */
+function reconcileExtensionFolder(extensionsDir, pkg) {
+  const id = `${String(pkg.publisher).toLowerCase()}.${pkg.name}`;
+  const canonical = `${id}-${pkg.version}`;
+
+  const candidates = fs.readdirSync(extensionsDir)
+    .filter(f => f.startsWith(`${id}-`) && f !== canonical);
+
+  for (const dir of candidates) {
+    const from = path.join(extensionsDir, dir);
+    const to = path.join(extensionsDir, canonical);
+    if (fs.existsSync(to)) {
+      console.warn(`Extension folder ${dir} is stale next to ${canonical}; leaving it alone.`);
+      continue;
+    }
+    try {
+      fs.renameSync(from, to);
+      updateExtensionRegistry(extensionsDir, dir, canonical, pkg.version);
+      console.log(`Renamed stale extension folder ${dir} -> ${canonical}`);
+    } catch (err) {
+      console.warn(`Could not rename ${dir} to ${canonical} (${err.message}). Close the IDE and rebuild.`);
+    }
+  }
+
+  clearObsoleteEntry(extensionsDir, canonical);
+}
+
+function updateExtensionRegistry(extensionsDir, oldRelative, newRelative, version) {
+  const registryPath = path.join(extensionsDir, 'extensions.json');
+  if (!fs.existsSync(registryPath)) return;
+  try {
+    const entries = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+    let changed = false;
+    for (const entry of entries) {
+      if (entry.relativeLocation !== oldRelative) continue;
+      entry.version = version;
+      entry.relativeLocation = newRelative;
+      if (entry.location && typeof entry.location.path === 'string') {
+        entry.location.path = entry.location.path.slice(0, entry.location.path.length - oldRelative.length) + newRelative;
+      }
+      changed = true;
+    }
+    if (changed) {
+      fs.writeFileSync(registryPath, JSON.stringify(entries), 'utf8');
+      console.log(`Updated extensions.json for ${newRelative}`);
+    }
+  } catch (err) {
+    console.warn(`Could not update extensions.json: ${err.message}`);
+  }
+}
+
+function clearObsoleteEntry(extensionsDir, relative) {
+  const obsoletePath = path.join(extensionsDir, '.obsolete');
+  if (!fs.existsSync(obsoletePath)) return;
+  try {
+    const obsolete = JSON.parse(fs.readFileSync(obsoletePath, 'utf8'));
+    if (!(relative in obsolete)) return;
+    delete obsolete[relative];
+    fs.writeFileSync(obsoletePath, JSON.stringify(obsolete), 'utf8');
+    console.log(`Removed ${relative} from .obsolete`);
+  } catch (err) {
+    console.warn(`Could not update .obsolete: ${err.message}`);
+  }
+}
+
 function syncToIDE() {
   try {
     const pkgPath = path.join(__dirname, '..', 'package.json');
@@ -62,6 +132,8 @@ function syncToIDE() {
       console.warn(`Local IDE extensions directory not found: ${extensionsDir}`);
       return;
     }
+
+    reconcileExtensionFolder(extensionsDir, pkg);
 
     const files = fs.readdirSync(extensionsDir);
     const targetDirs = files.filter(f => f.startsWith('davissss2.antigravity-account-'));

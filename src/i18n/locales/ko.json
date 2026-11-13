@@ -72,7 +72,8 @@
       "depleted": "크레딧 소진",
       "expired": "토큰 만료됨",
       "error": "연결 오류",
-      "ineligible": "지원되지 않음"
+      "ineligible": "지원되지 않음",
+      "scopeMissing": "권한 누락"
     },
     "sort": {
       "byBalance": "잔여량 순",
@@ -119,7 +120,9 @@
     "activate": "활성화",
     "remove": "삭제",
     "reAuthenticate": "다시 로그인",
+    "reAuthorize": "다시 승인",
     "expiredBanner": "세션이 만료되었습니다. 다시 로그인하여 접근을 복원하세요.",
+    "scopeMissingBanner": "이 계정의 토큰에 Antigravity 에이전트 권한이 없어 IDE가 세션을 시작할 수 없습니다. 계정을 삭제하지 않고 카드에서 다시 승인하세요.",
     "ineligibleBanner": "이 Google 계정은 Antigravity 사용 대상이 아닙니다.",
     "noAvailableModels": "사용 가능한 모델이 없습니다",
     "noAccountsRegistered": "등록된 계정이 없습니다.",
@@ -252,7 +255,8 @@
     "reAuthFailed": "❌ {{email}} 재인증 실패: {{error}}",
     "reAuthEmailMismatch": "로그인한 계정({{actual}})이 예상된 계정({{expected}})과 일치하지 않습니다.",
     "accountIneligible": "{{email}} 계정은 Antigravity 대상이 아닙니다.",
-    "switchIneligibleAccount": "대상 계정이 아니므로 {{email}} 계정으로 전환할 수 없습니다."
+    "switchIneligibleAccount": "대상 계정이 아니므로 {{email}} 계정으로 전환할 수 없습니다.",
+    "scopeMissingSwitch": "{{email}} 계정에 Antigravity 에이전트 권한이 없습니다. 카드에서 '다시 승인'을 눌러 삭제 없이 해결하세요."
   },
   "stateDb": {
     "outdatedAntigravity": "설치된 Antigravity 버전이 {{minVersion}}보다 오래되어 지원되지 않습니다.\n{{minVersion}} 이상으로 업데이트하세요.",

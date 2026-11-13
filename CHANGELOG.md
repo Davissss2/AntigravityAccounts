@@ -5,6 +5,22 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.57] - 2026-11-13
+
+### Arreglado
+- **Detección inmediata de la cuenta activa en el IDE:**
+  - Priorización del proveedor de autenticación en vivo (`antigravity_auth` / `google`) frente a lecturas estáticas de `state.vscdb` en disco, asegurando sincronización en tiempo real (~0ms) tras cambios interactivos de sesión.
+  - Sincronización precisa entre la barra de estado inferior, el selector de cuentas y los ajustes de Antigravity.
+- **Desbloqueo del cambio de cuenta y eliminación del aviso falso de 'token missing':**
+  - Eliminado el bloqueo estricto por comprobación de `aicode` en cuentas de Google estándar, permitiendo el cambio fluido e inyección de credenciales.
+  - Implementada la migración v5 en `migrateAndSanitizeStorage` para restaurar automáticamente a estado activo todas las cuentas marcadas erróneamente como `scope_missing`.
+- **Detección real de cuentas no elegibles y fin a los falsos 100%:**
+  - Detección profunda en `resolveAccountContext` a través de `loadCodeAssist` inspeccionando `ineligibleTiers` y `upgradeSubscriptionUri` (`why-am-i-ineligible-for-a-google-one-ai-plan`).
+  - Si una cuenta restringida devuelve cuota ficticia al 100%, se limpia el saldo a 0% y se marca con estado `INELIGIBLE`.
+  - Distintivo rojo `No elegible`, banner explicativo para reactivación en navegador y filtrado inmediato desde el buscador tecleando `no elegible` o `ineligible`.
+- **Saneamiento de tokens vencidos en cambio de cuenta:**
+  - `ensureCredentialsBelongTo` refresca preventivamente el `accessToken` mediante `refreshToken` cuando ha caducado, evitando inyectar credenciales inactivas.
+
 ## [0.3.56] - 2026-11-11
 
 ### Arreglado

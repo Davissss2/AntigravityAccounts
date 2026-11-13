@@ -72,7 +72,8 @@
       "depleted": "Crédits épuisés",
       "expired": "Jeton expiré",
       "error": "Erreur de connexion",
-      "ineligible": "Inéligible"
+      "ineligible": "Inéligible",
+      "scopeMissing": "Autorisation manquante"
     },
     "sort": {
       "byBalance": "Trier par solde",
@@ -119,7 +120,9 @@
     "activate": "Activer",
     "remove": "Supprimer",
     "reAuthenticate": "Se reconnecter",
+    "reAuthorize": "Réautoriser",
     "expiredBanner": "Session expirée. Veuillez vous reconnecter pour restaurer l'accès.",
+    "scopeMissingBanner": "Le jeton de ce compte n'a pas l'autorisation de l'agent Antigravity ; l'IDE ne peut donc pas démarrer de session. Réautorisez-le sur place, sans supprimer le compte.",
     "ineligibleBanner": "Ce compte Google n'est pas éligible à Antigravity. Veuillez associer un compte compatible.",
     "noAvailableModels": "Aucun modèle disponible",
     "noAccountsRegistered": "Aucun compte enregistré pour le moment.",
@@ -252,7 +255,8 @@
     "reAuthFailed": "❌ Échec de la réauthentification pour {{email}} : {{error}}",
     "reAuthEmailMismatch": "Le compte connecté ({{actual}}) ne correspond pas au compte attendu ({{expected}}).",
     "accountIneligible": "Le compte {{email}} n'est pas éligible pour Antigravity.",
-    "switchIneligibleAccount": "Impossible de basculer vers {{email}} car il n'est pas éligible."
+    "switchIneligibleAccount": "Impossible de basculer vers {{email}} car il n'est pas éligible.",
+    "scopeMissingSwitch": "Le compte {{email}} n'a pas l'autorisation de l'agent Antigravity. Utilisez « Réautoriser » sur sa carte pour le réparer sans le supprimer."
   },
   "stateDb": {
     "outdatedAntigravity": "La version d'Antigravity installée est antérieure à {{minVersion}} et n'est pas prise en charge.\nVeuillez mettre à jour Antigravity vers la version {{minVersion}} ou supérieure.",

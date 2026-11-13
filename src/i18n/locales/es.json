@@ -72,7 +72,8 @@
       "depleted": "Créditos agotados",
       "expired": "Token expirado",
       "error": "Error de conexión",
-      "ineligible": "No elegible"
+      "ineligible": "No elegible",
+      "scopeMissing": "Permiso pendiente"
     },
     "sort": {
       "byBalance": "Ordenar por saldo",
@@ -119,8 +120,10 @@
     "activate": "Activar",
     "remove": "Eliminar",
     "reAuthenticate": "Volver a iniciar sesión",
+    "reAuthorize": "Volver a autorizar",
     "expiredBanner": "La sesión ha expirado. Inicia sesión de nuevo para restaurar el acceso.",
-    "ineligibleBanner": "Esta cuenta de Google no es elegible para usar Antigravity. Vincula una cuenta compatible.",
+    "scopeMissingBanner": "El token de esta cuenta no tiene el permiso del agente de Antigravity, así que el IDE no puede iniciar sesión. Vuelve a autorizarla en el mismo sitio, sin borrar la cuenta.",
+    "ineligibleBanner": "Esta cuenta no es elegible para Antigravity en Google (restringida para cuota Starter). Inicia sesión en un navegador para verificarla o reactivarla.",
     "noAvailableModels": "No hay modelos disponibles",
     "noAccountsRegistered": "Aún no hay cuentas registradas.",
     "addNewAccount": "➕ Agregar nueva cuenta",
@@ -276,6 +279,7 @@
     "reAuthEmailMismatch": "La cuenta conectada ({{actual}}) no coincide con la cuenta esperada ({{expected}}). Inicia sesión con la cuenta de Google correcta.",
     "accountIneligible": "La cuenta {{email}} no es elegible para Antigravity. Inicia sesión con otra cuenta.",
     "switchIneligibleAccount": "No se puede cambiar a la cuenta {{email}} porque no es elegible para Antigravity.",
+    "scopeMissingSwitch": "A la cuenta {{email}} le falta el permiso del agente de Antigravity. Usa «Volver a autorizar» en su tarjeta para arreglarlo sin borrarla.",
     "autoCapturedAccount": "Cuenta de Antigravity detectada y guardada automáticamente: {{email}}",
     "autoRotateNoCandidate": "Cuota agotada en {{email}}. No hay otras cuentas disponibles con cuota restante.",
     "autoRotateCountdown": "Cuota agotada en {{email}}. Cambiando automáticamente a {{nextEmail}} en {{seconds}}s..."

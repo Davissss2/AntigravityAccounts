@@ -72,7 +72,8 @@
       "depleted": "クレジット枯渇",
       "expired": "トークン期限切れ",
       "error": "接続エラー",
-      "ineligible": "対象外"
+      "ineligible": "対象外",
+      "scopeMissing": "権限不足"
     },
     "sort": {
       "byBalance": "残高順",
@@ -119,7 +120,9 @@
     "activate": "有効化",
     "remove": "削除",
     "reAuthenticate": "再ログイン",
+    "reAuthorize": "再承認",
     "expiredBanner": "セッションが期限切れです。アクセスを復元するには再ログインしてください。",
+    "scopeMissingBanner": "このアカウントのトークンに Antigravity エージェントの権限がないため、IDE がセッションを開始できません。アカウントを削除せず、カードから再承認してください。",
     "ineligibleBanner": "この Google アカウントは Antigravity の利用対象外です。",
     "noAvailableModels": "利用可能なモデルがありません",
     "noAccountsRegistered": "登録済みのアカウントはありません。",
@@ -252,7 +255,8 @@
     "reAuthFailed": "❌ {{email}} の再認証に失敗しました: {{error}}",
     "reAuthEmailMismatch": "サインインしたアカウント ({{actual}}) が期待されるアカウント ({{expected}}) と一致しません。",
     "accountIneligible": "アカウント {{email}} は Antigravity の対象外です。",
-    "switchIneligibleAccount": "アカウント {{email}} は対象外のため切り替えることができません。"
+    "switchIneligibleAccount": "アカウント {{email}} は対象外のため切り替えることができません。",
+    "scopeMissingSwitch": "アカウント {{email}} に Antigravity エージェントの権限がありません。カードの「再承認」で削除せずに修復できます。"
   },
   "stateDb": {
     "outdatedAntigravity": "インストールされている Antigravity のバージョンが {{minVersion}} より古いためサポートされていません。\n{{minVersion}} 以上にアップデートしてください。",

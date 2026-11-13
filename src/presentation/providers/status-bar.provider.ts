@@ -106,7 +106,12 @@ export class StatusBarProvider implements vscode.Disposable {
     this.statusBarItem.tooltip = `${activeAccount.email}\n${balancesTooltip}\n\n${i18n.t('statusBar.tooltip')}`;
 
     // Apply color coding based on health status
-    if (activeAccount.status === AccountStatus.DEPLETED || activeAccount.status === AccountStatus.ERROR || activeAccount.status === AccountStatus.TOKEN_EXPIRED) {
+    if (
+      activeAccount.status === AccountStatus.DEPLETED
+      || activeAccount.status === AccountStatus.ERROR
+      || activeAccount.status === AccountStatus.TOKEN_EXPIRED
+      || activeAccount.status === AccountStatus.SCOPE_MISSING
+    ) {
       this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
     } else if (activeAccount.status === AccountStatus.LOW_BALANCE) {
       this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');

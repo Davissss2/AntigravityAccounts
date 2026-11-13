@@ -191,9 +191,23 @@ export class AccountRepositoryImpl implements IAccountRepository {
       if (tokens.accessToken && tokens.accessToken.trim()) {
         await this.context.secrets.store(SECRET_KEYS.ACCESS_TOKEN(email), tokens.accessToken.trim());
       }
-      // Expiration metadata
-      if (tokens.expiresAt) {
-        await this.context.secrets.store(SECRET_KEYS.METADATA(email), JSON.stringify({ expiresAt: tokens.expiresAt }));
+      // Expiration and granted-scope metadata. Scopes are preserved when a caller
+      // stores a token set that does not carry them (e.g. an adopted IDE session),
+      // so a refresh learned once is not forgotten on the next write.
+      if (tokens.expiresAt || tokens.scopes?.length) {
+        let scopes = tokens.scopes?.length ? tokens.scopes : undefined;
+        if (!scopes) {
+          try {
+            const previous = await this.context.secrets.get(SECRET_KEYS.METADATA(email));
+            const parsed = previous ? JSON.parse(previous) : null;
+            if (Array.isArray(parsed?.scopes) && parsed.scopes.length > 0) {
+              scopes = parsed.scopes;
+            }
+          } catch { /* keep scopes unknown */ }
+        }
+        const metadata: { expiresAt?: number; scopes?: string[] } = { expiresAt: tokens.expiresAt };
+        if (scopes?.length) metadata.scopes = scopes;
+        await this.context.secrets.store(SECRET_KEYS.METADATA(email), JSON.stringify(metadata));
       }
     } catch (err) {
       Logger.getInstance().debug(`[AccountRepo] SecretStorage store failed for ${email} (headless environment):`, err);
@@ -263,7 +277,8 @@ export class AccountRepositoryImpl implements IAccountRepository {
         return {
           refreshToken,
           accessToken,
-          expiresAt: meta.expiresAt
+          expiresAt: meta.expiresAt,
+          scopes: Array.isArray(meta.scopes) && meta.scopes.length > 0 ? meta.scopes : undefined
         };
       }
 

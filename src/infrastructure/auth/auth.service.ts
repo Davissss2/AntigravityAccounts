@@ -19,6 +19,12 @@ export interface OAuthTokens {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+  /**
+   * Scopes Google actually granted. The token endpoint reports them as a
+   * space-separated string; keeping them lets the extension detect tokens
+   * minted before the `aicode` scope was requested.
+   */
+  scopes?: string[];
 }
 
 export interface UserProfile {
@@ -127,7 +133,8 @@ export class AuthService {
       return {
         accessToken: data.access_token,
         refreshToken: data.refresh_token,
-        expiresIn: data.expires_in
+        expiresIn: data.expires_in,
+        scopes: this.parseScopes(data.scope)
       };
     } catch (error: any) {
       throw new Error(`Authentication token exchange failed: ${error.message}`);
@@ -164,12 +171,37 @@ export class AuthService {
       return {
         accessToken: data.access_token,
         refreshToken: refreshToken, // The refresh token usually doesn't change, but we keep it
-        expiresIn: data.expires_in
+        expiresIn: data.expires_in,
+        scopes: this.parseScopes(data.scope)
       };
     } catch (error: any) {
       Logger.getInstance().error('Error refreshing token', error);
       throw new Error(`Failed to refresh token: ${error.message}`);
     }
+  }
+
+  /**
+   * Reports the scopes granted to an access token. Used only for token sets
+   * stored before the extension started persisting the token endpoint's
+   * `scope` field; returns null when Google cannot confirm them.
+   */
+  async fetchGrantedScopes(accessToken: string): Promise<string[] | null> {
+    try {
+      const url = new URL(OAUTH.TOKENINFO_URL);
+      url.searchParams.append('access_token', accessToken);
+      const response = await fetch(url.toString());
+      if (!response.ok) return null;
+      const data = await response.json() as any;
+      return this.parseScopes(data?.scope) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private parseScopes(raw: unknown): string[] | undefined {
+    if (typeof raw !== 'string' || !raw.trim()) return undefined;
+    const scopes = raw.split(/\s+/).map(scope => scope.trim()).filter(Boolean);
+    return scopes.length > 0 ? scopes : undefined;
   }
 
   /**

@@ -72,7 +72,8 @@
       "depleted": "Кредиты исчерпаны",
       "expired": "Токен истёк",
       "error": "Ошибка подключения",
-      "ineligible": "Недоступно"
+      "ineligible": "Недоступно",
+      "scopeMissing": "Нет разрешения"
     },
     "sort": {
       "byBalance": "По балансу",
@@ -119,7 +120,9 @@
     "activate": "Активировать",
     "remove": "Удалить",
     "reAuthenticate": "Войти снова",
+    "reAuthorize": "Авторизовать снова",
     "expiredBanner": "Сессия истекла. Пожалуйста, войдите снова.",
+    "scopeMissingBanner": "В токене этой учётной записи нет разрешения агента Antigravity, поэтому IDE не может запустить сеанс. Повторно авторизуйте её на месте — удалять учётную запись не нужно.",
     "ineligibleBanner": "Этот аккаунт Google не поддерживается Antigravity.",
     "noAvailableModels": "Нет доступных моделей",
     "noAccountsRegistered": "Аккаунты еще не зарегистрированы.",
@@ -252,7 +255,8 @@
     "reAuthFailed": "❌ Ошибка повторного входа для {{email}}: {{error}}",
     "reAuthEmailMismatch": "Вошедший аккаунт ({{actual}}) не совпадает с ожидаемым ({{expected}}).",
     "accountIneligible": "Аккаунт {{email}} не поддерживается Antigravity.",
-    "switchIneligibleAccount": "Невозможно переключиться на {{email}}, так как он не поддерживается."
+    "switchIneligibleAccount": "Невозможно переключиться на {{email}}, так как он не поддерживается.",
+    "scopeMissingSwitch": "У учётной записи {{email}} нет разрешения агента Antigravity. Нажмите «Авторизовать снова» на её карточке, чтобы исправить это без удаления."
   },
   "stateDb": {
     "outdatedAntigravity": "Установленная версия Antigravity старше {{minVersion}} и не поддерживается.\nОбновите Antigravity до версии {{minVersion}} или новее.",

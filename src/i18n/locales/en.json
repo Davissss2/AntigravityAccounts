@@ -72,7 +72,8 @@
       "depleted": "Credits Depleted",
       "expired": "Token Expired",
       "error": "Connection Error",
-      "ineligible": "Ineligible"
+      "ineligible": "Ineligible",
+      "scopeMissing": "Permission Missing"
     },
     "sort": {
       "byBalance": "Sort by Balance",
@@ -119,8 +120,10 @@
     "activate": "Activate",
     "remove": "Remove",
     "reAuthenticate": "Re-sign in",
+    "reAuthorize": "Re-authorize",
     "expiredBanner": "Session expired. Please sign in again to restore access.",
-    "ineligibleBanner": "This Google account is not eligible to use Antigravity. Please link a supported account.",
+    "scopeMissingBanner": "This account's token is missing the Antigravity agent permission, so the IDE cannot start a session. Re-authorize it in place — there is no need to remove the account.",
+    "ineligibleBanner": "This account is ineligible for Antigravity on Google (restricted for Starter quota). Sign in via a browser to verify or reactivate it.",
     "noAvailableModels": "No models available",
     "noAccountsRegistered": "No accounts registered yet.",
     "addNewAccount": "➕ Add New Account",
@@ -276,6 +279,7 @@
     "reAuthEmailMismatch": "The signed-in account ({{actual}}) does not match the expected account ({{expected}}). Please sign in with the correct Google account.",
     "accountIneligible": "Account {{email}} is not eligible for Antigravity. Please sign in with a different account.",
     "switchIneligibleAccount": "Cannot switch to account {{email}} because it is not eligible for Antigravity.",
+    "scopeMissingSwitch": "Account {{email}} is missing the Antigravity agent permission. Use Re-authorize on its card to fix it in place.",
     "autoCapturedAccount": "Antigravity account automatically detected and saved: {{email}}",
     "autoRotateNoCandidate": "Quota depleted on {{email}}. No other accounts available with remaining quota.",
     "autoRotateCountdown": "Quota depleted on {{email}}. Auto-switching to {{nextEmail}} in {{seconds}}s..."

@@ -72,7 +72,8 @@
       "depleted": "نفد الرصيد",
       "expired": "التوكن منتهي",
       "error": "خطأ في الاتصال",
-      "ineligible": "غير مؤهل"
+      "ineligible": "غير مؤهل",
+      "scopeMissing": "الإذن مفقود"
     },
     "sort": {
       "byBalance": "ترتيب حسب الرصيد",
@@ -119,7 +120,9 @@
     "activate": "تنشيط",
     "remove": "إزالة",
     "reAuthenticate": "إعادة تسجيل الدخول",
+    "reAuthorize": "إعادة التفويض",
     "expiredBanner": "انتهت صلاحية الجلسة. يرجى إعادة تسجيل الدخول لاستعادة الوصول.",
+    "scopeMissingBanner": "رمز هذا الحساب لا يملك إذن وكيل Antigravity، لذا لا يمكن للـ IDE بدء جلسة. أعد التفويض من البطاقة نفسها دون حذف الحساب.",
     "ineligibleBanner": "حساب Google هذا غير مؤهل لاستخدام Antigravity. يرجى ربط حساب مدعوم.",
     "noAvailableModels": "لا توجد نماذج متاحة",
     "noAccountsRegistered": "لا توجد حسابات مسجلة بعد.",
@@ -252,7 +255,8 @@
     "reAuthFailed": "❌ فشلت إعادة المصادقة لـ {{email}}: {{error}}",
     "reAuthEmailMismatch": "الحساب الذي سجلت الدخول به ({{actual}}) لا يتطابق مع الحساب المتوقع ({{expected}}). يرجى تسجيل الدخول بحساب Google الصحيح.",
     "accountIneligible": "الحساب {{email}} غير مؤهل لـ Antigravity. يرجى تسجيل الدخول بحساب آخر.",
-    "switchIneligibleAccount": "لا يمكن التبديل إلى الحساب {{email}} لأنه غير مؤهل لـ Antigravity."
+    "switchIneligibleAccount": "لا يمكن التبديل إلى الحساب {{email}} لأنه غير مؤهل لـ Antigravity.",
+    "scopeMissingSwitch": "الحساب {{email}} يفتقد إذن وكيل Antigravity. استخدم «إعادة التفويض» في بطاقته لإصلاحه دون حذفه."
   },
   "stateDb": {
     "outdatedAntigravity": "إصدار Antigravity المثبت أقدم من {{minVersion}} وغير مدعوم.\nيرجى تحديث Antigravity إلى الإصدار {{minVersion}} أو أحدث لاستخدام ميزة تبديل الحسابات.",
