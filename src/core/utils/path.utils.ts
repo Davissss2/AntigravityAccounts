@@ -64,7 +64,36 @@ export class PathUtils {
    * Gets the path to the SQLite state database where Antigravity stores OAuth tokens.
    */
   static getVscdbPath(context?: vscode.ExtensionContext): string {
-    return path.join(this.getAntigravityDataPath(context), 'User', 'globalStorage', 'state.vscdb');
+    const primary = path.join(this.getAntigravityDataPath(context), 'User', 'globalStorage', 'state.vscdb');
+    if (fs.existsSync(primary)) return primary;
+
+    const platform = os.platform();
+    const homeDir = os.homedir();
+    const candidates: string[] = [];
+
+    if (platform === 'win32') {
+      const appData = process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming');
+      candidates.push(
+        path.join(appData, 'Antigravity IDE', 'User', 'globalStorage', 'state.vscdb'),
+        path.join(appData, 'Antigravity', 'User', 'globalStorage', 'state.vscdb')
+      );
+    } else if (platform === 'darwin') {
+      candidates.push(
+        path.join(homeDir, 'Library', 'Application Support', 'Antigravity IDE', 'User', 'globalStorage', 'state.vscdb'),
+        path.join(homeDir, 'Library', 'Application Support', 'Antigravity', 'User', 'globalStorage', 'state.vscdb')
+      );
+    } else if (platform === 'linux') {
+      const configHome = process.env.XDG_CONFIG_HOME || path.join(homeDir, '.config');
+      candidates.push(
+        path.join(configHome, 'Antigravity IDE', 'User', 'globalStorage', 'state.vscdb'),
+        path.join(configHome, 'Antigravity', 'User', 'globalStorage', 'state.vscdb')
+      );
+    }
+
+    for (const cand of candidates) {
+      if (fs.existsSync(cand)) return cand;
+    }
+    return primary;
   }
 
   /**

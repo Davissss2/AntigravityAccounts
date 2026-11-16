@@ -273,14 +273,18 @@ export class AccountService {
 
     let tokens = await this.accountRepo.getTokens(email);
     if (!tokens) {
-      // Never open a browser during a switch: mark the card so its explicit
-      // "Re-sign in" button becomes available and tell the user why.
       const i18nError = I18nService.getInstance();
       await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
       this._onAccountsChanged.fire();
-      vscode.window.showErrorMessage(
-        `${i18nError.t('accounts.expiredBanner')} (${email})`
-      );
+      const actionSignIn = i18nError.t('accounts.reAuthenticate');
+      vscode.window.showWarningMessage(
+        `${i18nError.t('accounts.expiredBanner')} (${email})`,
+        actionSignIn
+      ).then(choice => {
+        if (choice === actionSignIn) {
+          this.reAuthenticateWorkflow(email);
+        }
+      });
       return 'error';
     }
 
@@ -2024,8 +2028,32 @@ export class AccountService {
           return;
         }
 
-        // 7. Otherwise silently refresh balances in the background
-        this.refreshBalancesWorkflow(false).catch(() => {});
+        // 7. Immediately evaluate quota and eligibility to restore account if Google cleared the block
+        try {
+          const account = await this.accountRepo.getAccount(email);
+          const balanceInfo = await this.balanceService.getBalanceInfo(refreshed.accessToken, {
+            projectId: account?.projectId
+          });
+          const preferredModel = await this.accountRepo.getPreferredModel();
+          const newStatus = await this.determineAccountStatus(balanceInfo, preferredModel, refreshed);
+          const newBalances = newStatus === AccountStatus.INELIGIBLE ? {} : balanceInfo.balances;
+          await this.accountRepo.updateAccount(email, {
+            status: newStatus,
+            balances: newBalances,
+            plan: balanceInfo.plan !== AccountPlan.UNKNOWN ? balanceInfo.plan : undefined,
+            projectId: balanceInfo.projectId || account?.projectId,
+            lastRefreshedAt: new Date().toISOString()
+          });
+          this._onAccountsChanged.fire();
+          if (newStatus === AccountStatus.INELIGIBLE) {
+            vscode.window.showWarningMessage(i18n.t('service.accountIneligible', { email }));
+          } else {
+            vscode.window.showInformationMessage(i18n.t('service.reAuthSuccess', { email }));
+          }
+        } catch (balErr) {
+          Logger.getInstance().debug('Failed immediate balance check after re-auth', balErr);
+          this.refreshBalancesWorkflow(false).catch(() => {});
+        }
       });
     } catch (error: any) {
       Logger.getInstance().error(`Re-authentication failed for ${email}`, error);
@@ -2043,7 +2071,6 @@ export class AccountService {
     
     const choice = await vscode.window.showWarningMessage(
       i18n.t('accounts.confirmDelete') + ` (${email})`,
-      { modal: true, detail: i18n.t('accounts.deleteWarning') },
       actionYes,
       i18n.t('common.cancel')
     );
@@ -2051,10 +2078,6 @@ export class AccountService {
     if (choice === actionYes) {
       await this.accountRepo.removeAccount(email);
       vscode.window.showInformationMessage(i18n.t('service.accountRemoved', { email }));
-      
-      // We no longer need to check or clear the active account in local DB
-      // because it is dynamically read from Antigravity.
-      
       this._onAccountsChanged.fire();
     }
   }

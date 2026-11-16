@@ -5,6 +5,22 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.58] - 2026-11-16
+
+### Arreglado
+- **Botón de inicio de sesión y reactivación automática en cuentas no elegibles:**
+  - Añadido el botón de "Volver a iniciar sesión" directamente en las tarjetas de cuentas no elegibles.
+  - Abre el flujo OAuth con `login_hint` fijado para esa cuenta específica, permitiendo solventar en el navegador cualquier verificación pendiente de Google.
+  - Tras el login, se comprueba en el acto la elegibilidad y cuota real con `loadCodeAssist`: si Google ha levantado la restricción, la cuenta pasa automáticamente a estado activo y recupera sus saldos.
+- **Arreglo definitivo del botón de eliminar (Remove):**
+  - Eliminado el diálogo modal que quedaba bloqueado o sin responder detrás del webview en determinados entornos de Windows.
+  - Sustituido el filtrado de cuentas por comparación insensible a mayúsculas (`isEmailMatch`) y saneamiento en `SecretStorage`.
+  - Refresco inmediato de la interfaz tras pulsar eliminar para que la tarjeta desaparezca sin recargas manuales.
+- **Ajuste universal y portabilidad entre distintos equipos:**
+  - Búsqueda resiliente de la base de datos `state.vscdb` comprobando variantes de carpeta (`Antigravity IDE` y `Antigravity`) en Windows, macOS y Linux.
+  - Incorporado fallback transparente con `cmdkey` en `write-cred.ps1` para actualizar las credenciales del agente en equipos Windows con directivas restrictivas o modo de lenguaje restringido donde `Add-Type` no puede compilar.
+  - Si una cuenta carece de tokens en el equipo actual (por sincronización de ajustes sin contraseñas), al intentar activarla se presenta directamente la opción de iniciar sesión.
+
 ## [0.3.57] - 2026-11-13
 
 ### Arreglado

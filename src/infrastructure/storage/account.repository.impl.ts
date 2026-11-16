@@ -16,6 +16,7 @@ import { Workflow } from '../../core/domain/models/workflow.model';
 import { STORAGE_KEYS, SECRET_KEYS } from '../../core/constants/app.constants';
 import { Logger } from '../../core/utils/logger';
 import { PathUtils } from '../../core/utils/path.utils';
+import { isEmailMatch } from '../../core/utils/account.utils';
 
 export class AccountRepositoryImpl implements IAccountRepository {
   constructor(private context: vscode.ExtensionContext) {}
@@ -138,20 +139,31 @@ export class AccountRepositoryImpl implements IAccountRepository {
 
   async removeAccount(email: string): Promise<void> {
     const accounts = await this.getAllAccounts();
-    const filtered = accounts.filter(a => a.email !== email);
+    const filtered = accounts.filter(a => !isEmailMatch(a.email, email));
     await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, filtered);
 
     // Remove tokens securely
+    const cleanEmail = email.trim().toLowerCase();
     await this.context.secrets.delete(SECRET_KEYS.REFRESH_TOKEN(email));
     await this.context.secrets.delete(SECRET_KEYS.ACCESS_TOKEN(email));
     await this.context.secrets.delete(SECRET_KEYS.METADATA(email));
+    if (cleanEmail !== email) {
+      await this.context.secrets.delete(SECRET_KEYS.REFRESH_TOKEN(cleanEmail));
+      await this.context.secrets.delete(SECRET_KEYS.ACCESS_TOKEN(cleanEmail));
+      await this.context.secrets.delete(SECRET_KEYS.METADATA(cleanEmail));
+    }
+
+    const active = await this.getActiveAccountEmail();
+    if (active && isEmailMatch(active, email)) {
+      await this.setActiveAccount(null);
+    }
     
     Logger.getInstance().info(`Account removed: ${email}`);
   }
 
   async updateAccount(email: string, updates: Partial<Account>): Promise<void> {
     const accounts = await this.getAllAccounts();
-    const index = accounts.findIndex(a => a.email === email);
+    const index = accounts.findIndex(a => isEmailMatch(a.email, email));
     
     if (index >= 0) {
       accounts[index] = { ...accounts[index], ...updates };

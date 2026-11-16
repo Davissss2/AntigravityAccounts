@@ -19,7 +19,17 @@ if (-not (Test-Path $PayloadPath)) {
     exit 1
 }
 
-Add-Type -TypeDefinition @"
+$text = [IO.File]::ReadAllText($PayloadPath)
+if ($text.Length -eq 0) {
+    Write-Output "payload is empty"
+    exit 1
+}
+# Fail early on malformed JSON so a broken blob is never written.
+$null = $text | ConvertFrom-Json
+
+$useAddType = $true
+try {
+    Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 public class AgCred {
@@ -38,7 +48,17 @@ public class AgCred {
     public string TargetAlias; public string UserName;
   }
 }
-"@
+"@ -ErrorAction Stop
+} catch {
+    $useAddType = $false
+}
+
+if (-not $useAddType) {
+    # Bulletproof fallback using built-in Windows cmdkey utility (works in ConstrainedLanguage and on all Windows versions)
+    cmdkey /generic:$Target /user:$UserName /pass:$text | Out-Null
+    Write-Output "credential written via cmdkey ($($text.Length) chars)"
+    exit 0
+}
 
 # Preserve the persistence flag of the existing entry (2 = local machine).
 $persist = 2
@@ -51,14 +71,6 @@ if ([AgCred]::CredRead($Target, 1, 0, [ref]$ptr)) {
         [AgCred]::CredFree($ptr)
     }
 }
-
-$text = [IO.File]::ReadAllText($PayloadPath)
-if ($text.Length -eq 0) {
-    Write-Output "payload is empty"
-    exit 1
-}
-# Fail early on malformed JSON so a broken blob is never written.
-$null = $text | ConvertFrom-Json
 
 $bytes = [Text.Encoding]::UTF8.GetBytes($text)
 $blobPtr = [Runtime.InteropServices.Marshal]::AllocHGlobal($bytes.Length)

@@ -275,6 +275,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         case 'deleteAccount':
           if (message.email) {
             await this.accountService.removeAccountWorkflow(message.email);
+            await this.refresh();
           }
           break;
         case 'reAuthenticate':
@@ -6210,6 +6211,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       `;
     } else if (isIneligible) {
       actionsHtml = `
+        <button class="btn btn-warning" onclick="sendMessage('reAuthenticate', '${acc.email}')">${i18n.t('accounts.reAuthenticate')}</button>
         <button class="btn btn-danger" onclick="sendMessage('deleteAccount', '${acc.email}')">${i18n.t('accounts.remove')}</button>
       `;
     } else {
