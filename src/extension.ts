@@ -770,6 +770,14 @@ async function migrateAndSanitizeStorage(context: vscode.ExtensionContext): Prom
       }
     }
 
+    // Step D: Reset any falsely marked 'ineligible' accounts back to ACTIVE
+    for (const acc of sanitizedAccounts) {
+      if ((acc.status as string) === 'ineligible' || acc.status === AccountStatus.INELIGIBLE) {
+        acc.status = AccountStatus.ACTIVE;
+        accountsModified = true;
+      }
+    }
+
     if (accountsModified) {
       logger.info('Saving sanitized accounts list to globalState...');
       await globalState.update('antigravity.accounts.list', sanitizedAccounts);

@@ -34,7 +34,6 @@ export interface BalanceResult {
 export interface AccountContext {
   projectId?: string;
   planName?: string;
-  ineligible?: boolean;
   rateLimited?: boolean;
 }
 
@@ -92,19 +91,6 @@ export class BalanceService {
 
         const parsed = this.parseAvailableModels(data);
         if (Object.keys(parsed.balances).length > 0) {
-          // Google returns a dummy fraction 1 (100%) for accounts restricted or ineligible for AI Starter.
-          // When all models report 100%, check loadCodeAssist to verify actual eligibility.
-          const allHundred = Object.values(parsed.balances).every((b: any) => b.value === 100);
-          if (allHundred) {
-            const context = await this.resolveAccountContext(accessToken, options?.signal);
-            if (context?.ineligible) {
-              result.status = AccountStatus.INELIGIBLE;
-              result.hasError = true;
-              result.balances = {};
-              return result;
-            }
-          }
-
           result.balances = parsed.balances;
           result.isDepleted = parsed.allExhausted;
           if (result.isDepleted) {
@@ -150,12 +136,6 @@ export class BalanceService {
       if (context.rateLimited) {
         rateLimited = true;
         break;
-      }
-      if (context.ineligible) {
-        result.status = AccountStatus.INELIGIBLE;
-        result.hasError = true;
-        result.balances = {};
-        return result;
       }
       if (context.planName && result.plan === AccountPlan.UNKNOWN) {
         result.plan = this.parsePlanName(context.planName);
@@ -208,26 +188,15 @@ export class BalanceService {
 
       const paidTier = data.paidTier || {};
       const currentTier = data.currentTier || {};
-      const isIneligible =
-        Boolean(data.ineligibleTiers && data.ineligibleTiers.length > 0) ||
-        Boolean(paidTier.upgradeSubscriptionUri && paidTier.upgradeSubscriptionUri.includes('ineligible')) ||
-        Boolean(paidTier.upgradeSubscriptionText && paidTier.upgradeSubscriptionText.toLowerCase().includes('ineligible')) ||
-        Boolean(currentTier.upgradeSubscriptionUri && currentTier.upgradeSubscriptionUri.includes('ineligible')) ||
-        Boolean(currentTier.upgradeSubscriptionText && currentTier.upgradeSubscriptionText.toLowerCase().includes('ineligible'));
 
       return {
         projectId: data.cloudaicompanionProject || undefined,
-        planName: paidTier.name || currentTier.name || undefined,
-        ineligible: isIneligible || undefined
+        planName: paidTier.name || currentTier.name || undefined
       };
     } catch (e: any) {
       if (signal?.aborted || (e instanceof ApiError && e.status === 499)) return null;
       if (e instanceof ApiError && e.status === 429) {
         return { rateLimited: true };
-      }
-      if (e instanceof ApiError && (e.status === 403 || e.status === 400)) {
-        Logger.getInstance().warn(`loadCodeAssist reports the account as ineligible (${e.status}).`);
-        return { ineligible: true };
       }
       Logger.getInstance().debug('loadCodeAssist failed', e?.message || e);
       return null;

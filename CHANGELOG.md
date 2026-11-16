@@ -5,6 +5,19 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.59] - 2026-11-16
+
+### Arreglado
+- **Eliminacion total de la restriccion y estado INELIGIBLE:**
+  - Suprimida por completo la comprobacion de `ineligibleTiers` y los falsos positivos que vaciaban los saldos a 0% en cuentas perfectamente sanas.
+  - Desbloqueado el cambio y activacion manual en todas las cuentas: el usuario puede pulsar Activar libremente en cualquier cuenta sin impedimentos.
+  - Retirados el distintivo rojo, el banner de advertencia y las restricciones de interfaz, restaurando la visualizacion completa de modelos y cuotas reales.
+  - Implementada migracion automatica al iniciar para restaurar a estado activo cualquier cuenta previamente marcada como inegible.
+- **Sincronizacion robusta de la cuenta activa en tiempo real:**
+  - Lectura resiliente en `state.vscdb` combinando `userStatus` con `AGY_GLOBAL_STATE` (`agy.onboarding.lastLoginUsername`) para reflejar con exactitud la cuenta mostrada en los Ajustes de Antigravity.
+  - Ampliado el timeout de resolucion de sesion nativa (`antigravity_auth` / `google`) a 2000ms para evitar caidas prematuras al cache antiguo.
+  - Sincronizacion bidireccional inmediata del pin activo sin dejarlo anclado a cuentas antiguas.
+
 ## [0.3.58] - 2026-11-16
 
 ### Arreglado

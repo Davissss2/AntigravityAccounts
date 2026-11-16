@@ -139,10 +139,16 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
    * without blocking HTML generation or causing black screen delays.
    */
   private checkNativeAuthMismatch(): void {
-    this.accountService.getNativeAuthEmail().then(email => {
-      if (email !== this._cachedNativeAuthEmail) {
+    this.accountService.getNativeAuthEmail().then(async email => {
+      if (email && email !== this._cachedNativeAuthEmail) {
         this._cachedNativeAuthEmail = email;
-        if (this._view && this._pinnedActiveEmail && email && !isEmailMatch(email, this._pinnedActiveEmail)) {
+        const accounts = await this.accountRepo.getAllAccounts();
+        const matched = accounts.find(a => isEmailMatch(a.email, email));
+        if (matched && (!this._pinnedActiveEmail || !isEmailMatch(this._pinnedActiveEmail, email))) {
+          this._pinnedActiveEmail = email.toLowerCase();
+          await this.accountRepo.setActiveAccountEmail(email.toLowerCase());
+          this.debouncedRefresh(200);
+        } else if (this._view && this._pinnedActiveEmail && !isEmailMatch(email, this._pinnedActiveEmail)) {
           this.debouncedRefresh(200);
         }
       }
@@ -2906,14 +2912,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             border-color: var(--warning-color);
           }
 
-          .account-card.ineligible {
-            border: 1px dashed var(--danger-color);
-            opacity: 0.95;
-          }
-          .account-card.ineligible:hover {
-            border-color: var(--danger-color);
-          }
-
           .account-card.scope-missing {
             border: 1px dashed var(--warning-color);
             opacity: 0.95;
@@ -2927,22 +2925,10 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             filter: grayscale(80%);
           }
 
-          .avatar-ineligible {
-            opacity: 0.5;
-            filter: grayscale(100%);
-          }
-
           .expired-badge {
             background: rgba(245, 158, 11, 0.12);
             color: var(--warning-color);
             border: 1px solid rgba(245, 158, 11, 0.25);
-            white-space: nowrap;
-          }
-
-          .ineligible-badge {
-            background: rgba(239, 68, 68, 0.12);
-            color: var(--danger-color);
-            border: 1px solid rgba(239, 68, 68, 0.25);
             white-space: nowrap;
           }
 
@@ -2975,27 +2961,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             font-weight: 500;
           }
 
-          .ineligible-banner {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 10px;
-            margin-bottom: 12px;
-            background: rgba(239, 68, 68, 0.06);
-            border: 1px solid rgba(239, 68, 68, 0.2);
-            border-radius: 6px;
-            animation: redSubtlePulse 3s ease-in-out infinite;
-          }
-          .ineligible-banner-icon {
-            font-size: 1.1rem;
-            flex-shrink: 0;
-          }
-          .ineligible-banner-text {
-            font-size: 0.76rem;
-            color: var(--danger-color);
-            line-height: 1.4;
-            font-weight: 500;
-          }
 
           .scope-missing-banner {
             display: flex;
@@ -4329,7 +4294,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               targetEmails = Array.from(cards)
                 .filter(c => {
                   const status = c.dataset.status;
-                  const isDepletedOrError = (status === 'depleted' || status === 'token_expired' || status === 'ineligible' || status === 'error' || status === 'scope_missing');
+                  const isDepletedOrError = (status === 'depleted' || status === 'token_expired' || status === 'error' || status === 'scope_missing');
                   return isDepletedOrError || !hasQuota(c);
                 })
                 .map(c => c.dataset.email);
@@ -4383,9 +4348,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
               const status = (card.dataset.status || '').toLowerCase();
               const badgeEl = card.querySelector('.badge');
               const badgeText = (badgeEl ? badgeEl.textContent || '' : '').toLowerCase();
-              const statusMatches = status.includes(q) || badgeText.includes(q) ||
-                (q.includes('elegib') && status === 'ineligible') ||
-                (q.includes('ineligib') && status === 'ineligible');
+              const statusMatches = status.includes(q) || badgeText.includes(q);
               const textMatches = !q || email.includes(q) || name.includes(q) || alias.includes(q) || statusMatches;
 
               if (textMatches) {
@@ -5615,7 +5578,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     const isDeadAccount = (acc: any): boolean =>
       acc.status === AccountStatus.TOKEN_EXPIRED
       || acc.status === AccountStatus.ERROR
-      || acc.status === AccountStatus.INELIGIBLE
       || acc.status === AccountStatus.SCOPE_MISSING;
 
     /** Models the panel actually prints on the card (same filters as renderAccountCard). */
@@ -5727,8 +5689,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         case AccountStatus.SCOPE_MISSING: return 3;
         case AccountStatus.TOKEN_EXPIRED: return 4;
         case AccountStatus.ERROR: return 5;
-        case AccountStatus.INELIGIBLE: return 6;
-        default: return 7;
+        default: return 6;
       }
     };
 
@@ -6144,7 +6105,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     const isExpired = acc.status === AccountStatus.TOKEN_EXPIRED;
-    const isIneligible = acc.status === AccountStatus.INELIGIBLE;
     const isScopeMissing = acc.status === AccountStatus.SCOPE_MISSING;
     const activeBadge = acc.isActive
       ? `<div class="badge active-badge">${i18n.t('accounts.active')}</div>`
@@ -6152,9 +6112,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         ? `<div class="badge expired-badge">${i18n.t('accounts.expired')}</div>`
         : isScopeMissing
           ? `<div class="badge scope-missing-badge">${i18n.t('accounts.status.scopeMissing')}</div>`
-          : isIneligible
-            ? `<div class="badge ineligible-badge">${i18n.t('accounts.status.ineligible')}</div>`
-            : '';
+          : '';
 
     const expiredBannerHtml = isExpired ? `
       <div class="expired-banner">
@@ -6170,18 +6128,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       </div>
     ` : '';
 
-    const ineligibleBannerHtml = isIneligible ? `
-      <div class="ineligible-banner">
-        <span class="ineligible-banner-icon"><svg class="icon-svg icon-error" style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></span>
-        <span class="ineligible-banner-text">${i18n.t('accounts.ineligibleBanner')}</span>
-      </div>
-    ` : '';
-
     const cardBody = isExpired
       ? expiredBannerHtml
-      : isIneligible
-        ? ineligibleBannerHtml
-        : `
+      : `
         ${scopeMissingBannerHtml}
         ${creditsHtml}
         
@@ -6209,11 +6158,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         <button class="btn btn-warning" onclick="sendMessage('reAuthenticate', '${acc.email}')">${i18n.t('accounts.reAuthorize')}</button>
         <button class="btn btn-danger" onclick="sendMessage('deleteAccount', '${acc.email}')">${i18n.t('accounts.remove')}</button>
       `;
-    } else if (isIneligible) {
-      actionsHtml = `
-        <button class="btn btn-warning" onclick="sendMessage('reAuthenticate', '${acc.email}')">${i18n.t('accounts.reAuthenticate')}</button>
-        <button class="btn btn-danger" onclick="sendMessage('deleteAccount', '${acc.email}')">${i18n.t('accounts.remove')}</button>
-      `;
     } else {
       actionsHtml = `
         ${!acc.isActive ? `<button class="btn btn-primary btn-activate" onclick="handleSwitchAccount(this, '${acc.email}')">${i18n.t('accounts.activate')}</button>` : ''}
@@ -6221,7 +6165,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       `;
     }
 
-    const avatarClass = isExpired || isScopeMissing ? 'avatar-expired' : isIneligible ? 'avatar-ineligible' : '';
+    const avatarClass = isExpired || isScopeMissing ? 'avatar-expired' : '';
     const safeEmailId = acc.email.replace(/[@.]/g, '-');
 
     const modelBalancesMap: Record<string, number> = {};
@@ -6248,7 +6192,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
          </button>`;
 
     return `
-      <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''} ${isScopeMissing ? 'scope-missing' : ''} ${isIneligible ? 'ineligible' : ''} ${acc.status === AccountStatus.DEPLETED ? 'depleted' : ''}" data-email="${acc.email}" data-name="${displayName}" data-alias="${acc.alias || ''}" data-status="${acc.status}" data-workflow="${acc.workflow || ''}" data-model-balances='${modelBalancesStr}'>
+      <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''} ${isScopeMissing ? 'scope-missing' : ''} ${acc.status === AccountStatus.DEPLETED ? 'depleted' : ''}" data-email="${acc.email}" data-name="${displayName}" data-alias="${acc.alias || ''}" data-status="${acc.status}" data-workflow="${acc.workflow || ''}" data-model-balances='${modelBalancesStr}'>
         <div class="card-header">
           <input type="checkbox" class="card-bulk-check" data-email="${acc.email}" onclick="event.stopPropagation(); handleCardCheck(this, '${acc.email}')" />
           ${acc.avatarUrl ? `<img class="avatar ${avatarClass}" src="${acc.avatarUrl}" alt="${displayName}" />` : `<div class="avatar ${avatarClass}">${displayName.charAt(0).toUpperCase()}</div>`}

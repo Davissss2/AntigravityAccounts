@@ -87,9 +87,6 @@ export class AccountService {
     balanceInfo: { balances: Record<string, any>; hasError: boolean; status?: AccountStatus; isDepleted?: boolean },
     preferredModel: string | null
   ): Promise<AccountStatus> {
-    if (balanceInfo.status === AccountStatus.INELIGIBLE) {
-      return AccountStatus.INELIGIBLE;
-    }
     if (balanceInfo.isDepleted || balanceInfo.status === AccountStatus.DEPLETED) {
       return AccountStatus.DEPLETED;
     }
@@ -240,9 +237,7 @@ export class AccountService {
         }
 
         // 6. Notify User
-        if (finalStatus === AccountStatus.INELIGIBLE) {
-          vscode.window.showWarningMessage(i18n.t('service.accountIneligible', { email: profile.email }));
-        } else if (balanceInfo.hasError) {
+        if (balanceInfo.hasError) {
           vscode.window.showWarningMessage(i18n.t('service.accountAddedErrorBalance', { email: profile.email }));
         } else {
           const formattedBalances = Object.entries(balanceInfo.balances).map(([k, v]) => `${k}: ${v}`).join(' | ');
@@ -266,10 +261,6 @@ export class AccountService {
     if (!account) return 'error';
 
     const i18n = I18nService.getInstance();
-    if (account.status === AccountStatus.INELIGIBLE) {
-      vscode.window.showErrorMessage(i18n.t('service.switchIneligibleAccount', { email }));
-      return 'error';
-    }
 
     let tokens = await this.accountRepo.getTokens(email);
     if (!tokens) {
@@ -411,7 +402,7 @@ export class AccountService {
       try {
         const nativeEmail = await Promise.race([
           this.getNativeAuthEmail(),
-          new Promise<undefined>(r => setTimeout(() => r(undefined), 600))
+          new Promise<undefined>(r => setTimeout(() => r(undefined), 2000))
         ]);
         if (nativeEmail) {
           return nativeEmail.toLowerCase();
@@ -1039,7 +1030,7 @@ export class AccountService {
    */
   getAccountUsableQuotaPercentage(account: Account, preferredModel?: string | null): number {
     if (!account || !account.balances) return 100;
-    if (account.status === AccountStatus.DEPLETED || account.status === AccountStatus.TOKEN_EXPIRED || account.status === AccountStatus.ERROR || account.status === AccountStatus.INELIGIBLE) {
+    if (account.status === AccountStatus.DEPLETED || account.status === AccountStatus.TOKEN_EXPIRED || account.status === AccountStatus.ERROR) {
       return 0;
     }
 
@@ -1251,7 +1242,6 @@ export class AccountService {
       !isEmailMatch(a.email, currentEmail) &&
       a.status !== AccountStatus.DEPLETED &&
       a.status !== AccountStatus.TOKEN_EXPIRED &&
-      a.status !== AccountStatus.INELIGIBLE &&
       a.status !== AccountStatus.SCOPE_MISSING
     );
 
@@ -1897,9 +1887,7 @@ export class AccountService {
     const status = await this.determineAccountStatus(balanceInfo, preferredModel, tokens);
 
     const oldBalances = account.balances || {};
-    const mergedBalances = status === AccountStatus.INELIGIBLE
-      ? {}
-      : balanceInfo.isDepleted
+    const mergedBalances = balanceInfo.isDepleted
       ? balanceInfo.balances
       : this.mergeBalancesPreservingResetTime(oldBalances, balanceInfo.balances);
 
@@ -2036,7 +2024,7 @@ export class AccountService {
           });
           const preferredModel = await this.accountRepo.getPreferredModel();
           const newStatus = await this.determineAccountStatus(balanceInfo, preferredModel, refreshed);
-          const newBalances = newStatus === AccountStatus.INELIGIBLE ? {} : balanceInfo.balances;
+          const newBalances = balanceInfo.balances;
           await this.accountRepo.updateAccount(email, {
             status: newStatus,
             balances: newBalances,
@@ -2045,11 +2033,7 @@ export class AccountService {
             lastRefreshedAt: new Date().toISOString()
           });
           this._onAccountsChanged.fire();
-          if (newStatus === AccountStatus.INELIGIBLE) {
-            vscode.window.showWarningMessage(i18n.t('service.accountIneligible', { email }));
-          } else {
-            vscode.window.showInformationMessage(i18n.t('service.reAuthSuccess', { email }));
-          }
+          vscode.window.showInformationMessage(i18n.t('service.reAuthSuccess', { email }));
         } catch (balErr) {
           Logger.getInstance().debug('Failed immediate balance check after re-auth', balErr);
           this.refreshBalancesWorkflow(false).catch(() => {});

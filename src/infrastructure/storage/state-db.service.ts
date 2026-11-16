@@ -1225,15 +1225,41 @@ inject().catch((err) => {
     }
 
     const email = await this.readConsistentSnapshot<string | null>((db) => {
+      // 1. Try userStatus
       const stmt = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
       try {
         stmt.bind({ $key: STATE_DB_KEYS.USER_STATUS });
-        if (!stmt.step()) return null;
-        const base64Value = stmt.get()[0] as string;
-        return base64Value ? this.extractEmailFromUserStatus(base64Value) : null;
+        if (stmt.step()) {
+          const base64Value = stmt.get()[0] as string;
+          const extracted = base64Value ? this.extractEmailFromUserStatus(base64Value) : null;
+          if (extracted) return extracted;
+        }
       } finally {
         stmt.free();
       }
+
+      // 2. Fallback: check AGY_GLOBAL_STATE (google.google-antigravity -> agy.onboarding.lastLoginUsername)
+      const agyStmt = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
+      try {
+        agyStmt.bind({ $key: STATE_DB_KEYS.AGY_GLOBAL_STATE });
+        if (agyStmt.step()) {
+          const raw = agyStmt.get()[0] as string;
+          if (raw) {
+            try {
+              const outer = JSON.parse(raw);
+              const storageRaw = outer['antigravity-storage'];
+              const storage = typeof storageRaw === 'string' ? JSON.parse(storageRaw) : storageRaw;
+              if (storage?.['agy.onboarding.lastLoginUsername']) {
+                return String(storage['agy.onboarding.lastLoginUsername']).trim().toLowerCase();
+              }
+            } catch {}
+          }
+        }
+      } finally {
+        agyStmt.free();
+      }
+
+      return null;
     }, (value) => !!value);
 
     if (email) {
@@ -1451,6 +1477,29 @@ inject().catch((err) => {
         }
       } finally {
         stmtUser.free();
+      }
+
+      // 1.1 Fallback: check AGY_GLOBAL_STATE if userStatus is missing
+      if (!email) {
+        const agyStmt = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
+        try {
+          agyStmt.bind({ $key: STATE_DB_KEYS.AGY_GLOBAL_STATE });
+          if (agyStmt.step()) {
+            const raw = agyStmt.get()[0] as string;
+            if (raw) {
+              try {
+                const outer = JSON.parse(raw);
+                const storageRaw = outer['antigravity-storage'];
+                const storage = typeof storageRaw === 'string' ? JSON.parse(storageRaw) : storageRaw;
+                if (storage?.['agy.onboarding.lastLoginUsername']) {
+                  email = String(storage['agy.onboarding.lastLoginUsername']).trim().toLowerCase();
+                }
+              } catch {}
+            }
+          }
+        } finally {
+          agyStmt.free();
+        }
       }
 
       // 2. Read oauthToken
