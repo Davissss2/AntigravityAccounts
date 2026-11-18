@@ -1,3 +1,5 @@
+import { SENTINEL_KEYS, PERSONAL_EMAIL_DOMAINS } from '../constants/app.constants';
+
 /**
  * Protobuf Utilities
  * 
@@ -156,8 +158,10 @@ export class ProtobufUtils {
   /**
    * Convenience method to build the final OAuthToken Topic for state.vscdb.
    *
-   * Matches the reference app structure:
-   * A single unified state entry with 'oauthTokenInfoSentinelKey' containing the Protobuf OAuthInfo.
+   * Matches Antigravity IDE (>= 1.107) structure:
+   * A multi-entry Topic containing:
+   * 1. 'oauthTokenInfoSentinelKey': Protobuf OAuthInfo (base64)
+   * 2. 'authStateWithContextSentinelKey': JSON auth state with context
    */
   static createUnifiedOAuthToken(
     accessToken: string,
@@ -166,12 +170,41 @@ export class ProtobufUtils {
     isGcpTos = false,
     idToken?: string,
     email?: string,
+    projectId?: string
   ): string {
+    if (isGcpTos && email) {
+      const lowerEmail = email.toLowerCase();
+      const isPersonal = PERSONAL_EMAIL_DOMAINS.some((domain: string) => lowerEmail.endsWith(domain));
+      if (isPersonal) {
+        isGcpTos = false;
+      }
+    }
+
     // 1. Build the OAuthInfo protobuf (actual tokens)
     const oauthInfo = this.createOAuthInfo(accessToken, refreshToken, expirySeconds, isGcpTos, idToken, email);
-    
-    // 2. Create the unified state entry
-    return this.createUnifiedStateEntry('oauthTokenInfoSentinelKey', oauthInfo);
+    const oauthInfoB64 = Buffer.from(oauthInfo).toString('base64');
+
+    // 2. Build the authStateWithContext JSON
+    const authContextJson = JSON.stringify({
+      state: 'signedIn',
+      context: {
+        project: projectId || '',
+        showProjectError: false,
+        errorMessage: '',
+        ineligibleMessage: '',
+        verificationUrl: '',
+        isGcpTos: !!isGcpTos,
+        browserOpenFailed: false,
+        appealUrl: '',
+        appealLinkText: '',
+      },
+    });
+
+    // 3. Create the multi-entry Topic
+    return this.createMultiEntryTopic([
+      { sentinelKey: SENTINEL_KEYS.OAUTH_TOKEN, value: oauthInfoB64 },
+      { sentinelKey: SENTINEL_KEYS.AUTH_STATE_WITH_CONTEXT, value: authContextJson },
+    ]);
   }
 
   /**

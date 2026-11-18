@@ -26,7 +26,7 @@ import { PathUtils } from '../../core/utils/path.utils';
 import { ProtobufUtils } from '../../core/utils/protobuf.utils';
 import { Account, AccountTokens } from '../../core/domain/models/account.model';
 import { DeviceProfile } from '../../core/domain/models/device-profile.model';
-import { STATE_DB_KEYS, STORAGE_JSON_KEYS, PERSONAL_EMAIL_DOMAINS } from '../../core/constants/app.constants';
+import { STATE_DB_KEYS, STORAGE_JSON_KEYS, PERSONAL_EMAIL_DOMAINS, SENTINEL_KEYS } from '../../core/constants/app.constants';
 import { getAntigravityVersion, isVersionSupported, MIN_SUPPORTED_VERSION } from '../../core/utils/version.utils';
 import { ChatResumeUtils } from '../../core/utils/chat-resume.utils';
 
@@ -122,7 +122,7 @@ export class StateDbService {
 
       const oauthToken = ProtobufUtils.createUnifiedOAuthToken(
         tokens.accessToken, tokens.refreshToken, tokens.expiresAt,
-        isGcpTos, undefined, account.email
+        isGcpTos, undefined, account.email, account.projectId
       );
 
       const userStatusPayload = ProtobufUtils.createMinimalUserStatusPayload(account.email);
@@ -1599,8 +1599,9 @@ inject().catch((err) => {
       // Decode Topic (base64 → bytes)
       const topicBytes = Buffer.from(base64Value, 'base64');
 
-      // Extract DataEntry (field 1)
-      const dataEntryBytes = this.extractField(topicBytes, 1);
+      // Extract DataEntry (field 1) - scan for oauthTokenInfoSentinelKey, fallback to first entry
+      const dataEntryBytes = this.extractTopicEntry(topicBytes, SENTINEL_KEYS.OAUTH_TOKEN)
+        ?? this.extractField(topicBytes, 1);
       if (!dataEntryBytes) return null;
 
       // Extract Row (field 2)
@@ -1680,8 +1681,9 @@ inject().catch((err) => {
       // Level 1: Decode outer Topic (base64 → bytes)
       const topicBytes = Buffer.from(base64Value, 'base64');
       
-      // Level 2: Parse Topic → extract DataEntry (field 1, wire type 2)
-      const dataEntryBytes = this.extractField(topicBytes, 1);
+      // Level 2: Parse Topic → extract DataEntry (field 1, wire type 2) - scan for userStatusSentinelKey, fallback to first entry
+      const dataEntryBytes = this.extractTopicEntry(topicBytes, SENTINEL_KEYS.USER_STATUS)
+        ?? this.extractField(topicBytes, 1);
       if (!dataEntryBytes) return null;
 
       // Level 3: Parse DataEntry → extract Row (field 2, wire type 2)
@@ -1723,6 +1725,48 @@ inject().catch((err) => {
       Logger.getInstance().error('Failed to parse userStatus protobuf', e);
       return null;
     }
+  }
+
+  /**
+   * Scans a Topic protobuf for a DataEntry matching a specific sentinelKey.
+   */
+  private extractTopicEntry(topicBytes: Buffer, targetKey: string): Buffer | null {
+    let offset = 0;
+    let iterations = 0;
+    while (offset < topicBytes.length && iterations < 1000) {
+      iterations++;
+      const { value: tag, bytesRead: tagLen } = this.readVarint(topicBytes, offset);
+      if (tagLen === 0) break;
+      offset += tagLen;
+
+      const wireType = tag & 0x07;
+      const num = tag >> 3;
+
+      if (wireType === 2) {
+        const { value: len, bytesRead: lenLen } = this.readVarint(topicBytes, offset);
+        if (lenLen === 0) break;
+        offset += lenLen;
+        if (num === 1) {
+          const entryBytes = topicBytes.slice(offset, offset + len);
+          const key = this.extractStringField(entryBytes, 1);
+          if (key === targetKey) {
+            return entryBytes;
+          }
+        }
+        offset += len;
+      } else if (wireType === 0) {
+        const { bytesRead } = this.readVarint(topicBytes, offset);
+        if (bytesRead === 0) break;
+        offset += bytesRead;
+      } else if (wireType === 1) {
+        offset += 8;
+      } else if (wireType === 5) {
+        offset += 4;
+      } else {
+        break;
+      }
+    }
+    return null;
   }
 
   /**

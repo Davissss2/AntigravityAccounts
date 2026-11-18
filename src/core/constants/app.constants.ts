@@ -100,6 +100,7 @@ export const SENTINEL_KEYS = {
   OAUTH_TOKEN: 'oauthTokenInfoSentinelKey',
   USER_STATUS: 'userStatusSentinelKey',
   ENTERPRISE_PROJECT: 'enterpriseGcpProjectId',
+  AUTH_STATE_WITH_CONTEXT: 'authStateWithContextSentinelKey',
 } as const;
 
 // ── Defaults ──

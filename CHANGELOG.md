@@ -5,6 +5,16 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.60] - 2026-11-18
+
+### Arreglado
+- **Compatibilidad con Antigravity IDE 1.107+ en cambio de cuenta:**
+  - Corregido el restablecimiento forzado de sesion a pantalla de onboarding ("Inicia sesion con Google") al activar cuentas.
+  - Inyeccion dual requerida en el topico Protobuf `antigravityUnifiedStateSync.oauthToken`: adicion de `authStateWithContextSentinelKey` (`state: signedIn`) junto a `oauthTokenInfoSentinelKey`.
+  - Extraccion selectiva de entradas en `parseTokensFromBase64` y `extractEmailFromUserStatus` mediante escaneo por clave sentinel (`extractTopicEntry`), tolerando mensajes Topic con entradas multiples.
+  - Propagacion de `projectId` y directivas TOS al contexto unificado de autenticacion del workbench.
+
+
 ## [0.3.59] - 2026-11-16
 
 ### Arreglado
