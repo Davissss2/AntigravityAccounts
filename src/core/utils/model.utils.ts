@@ -73,6 +73,10 @@ export function normalizeModelKey(key: string): string {
   if (lower === 'claude-opus-4-6' || lower === 'claude-opus-4-6-thinking' || lower === 'claude opus 4.6 (thinking)' || lower === 'opus 4.6' || lower === 'claude opus 4.6') {
     return 'Opus 4.6';
   }
+
+  // Models
+  if (lower.includes('hydrogen')) return 'Gemini 4 Hydrogen';
+  if (lower.includes('neon')) return 'Gemini 4 Neon';
   if (lower === 'claude-sonnet-3-5' || lower === 'claude-sonnet-3.5' || lower === 'claude-3-5-sonnet' || lower === 'claude 3.5 sonnet' || lower === 'sonnet 3.5' || lower === 'sonnet-3-5') {
     return 'Sonnet 3.5';
   }
@@ -152,6 +156,9 @@ export function getFriendlyModelName(key: string): string | null {
   
   if (lower === 'gpt-oss-120b-medium') return 'GPT-OSS 120B';
   
+  if (lower.includes('hydrogen')) return 'Gemini 4 Hydrogen';
+  if (lower.includes('neon')) return 'Gemini 4 Neon';
+
   // Specific Claude version checks
   if (lower.includes('sonnet') && (lower.includes('5-5') || lower.includes('5.5'))) return 'Sonnet 5.5';
   if (lower.includes('opus') && (lower.includes('5-5') || lower.includes('5.5'))) return 'Opus 5.5';

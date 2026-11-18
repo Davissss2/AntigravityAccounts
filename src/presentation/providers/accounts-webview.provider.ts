@@ -1811,6 +1811,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       '3.1 Pro (High)',
       '3.5 Flash (Med)',
       '3.5 Flash (High)',
+      'Gemini 4 Hydrogen',
+      'Gemini 4 Neon',
       'GPT-OSS 120B'
     ]);
 
@@ -1902,6 +1904,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
          }
          return i18n.t('webview.renewsInDaysHoursMins', { days, hours: remainingHours, mins });
        }
+       if (totalHours === 0 && mins === 0) {
+         return '<1m';
+       }
        
        return i18n.t('webview.renewsInHoursMins', { hours: totalHours, mins });
     };
@@ -1956,6 +1961,11 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     workflowChipsHtml += `
+      <button class="btn-new-workflow" onclick="openLeaksModal()" title="Radar de Filtraciones Antigravity" style="border: 1px solid rgba(0, 229, 255, 0.45); background: rgba(0, 229, 255, 0.08); color: #00e5ff; font-weight: 500;">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        <span>Radar Filtraciones</span>
+        <span style="background: #00e5ff; color: #0c0a17; font-size: 0.65rem; font-weight: 700; padding: 1px 5px; border-radius: 6px; margin-inline-start: 4px;">NUEVO: Neon</span>
+      </button>
       <button class="btn-new-workflow" onclick="handleCreateWorkflow()" title="${i18n.t('workflows.newWorkflow')}">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         <span>${i18n.t('workflows.newWorkflow')}</span>
@@ -4063,6 +4073,52 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           </div>
         </div>
 
+        <!-- Radar de Filtraciones Modal -->
+        <div id="leaksModal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.65); z-index:1000; align-items:center; justify-content:center; backdrop-filter:blur(4px);">
+          <div class="modal-content" style="background:var(--surface-color); border:1px solid rgba(0,229,255,0.3); color:var(--text-primary); border-radius:12px; width:92%; max-width:440px; padding:20px; box-shadow:0 8px 32px rgba(0,229,255,0.15); max-height:85vh; overflow-y:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border-color); padding-bottom:10px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00e5ff" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                <h3 style="margin:0; font-size:1.05rem; color:#00e5ff; font-weight:700;">Radar de Filtraciones</h3>
+              </div>
+              <button onclick="closeLeaksModal()" style="background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-size:1.2rem; line-height:1;">&times;</button>
+            </div>
+            
+            <div style="background:rgba(0,229,255,0.06); border:1px solid rgba(0,229,255,0.25); border-radius:8px; padding:12px; margin-bottom:14px;">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
+                <span style="font-size:0.95rem; font-weight:700; color:#fff;">Gemini 4 Neon</span>
+                <span style="background:rgba(0,229,255,0.2); color:#00e5ff; font-size:0.68rem; font-weight:700; padding:2px 7px; border-radius:10px; border:1px solid rgba(0,229,255,0.4);">RECIEN FILTRADO</span>
+              </div>
+              <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:6px;">
+                <strong>Identificador de ruteo:</strong> <code style="background:rgba(0,0,0,0.3); color:#00e5ff; padding:2px 5px; border-radius:4px;">gemini-pro-orchestrator-neon</code>
+              </div>
+              <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:6px;">
+                <strong>Origen de deteccion:</strong> Antigravity CLI v1.5.11 &amp; Google Cloud Pricing Catalog
+              </div>
+              <div style="font-size:0.78rem; color:var(--text-secondary); line-height:1.4;">
+                Nuevo modelo orquestador Pro para agentes. Gestiona planificacion y ejecucion coordinada entre modelos en cuentas Gemini Enterprise y Application Default Credentials (ADC).
+              </div>
+            </div>
+
+            <div style="background:var(--surface-light); border:1px solid var(--border-color); border-radius:8px; padding:12px; margin-bottom:14px;">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
+                <span style="font-size:0.95rem; font-weight:700; color:var(--text-primary);">Gemini 4 Hydrogen</span>
+                <span style="background:rgba(34,197,94,0.15); color:#4ade80; font-size:0.68rem; font-weight:700; padding:2px 7px; border-radius:10px; border:1px solid rgba(34,197,94,0.3);">ACTIVO EN STAGING</span>
+              </div>
+              <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:6px;">
+                <strong>Identificador de ruteo:</strong> <code style="background:rgba(0,0,0,0.3); color:var(--text-primary); padding:2px 5px; border-radius:4px;">gemini-4-hydrogen-sonar</code>
+              </div>
+              <div style="font-size:0.78rem; color:var(--text-secondary); line-height:1.4;">
+                Modelo de ejecucion ultra-rapida y alta eficiencia integrado para generacion de codigo y flujos reactivos. Seleccionable en el menu de modelos preferidos.
+              </div>
+            </div>
+
+            <div style="text-align:right;">
+              <button class="btn btn-primary" onclick="closeLeaksModal()" style="padding:6px 14px; font-size:0.8rem;">Entendido</button>
+            </div>
+          </div>
+        </div>
+
         <script>
           const vscode = acquireVsCodeApi();
           
@@ -5145,6 +5201,16 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             vscode.postMessage({ command, email, modelKey });
           }
 
+          function openLeaksModal() {
+            const m = document.getElementById('leaksModal');
+            if (m) m.style.display = 'flex';
+          }
+
+          function closeLeaksModal() {
+            const m = document.getElementById('leaksModal');
+            if (m) m.style.display = 'none';
+          }
+
           function startEditAlias(email) {
             const safeId = email.replace(/[@.]/g, '-');
             const displayEl = document.getElementById('name-display-' + safeId);
@@ -5641,27 +5707,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       if (effectivePreferred) {
         const prefEntry = getModelBalanceEntry(acc.balances, effectivePreferred);
         if (prefEntry) {
-          const prefTime = toTime(prefEntry.resetTime);
-          const prefValue = Number(prefEntry.value);
-
-          if (!isNaN(prefValue) && prefValue < 100) {
-            // Depleted model: its own date drives the card, and a past date means ready now.
-            if (prefTime !== null) return Math.max(0, prefTime - now);
-          } else {
-            // Preferred model is full: the card tracks the soonest depleted model instead.
-            let soonest: number | null = null;
-            for (const [k, rawV] of Object.entries(acc.balances)) {
-              if (!isDisplayableModel(k)) continue;
-              if (typeof rawV !== 'object' || rawV === null) continue;
-              const value = Number((rawV as any).value);
-              if (isNaN(value) || value >= 100) continue;
-              const d = futureDelta((rawV as any).resetTime);
-              if (d !== null && (soonest === null || d < soonest)) soonest = d;
-            }
-            if (soonest !== null) return soonest;
-            const prefDelta = futureDelta(prefEntry.resetTime);
-            if (prefDelta !== null) return prefDelta;
-          }
+          const prefDelta = futureDelta(prefEntry.resetTime);
+          if (prefDelta !== null) return prefDelta;
         }
       }
 
@@ -5670,8 +5717,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       for (const [k, rawV] of Object.entries(acc.balances)) {
         if (!isDisplayableModel(k)) continue;
         if (typeof rawV !== 'object' || rawV === null) continue;
-        const value = Number((rawV as any).value);
-        if (!isNaN(value) && value >= 100) continue;
         const d = futureDelta((rawV as any).resetTime);
         if (d !== null && d < min) min = d;
       }
@@ -5838,6 +5883,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
          }
          return i18n.t('webview.renewsInDaysHoursMins', { days, hours: remainingHours, mins });
        }
+       if (totalHours === 0 && mins === 0) {
+         return '<1m';
+       }
        
        return i18n.t('webview.renewsInHoursMins', { hours: totalHours, mins });
     };
@@ -5965,44 +6013,38 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
     let nextResetTime: string | undefined = undefined;
     const now = Date.now();
 
+    // 1. Check if preferred model has a future resetTime
     if (preferredModelData && preferredModelData.resetTime) {
       const prefDate = new Date(preferredModelData.resetTime);
       const prefTime = prefDate.getTime();
       if (!isNaN(prefTime) && prefTime > now) {
-        if (preferredModelData.value < 100) {
-          nextResetTime = preferredModelData.resetTime;
-        } else {
-          // If preferred model is 100%, see if another model is depleted (< 100%) and needs recharge sooner
-          const depletedWithReset = processedModels.filter(m => m.resetTime && m.value < 100);
-          let soonestDepletedTime = Infinity;
-          let soonestDepletedReset: string | undefined = undefined;
-          for (const m of depletedWithReset) {
-            const t = new Date(m.resetTime!).getTime();
-            if (!isNaN(t) && t > now && t < soonestDepletedTime) {
-              soonestDepletedTime = t;
-              soonestDepletedReset = m.resetTime;
-            }
-          }
-          nextResetTime = soonestDepletedReset || preferredModelData.resetTime;
+        nextResetTime = preferredModelData.resetTime;
+      }
+    }
+
+    // 2. If any depleted model (< 100%) recharges sooner, prioritize that earlier recharge countdown
+    const depletedWithReset = processedModels.filter(m => m.resetTime && m.value < 100);
+    for (const m of depletedWithReset) {
+      const t = new Date(m.resetTime!).getTime();
+      if (!isNaN(t) && t > now) {
+        if (!nextResetTime || t < new Date(nextResetTime).getTime()) {
+          nextResetTime = m.resetTime;
         }
       }
     }
 
-    // 2. Fallback: if no preferred model or preferred model has no future resetTime, check all models
+    // 3. Fallback: find soonest future reset time among any processed model
     if (!nextResetTime) {
-      const withReset = processedModels.filter(m => m.resetTime);
-      const depletedCandidates = withReset.filter(m => m.value < 100);
-      const targetPool = depletedCandidates.length > 0 ? depletedCandidates : withReset;
       let minDiffMs = Infinity;
-
-      for (const m of targetPool) {
-        const date = new Date(m.resetTime!);
-        const time = date.getTime();
-        if (!isNaN(time) && time > now) {
-          const diffMs = time - now;
-          if (diffMs < minDiffMs) {
-            minDiffMs = diffMs;
-            nextResetTime = m.resetTime;
+      for (const m of processedModels) {
+        if (m.resetTime) {
+          const t = new Date(m.resetTime).getTime();
+          if (!isNaN(t) && t > now) {
+            const diffMs = t - now;
+            if (diffMs < minDiffMs) {
+              minDiffMs = diffMs;
+              nextResetTime = m.resetTime;
+            }
           }
         }
       }

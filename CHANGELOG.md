@@ -5,6 +5,22 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.62] - 2026-11-18
+
+### Añadido
+- **Radar de Filtraciones Antigravity (Leak Radar):**
+  - Nuevo botón y panel en la barra de herramientas para consultar modelos filtrados y en pruebas internas.
+  - Incorporada la ficha técnica de **Gemini 4 Neon** (`gemini-pro-orchestrator-neon`), descubierto en el binario Antigravity CLI v1.5.11 y Google Cloud Pricing Catalog (modelo orquestador Pro para agentes).
+  - Incluido **Gemini 4 Hydrogen** (`gemini-4-hydrogen-sonar`) con integración directa desde la API de staging (`daily-cloudcode-pa`).
+  - Mapeo y selección disponibles en el selector de modelos preferidos para Gemini 4 Hydrogen y Gemini 4 Neon.
+
+### Arreglado
+- **Recuperación del contador de renovación y cuotas exactas:**
+  - Restaurado el cálculo de `nextResetTime` para que todas las cuentas con fecha de renovación futura muestren su tiempo restante (`Renews in Xh Ym` o `<1m`), sin ocultarse en cuentas al 100%.
+  - Mecanismo dual de obtención de cuotas en `BalanceService`: consulta en paralelo de producción (`cloudcode-pa`) con proyecto canónico `aicode-consumers` para cuotas 100% reales y tiempos de renovación oficiales, junto con la detección y fusión de modelos de staging/filtrados (`daily-cloudcode-pa`).
+- **Refresco proactivo en cambio de cuenta para evitar cierre de sesión:**
+  - Forzado el refresco de tokens OAuth antes de la inyección en `gemini:antigravity` y `state.vscdb`, impidiendo que tokens expirados provoquen la pantalla "Continue with Google" / "Authentication Required" al activar cuentas.
+
 ## [0.3.60] - 2026-11-18
 
 ### Arreglado

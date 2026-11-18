@@ -16,7 +16,7 @@
  */
 
 import { ApiClient, ApiError } from '../../core/network/api.client';
-import { API } from '../../core/constants/app.constants';
+import { API, CANONICAL_CONSUMER_PROJECT } from '../../core/constants/app.constants';
 import { Logger } from '../../core/utils/logger';
 import { AccountPlan, AccountStatus } from '../../core/domain/models/account.model';
 
@@ -67,7 +67,8 @@ export class BalanceService {
       return result;
     }
 
-    let projectId = options?.projectId;
+    let projectId = options?.projectId || CANONICAL_CONSUMER_PROJECT;
+    result.projectId = projectId;
     let authError = false;
     let rateLimited = false;
 
@@ -81,25 +82,57 @@ export class BalanceService {
         Logger.getInstance().debug(
           `Querying v1internal:fetchAvailableModels${projectId ? ` for project ${projectId}` : ''}...`
         );
-        const data = await ApiClient.request<any>(API.FETCH_MODELS_URL, {
-          method: 'POST',
-          body: projectId ? { project: projectId } : {},
-          accessToken,
-          timeoutMs: 8000,
-          signal: options?.signal
-        });
+        const [prodRes, dailyRes] = await Promise.allSettled([
+          ApiClient.request<any>(API.FETCH_MODELS_URL, {
+            method: 'POST',
+            body: projectId ? { project: projectId } : {},
+            accessToken,
+            timeoutMs: 8000,
+            signal: options?.signal
+          }),
+          ApiClient.request<any>(API.DAILY_FETCH_MODELS_URL, {
+            method: 'POST',
+            body: projectId ? { project: projectId } : {},
+            accessToken,
+            timeoutMs: 8000,
+            signal: options?.signal
+          })
+        ]);
 
-        const parsed = this.parseAvailableModels(data);
-        if (Object.keys(parsed.balances).length > 0) {
-          result.balances = parsed.balances;
-          result.isDepleted = parsed.allExhausted;
-          if (result.isDepleted) {
-            result.status = AccountStatus.DEPLETED;
+        const prodData = prodRes.status === 'fulfilled' ? prodRes.value : null;
+        const dailyData = dailyRes.status === 'fulfilled' ? dailyRes.value : null;
+
+        const mainData = prodData || dailyData;
+        if (mainData) {
+          const parsed = this.parseAvailableModels(mainData);
+          // If we have daily staging data, merge any unreleased/leaked models not present in production
+          if (dailyData?.models) {
+            for (const [modelId, modelObj] of Object.entries<any>(dailyData.models)) {
+              if (!parsed.balances[modelId] && modelObj?.quotaInfo) {
+                const raw = modelObj.quotaInfo.remainingFraction;
+                const fraction = typeof raw === 'number' ? raw : raw === undefined ? 0 : Number(raw);
+                if (!isNaN(fraction)) {
+                  parsed.balances[modelId] = {
+                    value: Math.round(fraction * 100),
+                    remainingFraction: fraction,
+                    resetTime: modelObj.quotaInfo.resetTime
+                  };
+                }
+              }
+            }
           }
-          Logger.getInstance().info(
-            `Fetched quota for ${Object.keys(parsed.balances).length} models${projectId ? ` (project ${projectId})` : ''}.`
-          );
-          return result;
+
+          if (Object.keys(parsed.balances).length > 0) {
+            result.balances = parsed.balances;
+            result.isDepleted = parsed.allExhausted;
+            if (result.isDepleted) {
+              result.status = AccountStatus.DEPLETED;
+            }
+            Logger.getInstance().info(
+              `Fetched quota for ${Object.keys(parsed.balances).length} models${projectId ? ` (project ${projectId})` : ''}.`
+            );
+            return result;
+          }
         }
 
         // Empty model list: usually a stale project. Fall through to re-resolve.
@@ -115,8 +148,6 @@ export class BalanceService {
           break;
         }
         if (e instanceof ApiError && e.status === 429) {
-          // A rate limit is a transport condition, never an exhausted account.
-          // Callers must keep the previous quota state untouched.
           Logger.getInstance().warn('fetchAvailableModels hit rate limit (429). Preserving quota state.');
           rateLimited = true;
           break;

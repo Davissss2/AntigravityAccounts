@@ -279,20 +279,19 @@ export class AccountService {
       return 'error';
     }
 
-    // Decision 2: Pre-emptive Token Refresh (Add 5-minute buffer)
+    // Decision 2: Pre-emptive Token Refresh
+    // ALWAYS refresh before injection if refreshToken exists to ensure 100% valid token in gemini:antigravity and state.vscdb
     const now = Math.floor(Date.now() / 1000);
-    if (tokens.refreshToken && tokens.expiresAt < (now + 300)) {
-      Logger.getInstance().info(`Token for ${email} is expired or expiring soon. Refreshing before injection...`);
+    if (tokens.refreshToken) {
+      Logger.getInstance().info(`Refreshing fresh token for ${email} before switching...`);
       try {
         const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
         const refreshedTokens = {
           accessToken: newTokens.accessToken,
-          refreshToken: newTokens.refreshToken, // Keeps original if response omits it
+          refreshToken: newTokens.refreshToken || tokens.refreshToken,
           expiresAt: now + newTokens.expiresIn,
           scopes: newTokens.scopes
         };
-        // A poisoned refresh token returns another account's token. Never persist it:
-        // the identity guard below will drive a proper sign-in instead.
         const refreshedOwner = await this.resolveTokenOwner(refreshedTokens.accessToken);
         if (refreshedOwner && !isEmailMatch(refreshedOwner, email)) {
           Logger.getInstance().warn(
@@ -308,13 +307,15 @@ export class AccountService {
         const i18n = I18nService.getInstance();
         vscode.window.showErrorMessage(i18n.t('service.sessionExpiredFailed', { email }));
         await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
+        this._onAccountsChanged.fire();
         return 'error';
       }
-    } else if (!tokens.refreshToken && tokens.expiresAt <= now) {
+    } else if (tokens.expiresAt <= now) {
       // Access token expired and no refresh token is stored yet
       const i18n = I18nService.getInstance();
       vscode.window.showErrorMessage(i18n.t('service.sessionExpiredFailed', { email }));
       await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
+      this._onAccountsChanged.fire();
       return 'error';
     }
 
@@ -1214,7 +1215,9 @@ export class AccountService {
       }
 
       const entry = { ...freshEntry };
-      if (entry.value === 100) {
+      // Only carry over valid future resetTime if the model is depleted (< 100%) and fresh response lacked one.
+      // Models at 100% are fully available and should never retain stale depletion countdowns.
+      if (entry.value < 100 && !entry.resetTime) {
         const oldEntry = oldBalances[key];
         if (oldEntry && typeof oldEntry === 'object' && oldEntry.resetTime) {
           const oldTime = new Date(oldEntry.resetTime).getTime();
