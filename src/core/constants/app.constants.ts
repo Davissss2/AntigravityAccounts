@@ -42,7 +42,7 @@ export const OAUTH = {
 export const API = {
   LOAD_CODE_ASSIST: 'https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
   FETCH_CREDITS: 'https://cloudcode-pa.googleapis.com/v1internal:fetchCredits',
-  DAILY_LOAD_CODE_ASSIST: 'https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
+  DAILY_LOAD_CODE_ASSIST: 'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
   // The only quota source in Antigravity 1.107: the IDE renders "Models & Usage"
   // and raises "Individual quota reached" from this exact endpoint.
   FETCH_MODELS_URL: 'https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',

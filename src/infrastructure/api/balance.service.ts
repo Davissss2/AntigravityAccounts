@@ -102,15 +102,17 @@ export class BalanceService {
         const prodData = prodRes.status === 'fulfilled' ? prodRes.value : null;
         const dailyData = dailyRes.status === 'fulfilled' ? dailyRes.value : null;
 
-        const mainData = prodData || dailyData;
+        // Prioritize dailyData (staging) as it includes complete remainingFraction and newest models
+        const mainData = dailyData || prodData;
         if (mainData) {
           const parsed = this.parseAvailableModels(mainData);
-          // If we have daily staging data, merge any unreleased/leaked models not present in production
-          if (dailyData?.models) {
-            for (const [modelId, modelObj] of Object.entries<any>(dailyData.models)) {
-              if (!parsed.balances[modelId] && modelObj?.quotaInfo) {
+          // If secondary source has any models not present in primary, merge them cleanly
+          const secondary = dailyData ? prodData : null;
+          if (secondary?.models) {
+            for (const [modelId, modelObj] of Object.entries<any>(secondary.models)) {
+              if (modelObj?.quotaInfo && !parsed.balances[modelId]) {
                 const raw = modelObj.quotaInfo.remainingFraction;
-                const fraction = typeof raw === 'number' ? raw : raw === undefined ? 0 : Number(raw);
+                const fraction = typeof raw === 'number' ? raw : raw === undefined ? 1.0 : Number(raw);
                 if (!isNaN(fraction)) {
                   parsed.balances[modelId] = {
                     value: Math.round(fraction * 100),
@@ -252,7 +254,7 @@ export class BalanceService {
       if (!quota) continue;
 
       const raw = quota.remainingFraction;
-      const fraction = typeof raw === 'number' ? raw : raw === undefined ? 0 : Number(raw);
+      const fraction = typeof raw === 'number' ? raw : raw === undefined ? 1.0 : Number(raw);
       if (isNaN(fraction)) continue;
 
       const value = Math.round(fraction * 100);

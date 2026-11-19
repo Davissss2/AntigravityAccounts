@@ -5,6 +5,25 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.63] - 2026-11-19
+
+### Arreglado
+- **Correccion de falso 0% en modelos tiered y cuentas activas:**
+  - Corregido el parsing de `remainingFraction` en `BalanceService`: campos omitidos en la serializacion de endpoints ya no caen a 0% de forma erronea, asignando 100% por defecto a modelos no agotados.
+  - Priorizacion del endpoint de staging `daily-cloudcode-pa` como fuente primaria de cuota metrica y fusion inteligente con produccion, garantizando precision en cuentas de consumo y deteccion de Gemini 4 Hydrogen.
+- **Interfaz responsiva adaptable a paneles estrechos:**
+  - Barra de herramientas con `flex-wrap: wrap` y distribucion flexible en 2x2 para evitar desbordamientos horizontales en paneles laterales estrechos.
+  - Truncamiento inteligente con tooltip en contadores de renovacion (`quota-countdown`) previniendo saltos de linea desalineados.
+
+### Refactorizacion
+- **Modularizacion arquitectonica de la vista webview:**
+  - Desacoplado el archivo monolitico `accounts-webview.provider.ts` (reducido de 6.264 a 2.524 lineas).
+  - Creada la carpeta modular `src/presentation/webview/` con responsabilidades separadas:
+    - `styles/webview.styles.ts`: Hoja de estilos CSS pura, temas y media queries responsivas.
+    - `scripts/webview.client.ts`: Scripts cliente para manipulacion de DOM, drag & drop, atajos y eventos.
+    - `templates/modals.template.ts`: Plantillas de dialogos modales (configuracion, confirmacion y radar de filtraciones).
+    - `templates/account-card.template.ts`: Renderizado desacoplado de tarjetas de cuenta, barras de progreso y modelos.
+
 ## [0.3.62] - 2026-11-18
 
 ### Añadido
