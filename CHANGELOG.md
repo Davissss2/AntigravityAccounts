@@ -5,6 +5,16 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.66] - 2026-11-19
+
+### Cambiado
+- **Modularidad Quirúrgica y Regla de Máximo 300 Líneas por Archivo:**
+  - Descompuesto `model.utils.ts` (de 331 a 176 líneas) extrayendo catálogo de modelos a `model-catalog.constants.ts`.
+  - Descompuesto `account-card.template.ts` (de 414 a 195 líneas) extrayendo parsing de balances y countdown a `account-card-balances.utils.ts` y acciones/tags a `account-card-actions.template.ts`.
+  - Descompuesto `account.repository.impl.ts` (de 490 a 288 líneas) delegando gestión de workflows a `workflow.storage.ts` y sincronización CLI a `token-cli.storage.ts`.
+  - Descompuesto `chat-resume.utils.ts` (de 765 a 236 líneas) desacoplando escaneo de WAL a `chat-wal.utils.ts`, análisis de transcripts a `chat-transcript.utils.ts` y peers multi-ventana a `chat-peer.utils.ts`.
+  - Establecido e integrado estándar de arquitectura y anti-patrón de modularidad (<= 300 líneas por archivo) en Obsidian y reglas del repositorio.
+
 ## [0.3.65] - 2026-11-19
 
 ### Arreglado

@@ -7,8 +7,10 @@ Estas reglas han sido registradas en Obsidian Second Brain y son de OBLIGATORIO 
 ## Condiciones y Flujo de Trabajo
 - `[2026-10-05]` [antigravity-account] Nunca reducir el delay anti-ban de escaneo; mantener siempre el ritmo 'medio medio' de 4s a 8s con pausas naturales de 6s-10s cada 8-12 cuentas para evitar bloqueos de Google.
 - `[2026-10-05]` [antigravity-account] Validar siempre el flujo de autenticacion con el proveedor antigravity_auth ademas de 'google' antes de fiarse de lecturas estaticas de state.vscdb.
-- `[2026-10-05]` [antigravity-account] Obligatorio en cada modificacion: actualizar version en package.json, actualizar CHANGELOG.md, compilar con npm run build, empaquetar archivo .vsix para Windows, y hacer commit y push a origin/main.
+- `[2026-10-05]` [antigravity-account] Obligatorio en cada modificacion de codigo: actualizar version en package.json, actualizar CHANGELOG.md, compilar con npm run build, empaquetar archivo .vsix para Windows, y hacer commit y push a origin/main.
 - `[2026-10-05]` [antigravity-account] Usar el proyecto canonico 'aicode-consumers' en fetchAvailableModels para cuentas sin projectId propio para asegurar deteccion de cuota 0%.
+- `[2026-11-19]` [antigravity-account] Limite estricto de modularidad: maximo 300 lineas por archivo (SRP estricto). Archivos nuevos <= 300 lineas. Archivos legacy existentes > 300 lineas deben descomponerse progresivamente en submodulos especializados para mejorar rendimiento, legibilidad y facilidad de modificacion.
 
 ## Anti-Patrones y Trampas Prohibidas (Errores Recurrentes)
 - **PROHIBIDO:** Nunca reducir el delay anti-ban de escaneo por debajo de 4s
+- **PROHIBIDO:** Monolitos > 300 lineas. Descomponer siempre en modulos desacoplados y submodulos especializados (SRP) para facilitar mantenimiento y reducir consumo de contexto.

@@ -351,6 +351,31 @@ El `transcript.jsonl` guarda un JSON por paso con `type`, `status`, `created_at`
 - `AccountStatus` usa valores **en minúsculas** (`'active'`, `'depleted'`, `'token_expired'`…). Comparar contra `'TOKEN_EXPIRED'` nunca acierta.
 - Verificación sin IDE: volcar `antigravity.accounts.list` a JSON, cargar `model.utils` con esbuild + Node y comprobar el invariante «ninguna cuenta con tarjeta 0 % aparece antes que una con cuota».
 
+---
+
+## 8. Estándar de Modularidad Quirúrgica y Límite de Tamaño (Max 300 Líneas)
+
+### 8.1. Principio Fundamental: Archivos Enfocados (Single Responsibility Principle)
+Para garantizar alta mantenibilidad, facilitar refactorizaciones sin riesgo de regresiones y reducir el consumo de tokens de contexto:
+- **Límite Estricto:** Máximo **300 líneas de código por archivo** (tolerancia máxima excepcional: 350 líneas para modelos de datos acoplados o interfaces exhaustivas).
+- **Nuevos Archivos:** Prohibido crear archivos que superen las 300 líneas. Si una funcionalidad requiere más lógica, debe nacer dividida en submódulos especializados.
+- **Archivos Monolíticos Heredados (Legacy):** Cualquier intervención o refactorización sobre archivos que excedan este umbral debe aprovecharse para extraer lógica hacia submódulos auxiliares hasta devolver el archivo a `< 300` líneas.
+
+### 8.2. Mapa de Deuda Técnica y Descomposición Prioritaria
+| Archivo Monolítico | Líneas Actuales | Estrategia de Descomposición Recomendada |
+|---|---|---|
+| `accounts-webview.provider.ts` | 2.293 | Separar en: `webview.message-handler.ts`, `webview.state-manager.ts`, `webview.html-builder.ts`, `webview.event-dispatcher.ts` |
+| `account.service.ts` | 1.931 | Separar en: `account-rotator.service.ts`, `account-balance.service.ts`, `account-credential.service.ts`, `account-timer.utils.ts` |
+| `state-db.service.ts` | 1.867 | Separar en: `sqlite-snapshot.service.ts`, `protobuf-state.encoder.ts`, `process-terminator.ts`, `credential-vault.adapter.ts` |
+| `webview.styles.ts` | 1.650 | Dividir en hojas temáticas en `styles/`: `cards.css.ts`, `modals.css.ts`, `controls.css.ts`, `theme-variables.css.ts` |
+| `webview.client.ts` | 1.355 | Modularizar en componentes UI: `client/card.controller.ts`, `client/modal.controller.ts`, `client/sort.controller.ts` |
+| `extension.ts` | 803 | Extraer registro de comandos a `commands/` y monitores en segundo plano a `watchers/` |
+| `chat-resume.utils.ts` | 700 | Separar `transcript.parser.ts`, `wal-sqlite.reader.ts` e `ide-command.dispatcher.ts` |
+| `account.repository.impl.ts` | 433 | Separar migraciones históricas en `storage/migrations/` dejando el repositorio limpio |
+| `account-card.template.ts` | 381 | Desacoplar submódulos para cabecera, indicadores de cuota y barra de acciones |
+| `model.utils.ts` | 310 | Separar constantes de mapeo de nombres amigables de la lógica algorítmica de deduplicación |
+
+
 
 
 

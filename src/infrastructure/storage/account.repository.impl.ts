@@ -7,8 +7,6 @@
  */
 
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
 import { IAccountRepository } from '../../core/domain/repositories/account.repository';
 import { Account, AccountCreationData, AccountTokens, AccountSummary } from '../../core/domain/models/account.model';
 import { DeviceProfile } from '../../core/domain/models/device-profile.model';
@@ -17,9 +15,15 @@ import { STORAGE_KEYS, SECRET_KEYS } from '../../core/constants/app.constants';
 import { Logger } from '../../core/utils/logger';
 import { PathUtils } from '../../core/utils/path.utils';
 import { isEmailMatch } from '../../core/utils/account.utils';
+import { WorkflowStorage } from './workflow.storage';
+import { TokenCliStorage } from './token-cli.storage';
 
 export class AccountRepositoryImpl implements IAccountRepository {
-  constructor(private context: vscode.ExtensionContext) {}
+  private workflowStorage: WorkflowStorage;
+
+  constructor(private context: vscode.ExtensionContext) {
+    this.workflowStorage = new WorkflowStorage(context);
+  }
 
   async getAllAccounts(): Promise<Account[]> {
     const raw = this.context.globalState.get<Account[]>(STORAGE_KEYS.ACCOUNTS_LIST, []);
@@ -32,7 +36,6 @@ export class AccountRepositoryImpl implements IAccountRepository {
       Logger.getInstance().warn(`[AccountRepo] Purged ${removedCount} malformed/non-email account(s) from globalState.`);
       await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, valid);
 
-      // Clean up orphaned secrets for invalid accounts
       for (const invalidAcc of raw) {
         if (!isValidEmail(invalidAcc?.email) && invalidAcc?.email) {
           try {
@@ -45,37 +48,10 @@ export class AccountRepositoryImpl implements IAccountRepository {
     }
 
     if (PathUtils.isRemoteStandaloneMode(this.context)) {
-      const cliAccountsDir = PathUtils.getCliAccountsDir();
-      if (fs.existsSync(cliAccountsDir)) {
-        try {
-          const entries = fs.readdirSync(cliAccountsDir, { withFileTypes: true });
-          let updated = false;
-          for (const ent of entries) {
-            if (ent.isDirectory() && isValidEmail(ent.name)) {
-              const cliEmail = ent.name.trim().toLowerCase();
-              if (!valid.some(a => a.email.toLowerCase() === cliEmail)) {
-                const namePart = cliEmail.split('@')[0];
-                const displayName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
-                valid.push({
-                  email: cliEmail,
-                  name: displayName,
-                  plan: 'unknown' as any,
-                  status: 'active' as any,
-                  balances: {},
-                  addedAt: new Date().toISOString(),
-                  isActive: false,
-                  hasDeviceProfile: false
-                });
-                updated = true;
-              }
-            }
-          }
-          if (updated) {
-            await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, valid);
-          }
-        } catch (e) {
-          Logger.getInstance().warn('[AccountRepo] Failed to auto-discover CLI accounts', e);
-        }
+      const discovery = TokenCliStorage.discoverCliAccounts(valid, isValidEmail);
+      if (discovery.updated) {
+        await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, discovery.accounts);
+        return discovery.accounts;
       }
     }
 
@@ -93,17 +69,14 @@ export class AccountRepositoryImpl implements IAccountRepository {
       throw new Error(`[AccountRepo] Cannot save account with invalid email: '${data.email}'`);
     }
     const accounts = await this.getAllAccounts();
-    
-    // Check if exists
     const existingIndex = accounts.findIndex(a => a.email === data.email);
-    
-    // Map Creation Data to Domain Model
+
     const newAccount: Account = {
       email: data.email,
       name: data.name,
       avatarUrl: data.avatarUrl,
       projectId: data.projectId,
-      plan: 'unknown' as any, // Will be updated later by API
+      plan: 'unknown' as any,
       status: 'active' as any,
       balances: {},
       addedAt: new Date().toISOString(),
@@ -113,7 +86,6 @@ export class AccountRepositoryImpl implements IAccountRepository {
     };
 
     if (existingIndex >= 0) {
-      // Keep existing data (like alias), update core info
       accounts[existingIndex] = {
         ...accounts[existingIndex],
         ...newAccount,
@@ -126,7 +98,6 @@ export class AccountRepositoryImpl implements IAccountRepository {
 
     await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, accounts);
 
-    // Save tokens securely
     await this.storeTokens(data.email, {
       accessToken: data.accessToken,
       refreshToken: data.refreshToken,
@@ -142,7 +113,6 @@ export class AccountRepositoryImpl implements IAccountRepository {
     const filtered = accounts.filter(a => !isEmailMatch(a.email, email));
     await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, filtered);
 
-    // Remove tokens securely
     const cleanEmail = email.trim().toLowerCase();
     await this.context.secrets.delete(SECRET_KEYS.REFRESH_TOKEN(email));
     await this.context.secrets.delete(SECRET_KEYS.ACCESS_TOKEN(email));
@@ -157,14 +127,14 @@ export class AccountRepositoryImpl implements IAccountRepository {
     if (active && isEmailMatch(active, email)) {
       await this.setActiveAccount(null);
     }
-    
+
     Logger.getInstance().info(`Account removed: ${email}`);
   }
 
   async updateAccount(email: string, updates: Partial<Account>): Promise<void> {
     const accounts = await this.getAllAccounts();
     const index = accounts.findIndex(a => isEmailMatch(a.email, email));
-    
+
     if (index >= 0) {
       accounts[index] = { ...accounts[index], ...updates };
       await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, accounts);
@@ -177,8 +147,6 @@ export class AccountRepositoryImpl implements IAccountRepository {
 
   async setActiveAccount(email: string | null): Promise<void> {
     const accounts = await this.getAllAccounts();
-    
-    // Deactivate all, activate the target
     const updatedAccounts = accounts.map(a => ({
       ...a,
       isActive: email !== null && a.email.toLowerCase() === email.toLowerCase()
@@ -186,7 +154,7 @@ export class AccountRepositoryImpl implements IAccountRepository {
 
     await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, updatedAccounts);
     await this.context.globalState.update(STORAGE_KEYS.ACTIVE_ACCOUNT, email || undefined);
-    
+
     Logger.getInstance().info(`Active account set to: ${email}`);
   }
 
@@ -196,16 +164,12 @@ export class AccountRepositoryImpl implements IAccountRepository {
 
   async storeTokens(email: string, tokens: AccountTokens): Promise<void> {
     try {
-      // Never overwrite a valid refresh token with an empty or whitespace string
       if (tokens.refreshToken && tokens.refreshToken.trim()) {
         await this.context.secrets.store(SECRET_KEYS.REFRESH_TOKEN(email), tokens.refreshToken.trim());
       }
       if (tokens.accessToken && tokens.accessToken.trim()) {
         await this.context.secrets.store(SECRET_KEYS.ACCESS_TOKEN(email), tokens.accessToken.trim());
       }
-      // Expiration and granted-scope metadata. Scopes are preserved when a caller
-      // stores a token set that does not carry them (e.g. an adopted IDE session),
-      // so a refresh learned once is not forgotten on the next write.
       if (tokens.expiresAt || tokens.scopes?.length) {
         let scopes = tokens.scopes?.length ? tokens.scopes : undefined;
         if (!scopes) {
@@ -215,7 +179,7 @@ export class AccountRepositoryImpl implements IAccountRepository {
             if (Array.isArray(parsed?.scopes) && parsed.scopes.length > 0) {
               scopes = parsed.scopes;
             }
-          } catch { /* keep scopes unknown */ }
+          } catch {}
         }
         const metadata: { expiresAt?: number; scopes?: string[] } = { expiresAt: tokens.expiresAt };
         if (scopes?.length) metadata.scopes = scopes;
@@ -225,40 +189,7 @@ export class AccountRepositoryImpl implements IAccountRepository {
       Logger.getInstance().debug(`[AccountRepo] SecretStorage store failed for ${email} (headless environment):`, err);
     }
 
-    try {
-      const cliDir = PathUtils.getCliAccountsDir();
-      const accountDir = path.join(cliDir, email);
-      if (!fs.existsSync(accountDir)) {
-        fs.mkdirSync(accountDir, { recursive: true, mode: 0o700 });
-      }
-      const tokenFile = path.join(accountDir, 'antigravity-oauth-token');
-      let idToken = '';
-      let existingRefreshToken = '';
-      if (fs.existsSync(tokenFile)) {
-        try {
-          const existing = JSON.parse(fs.readFileSync(tokenFile, 'utf-8'));
-          idToken = existing?.id_token || '';
-          existingRefreshToken = existing?.token?.refresh_token || '';
-        } catch {}
-      }
-      const finalRefreshToken = tokens.refreshToken?.trim() || existingRefreshToken;
-      const payload = {
-        token: {
-          access_token: tokens.accessToken,
-          token_type: 'Bearer',
-          refresh_token: finalRefreshToken,
-          expiry: new Date(tokens.expiresAt * 1000).toISOString()
-        },
-        auth_method: 'consumer',
-        id_token: idToken
-      };
-      fs.writeFileSync(tokenFile, JSON.stringify(payload, null, 2), { encoding: 'utf-8', mode: 0o600 });
-      try {
-        fs.chmodSync(tokenFile, 0o600);
-      } catch {}
-    } catch (err) {
-      Logger.getInstance().debug(`[AccountRepo] Failed to sync token to CLI accounts directory:`, err);
-    }
+    TokenCliStorage.syncTokensToCli(email, tokens);
   }
 
   async getTokens(email: string): Promise<AccountTokens | null> {
@@ -294,31 +225,7 @@ export class AccountRepositoryImpl implements IAccountRepository {
         };
       }
 
-      // Standalone / CLI token fallback
-      const cliAccountTokenPath = path.join(PathUtils.getCliAccountsDir(), email, 'antigravity-oauth-token');
-      if (fs.existsSync(cliAccountTokenPath)) {
-        try {
-          const raw = fs.readFileSync(cliAccountTokenPath, 'utf-8');
-          const data = JSON.parse(raw);
-          const t = data?.token;
-          if (t?.access_token && t?.refresh_token) {
-            let expiresAt = Math.floor(Date.now() / 1000) + 3600;
-            if (t.expiry) {
-              const parsed = Math.floor(new Date(t.expiry).getTime() / 1000);
-              if (!isNaN(parsed) && parsed > 0) expiresAt = parsed;
-            }
-            return {
-              accessToken: t.access_token,
-              refreshToken: t.refresh_token,
-              expiresAt
-            };
-          }
-        } catch (e) {
-          Logger.getInstance().debug(`[AccountRepo] Failed to parse CLI token for ${email}`, e);
-        }
-      }
-
-      return null;
+      return TokenCliStorage.readTokensFromCli(email);
     } catch (e) {
       Logger.getInstance().error(`Failed to retrieve tokens for ${email}`, e);
       return null;
@@ -339,7 +246,7 @@ export class AccountRepositoryImpl implements IAccountRepository {
     }));
   }
 
-  // ── Device Profile Storage (SecretStorage) ──────────────────────────────────
+  // ── Device Profile Storage ──────────────────────────────────────────────────
 
   private deviceProfileKey(email: string): string {
     return `antigravityAccount.secure.${email}.deviceProfile`;
@@ -347,14 +254,10 @@ export class AccountRepositoryImpl implements IAccountRepository {
 
   async storeDeviceProfile(email: string, profile: DeviceProfile): Promise<void> {
     try {
-      await this.context.secrets.store(
-        this.deviceProfileKey(email),
-        JSON.stringify(profile)
-      );
+      await this.context.secrets.store(this.deviceProfileKey(email), JSON.stringify(profile));
     } catch (e) {
       Logger.getInstance().debug(`[AccountRepo] SecretStorage device profile store failed for ${email}`, e);
     }
-    // Mark account as having a device profile
     await this.updateAccount(email, { hasDeviceProfile: true } as Partial<Account>);
     Logger.getInstance().info(`Device profile stored securely for: ${email}`);
   }
@@ -370,7 +273,7 @@ export class AccountRepositoryImpl implements IAccountRepository {
     }
   }
 
-  // ── Preferred Model Setting ─────────────────────────────────────────────────
+  // ── Preferred Model & Timestamps ───────────────────────────────────────────
 
   async getPreferredModel(): Promise<string | null> {
     return this.context.globalState.get<string | null>(STORAGE_KEYS.PREFERRED_MODEL, null);
@@ -381,8 +284,6 @@ export class AccountRepositoryImpl implements IAccountRepository {
     Logger.getInstance().info(`Preferred model set to: ${modelKey || '(none)'}`);
   }
 
-  // ── Global Balance Refresh Timestamp ────────────────────────────────────────
-
   async getBalancesLastRefreshed(): Promise<number> {
     return this.context.globalState.get<number>(STORAGE_KEYS.BALANCES_LAST_REFRESHED, 0);
   }
@@ -390,8 +291,6 @@ export class AccountRepositoryImpl implements IAccountRepository {
   async setBalancesLastRefreshed(timestampMs: number): Promise<void> {
     await this.context.globalState.update(STORAGE_KEYS.BALANCES_LAST_REFRESHED, timestampMs);
   }
-
-  // ── Pending Refresh Accounts (Resume on Relaunch) ───────────────────────────
 
   async getPendingRefreshEmails(): Promise<string[]> {
     return this.context.globalState.get<string[]>(STORAGE_KEYS.PENDING_REFRESH_EMAILS, []);
@@ -401,90 +300,42 @@ export class AccountRepositoryImpl implements IAccountRepository {
     await this.context.globalState.update(STORAGE_KEYS.PENDING_REFRESH_EMAILS, emails);
   }
 
-  // ── Workflow Management ───────────────────────────────────────────────────
+  // ── Workflows Delegated to WorkflowStorage ──────────────────────────────────
 
   async getWorkflows(): Promise<Workflow[]> {
-    return this.context.globalState.get<Workflow[]>(STORAGE_KEYS.WORKFLOWS, []);
+    return this.workflowStorage.getWorkflows();
   }
 
   async saveWorkflow(workflow: Workflow): Promise<void> {
-    const workflows = await this.getWorkflows();
-    const index = workflows.findIndex(w => w.id === workflow.id);
-    if (index >= 0) {
-      workflows[index] = { ...workflows[index], ...workflow };
-    } else {
-      workflows.push(workflow);
-    }
-    await this.context.globalState.update(STORAGE_KEYS.WORKFLOWS, workflows);
-    Logger.getInstance().info(`Workflow saved: ${workflow.name} (${workflow.id})`);
+    return this.workflowStorage.saveWorkflow(workflow);
   }
 
   async deleteWorkflow(workflowId: string): Promise<void> {
-    const workflows = await this.getWorkflows();
-    const filtered = workflows.filter(w => w.id !== workflowId);
-    await this.context.globalState.update(STORAGE_KEYS.WORKFLOWS, filtered);
-
-    // Unassign accounts that belonged to this workflow (do not delete the accounts!)
-    const accounts = await this.getAllAccounts();
-    let accountsUpdated = false;
-    for (const acc of accounts) {
-      if (acc.workflow === workflowId) {
-        acc.workflow = undefined;
-        accountsUpdated = true;
-      }
-    }
-    if (accountsUpdated) {
-      await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, accounts);
-    }
-
-    // Reset active workflow if it was the deleted one
-    const activeWf = await this.getActiveWorkflowId();
-    if (activeWf === workflowId) {
-      await this.setActiveWorkflowId(null);
-    }
-
-    Logger.getInstance().info(`Workflow deleted: ${workflowId}`);
+    return this.workflowStorage.deleteWorkflow(
+      workflowId,
+      () => this.getAllAccounts(),
+      accs => this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, accs)
+    );
   }
 
   async renameWorkflow(workflowId: string, newName: string): Promise<void> {
-    const workflows = await this.getWorkflows();
-    const target = workflows.find(w => w.id === workflowId);
-    if (target) {
-      target.name = newName.trim();
-      await this.context.globalState.update(STORAGE_KEYS.WORKFLOWS, workflows);
-      Logger.getInstance().info(`Workflow ${workflowId} renamed to: ${newName}`);
-    }
+    return this.workflowStorage.renameWorkflow(workflowId, newName);
   }
 
   async getActiveWorkflowId(): Promise<string | null> {
-    return this.context.globalState.get<string | null>(STORAGE_KEYS.ACTIVE_WORKFLOW, null);
+    return this.workflowStorage.getActiveWorkflowId();
   }
 
   async setActiveWorkflowId(workflowId: string | null): Promise<void> {
-    await this.context.globalState.update(STORAGE_KEYS.ACTIVE_WORKFLOW, workflowId);
-    Logger.getInstance().info(`Active workflow set to: ${workflowId || '(all)'}`);
+    return this.workflowStorage.setActiveWorkflowId(workflowId);
   }
 
   async assignAccountsToWorkflow(emails: string[], workflowId?: string): Promise<void> {
-    const emailSet = new Set(emails.map(e => e.toLowerCase().trim()));
-    const accounts = await this.getAllAccounts();
-    let updated = false;
-
-    for (const acc of accounts) {
-      if (emailSet.has(acc.email.toLowerCase().trim())) {
-        if (workflowId) {
-          acc.workflow = workflowId;
-        } else {
-          delete acc.workflow;
-        }
-        updated = true;
-      }
-    }
-
-    if (updated) {
-      await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, accounts);
-      Logger.getInstance().info(`Assigned ${emails.length} accounts to workflow: ${workflowId || '(none)'}`);
-    }
+    return this.workflowStorage.assignAccountsToWorkflow(
+      emails,
+      workflowId,
+      () => this.getAllAccounts(),
+      accs => this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, accs)
+    );
   }
 }
-
