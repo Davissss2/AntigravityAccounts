@@ -5,6 +5,14 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.67] - 2026-11-19
+
+### Arreglado
+- **Corrección de Cuotas en 0% Reportadas como 100%:**
+  - En `BalanceService`: en Proto3 JSON, campos numéricos con valor por defecto `0` (como `remainingFraction`) se omiten de la respuesta. La condición anterior `raw === undefined ? 1.0` asignaba erróneamente 100% a cuentas agotadas (0%). Corregido para mapear `undefined` a `0`.
+- **Detección Autoritativa de Cuenta Activa desde `state.vscdb`:**
+  - En `AccountService.getActiveAntigravityEmail`: invertido el orden de detección para priorizar `state.vscdb` (UnifiedStateSync) sobre la sesión nativa de VS Code. La sesión nativa interactiva mantenía la cuenta antigua en memoria e impedía reflejar el cambio de cuenta en la barra y tarjeta activa del webview.
+
 ## [0.3.66] - 2026-11-19
 
 ### Cambiado

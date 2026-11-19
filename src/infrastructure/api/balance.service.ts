@@ -112,7 +112,7 @@ export class BalanceService {
             for (const [modelId, modelObj] of Object.entries<any>(secondary.models)) {
               if (modelObj?.quotaInfo && !parsed.balances[modelId]) {
                 const raw = modelObj.quotaInfo.remainingFraction;
-                const fraction = typeof raw === 'number' ? raw : raw === undefined ? 1.0 : Number(raw);
+                const fraction = typeof raw === 'number' ? raw : raw === undefined ? 0 : Number(raw);
                 if (!isNaN(fraction)) {
                   parsed.balances[modelId] = {
                     value: Math.round(fraction * 100),
@@ -254,7 +254,7 @@ export class BalanceService {
       if (!quota) continue;
 
       const raw = quota.remainingFraction;
-      const fraction = typeof raw === 'number' ? raw : raw === undefined ? 1.0 : Number(raw);
+      const fraction = typeof raw === 'number' ? raw : raw === undefined ? 0 : Number(raw);
       if (isNaN(fraction)) continue;
 
       const value = Math.round(fraction * 100);

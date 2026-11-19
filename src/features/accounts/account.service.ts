@@ -393,26 +393,12 @@ export class AccountService {
   }
 
   /**
-   * Get the currently active account email directly from Antigravity's live session or state database.
-   * Prioritizes live native auth session (antigravity_auth / google) in memory (~0ms) before disk state.vscdb.
+   * Get the currently active account email directly from Antigravity's state database or live session.
+   * Prioritizes state.vscdb (UnifiedStateSync, authoritative source in Antigravity 1.107+) before native auth fallback.
    */
   async getActiveAntigravityEmail(): Promise<string | null | undefined> {
     try {
-      // 1. LIVE NATIVE AUTH: Live in-memory session (antigravity_auth / google) first (~0ms)
-      // Captures interactive sign-ins immediately (satisfies mandatory project rule).
-      try {
-        const nativeEmail = await Promise.race([
-          this.getNativeAuthEmail(),
-          new Promise<undefined>(r => setTimeout(() => r(undefined), 2000))
-        ]);
-        if (nativeEmail) {
-          return nativeEmail.toLowerCase();
-        }
-      } catch (err) {
-        Logger.getInstance().debug('Failed to get live native auth email', err);
-      }
-
-      // 2. DISK STATE DATABASE: Read state.vscdb
+      // 1. AUTHORITATIVE SOURCE: Read state.vscdb (UnifiedStateSync)
       try {
         const dbEmail = await Promise.race([
           this.stateDbService.readCurrentEmailFromDb(),
@@ -423,6 +409,19 @@ export class AccountService {
         }
       } catch (err) {
         Logger.getInstance().debug('Failed to read email from state.vscdb', err);
+      }
+
+      // 2. FALLBACK: Live native auth session (antigravity_auth / google) only if DB is empty
+      try {
+        const nativeEmail = await Promise.race([
+          this.getNativeAuthEmail(),
+          new Promise<undefined>(r => setTimeout(() => r(undefined), 2000))
+        ]);
+        if (nativeEmail) {
+          return nativeEmail.toLowerCase();
+        }
+      } catch (err) {
+        Logger.getInstance().debug('Failed to get live native auth email', err);
       }
 
       // 3. PERSISTENCE FALLBACK: If repository has an active account recorded, preserve it
