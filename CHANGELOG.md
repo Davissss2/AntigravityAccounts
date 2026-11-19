@@ -5,6 +5,14 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.64] - 2026-11-19
+
+### Añadido
+- **Soporte oficial y disponibilidad de Gemini 4 Neon:**
+  - Actualizado el estado de **Gemini 4 Neon** (`gemini-pro-orchestrator-neon`) a modelo oficial en produccion e inferencia.
+  - Reconocimiento activo en el catalogo de modelos preferidos para ruteo de agentes, planificacion y ejecucion de subagentes en paralelo.
+  - Actualizada la ficha tecnica en el Radar de Modelos con su identificador canonico de ruteo y estado activo.
+
 ## [0.3.63] - 2026-11-19
 
 ### Arreglado

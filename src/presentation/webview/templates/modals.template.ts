@@ -263,19 +263,19 @@ export function getModalsHtml(opts: ModalsTemplateOptions): string {
               <button onclick="closeLeaksModal()" style="background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-size:1.2rem; line-height:1;">&times;</button>
             </div>
             
-            <div style="background:rgba(0,229,255,0.06); border:1px solid rgba(0,229,255,0.25); border-radius:8px; padding:12px; margin-bottom:14px;">
+            <div style="background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.3); border-radius:8px; padding:12px; margin-bottom:14px;">
               <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
                 <span style="font-size:0.95rem; font-weight:700; color:#fff;">Gemini 4 Neon</span>
-                <span style="background:rgba(0,229,255,0.2); color:#00e5ff; font-size:0.68rem; font-weight:700; padding:2px 7px; border-radius:10px; border:1px solid rgba(0,229,255,0.4);">RECIEN FILTRADO</span>
+                <span style="background:rgba(34,197,94,0.2); color:#4ade80; font-size:0.68rem; font-weight:700; padding:2px 7px; border-radius:10px; border:1px solid rgba(34,197,94,0.4);">LANZAMIENTO OFICIAL</span>
               </div>
               <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:6px;">
-                <strong>Identificador de ruteo:</strong> <code style="background:rgba(0,0,0,0.3); color:#00e5ff; padding:2px 5px; border-radius:4px;">gemini-pro-orchestrator-neon</code>
+                <strong>Identificador de ruteo:</strong> <code style="background:rgba(0,0,0,0.3); color:#4ade80; padding:2px 5px; border-radius:4px;">gemini-pro-orchestrator-neon</code>
               </div>
               <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:6px;">
-                <strong>Origen de deteccion:</strong> Antigravity CLI v1.5.11 &amp; Google Cloud Pricing Catalog
+                <strong>Estado:</strong> Oficialmente activo en inferencia y ruteo orquestado
               </div>
               <div style="font-size:0.78rem; color:var(--text-secondary); line-height:1.4;">
-                Nuevo modelo orquestador Pro para agentes. Gestiona planificacion y ejecucion coordinada entre modelos en cuentas Gemini Enterprise y Application Default Credentials (ADC).
+                Modelo orquestador Pro para agentes. Gestiona planificacion compleja, coordinacion multi-agente y ejecucion de subagentes en paralelo. Disponible en el selector de modelos preferidos.
               </div>
             </div>
 
