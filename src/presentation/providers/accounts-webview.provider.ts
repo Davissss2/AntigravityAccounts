@@ -2040,11 +2040,6 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           ${stylesHtml}
         </style>
       </head>
-          .workflow-hidden {
-            display: none !important;
-          }
-        </style>
-      </head>
       <body>
         <!-- Loading Overlay -->
         <div id="loadingOverlay" class="loading-overlay" style="display:none;">
