@@ -123,9 +123,6 @@ export function renderAccountCardHtml(acc: any, effectivePreferred: string, work
             <button class="btn-card-refresh" id="refresh-btn-${safeEmailId}" onclick="event.stopPropagation(); handleSingleRefresh(this, '${acc.email}')" title="${i18n.t('accounts.refreshThisAccount')}">
               <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
             </button>
-            <button class="btn-card-reauth" id="reauth-btn-${safeEmailId}" onclick="event.stopPropagation(); sendMessage('reAuthenticate', '${acc.email}')" title="${i18n.t('accounts.reAuthenticate')}">
-              <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-            </button>
           </div>
           <div class="user-email-row" style="display:flex; align-items:center; gap:5px; margin-top:2px;">
             <span class="user-email-text" style="font-size:0.75rem; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:150px;" title="${acc.email}">${acc.email}</span>

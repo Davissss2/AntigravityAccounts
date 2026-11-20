@@ -4,11 +4,9 @@
  */
 
 import { I18nService } from '../../../i18n';
-import { AccountStatus } from '../../../core/domain/models/account.model';
 
 export function renderCardActionsHtml(acc: any, isExpired: boolean, isScopeMissing: boolean): string {
   const i18n = I18nService.getInstance();
-  const isError = acc.status === AccountStatus.ERROR;
 
   if (isExpired) {
     return `
@@ -22,16 +20,8 @@ export function renderCardActionsHtml(acc: any, isExpired: boolean, isScopeMissi
       <button class="btn btn-danger" onclick="sendMessage('deleteAccount', '${acc.email}')">${i18n.t('accounts.remove')}</button>
     `;
   }
-  if (isError) {
-    return `
-      <button class="btn btn-warning btn-reauth" onclick="sendMessage('reAuthenticate', '${acc.email}')" title="${i18n.t('accounts.reAuthenticate')}">${i18n.t('accounts.reAuthenticate')}</button>
-      ${!acc.isActive ? `<button class="btn btn-primary btn-activate" onclick="handleSwitchAccount(this, '${acc.email}')">${i18n.t('accounts.activate')}</button>` : ''}
-      <button class="btn btn-danger" onclick="sendMessage('deleteAccount', '${acc.email}')">${i18n.t('accounts.remove')}</button>
-    `;
-  }
   if (acc.isActive) {
     return `
-      <button class="btn btn-warning btn-reauth" onclick="sendMessage('reAuthenticate', '${acc.email}')" title="${i18n.t('accounts.reAuthenticate')}">${i18n.t('accounts.reAuthenticate')}</button>
       <button class="btn btn-danger" onclick="sendMessage('deleteAccount', '${acc.email}')">${i18n.t('accounts.remove')}</button>
     `;
   }

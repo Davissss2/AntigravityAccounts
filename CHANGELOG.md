@@ -5,7 +5,12 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.68] - 2026-11-20
+## [0.3.69] - 2026-11-20
+
+### Arreglado
+- **Botón de Re-autenticación Exclusivo para Cuentas Expiradas/Revocadas:**
+  - En `account-card-actions.template.ts`: corregido para que el botón "Volver a iniciar sesión" / "Re-sign in" se muestre ÚNICAMENTE en aquellas cuentas cuyo token haya sido explícitamente revocado o expirado (`isExpired` / `TOKEN_EXPIRED`) o requieran consentimiento (`SCOPE_MISSING`). Cuentas activas y sanas (como la activa del usuario con cuota operativa) muestran de nuevo exclusivamente su acción limpia de `Remove` sin inducir a confusión.
+  - En `account-card.template.ts`: retirado el icono de re-autenticación redundante de la cabecera en tarjetas sanas, manteniendo la barra limpia y reservando el flujo de relogueo a tarjetas que realmente lo requieren.
 
 ### Arreglado
 - **Detección y Reparación de Cuentas con Token Revocado/Expirado:**
