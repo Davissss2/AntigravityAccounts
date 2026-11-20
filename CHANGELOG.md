@@ -5,7 +5,21 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.67] - 2026-11-19
+## [0.3.68] - 2026-11-20
+
+### Arreglado
+- **Detección y Reparación de Cuentas con Token Revocado/Expirado:**
+  - En `AccountService.determineQuotaStatus`: corregida la condición de clasificación para priorizar `TOKEN_EXPIRED` cuando `isAuthError` o `status === TOKEN_EXPIRED`, evitando que se clasifiquen genéricamente como `ERROR` y oculten el estado real del token.
+  - En `AccountService.ensureCredentialsBelongTo`: validación estricta de identidad. Se rechaza la inyección de credenciales si el token refrescado no puede verificarse con Google (`candidateOwner` nulo o disconforme), previniendo la inyección de tokens muertos en `state.vscdb` y almacén de credenciales del SO que disparaban el diálogo "Inicia sesión con Google".
+  - En `switchAccountWorkflow`: añadido botón interactivo de "Volver a iniciar sesión" (`reAuthenticate`) en las notificaciones de error para re-autenticar de inmediato sin romper cuentas sanas.
+
+### Añadido
+- **Botón y Acción Rápida de Sign In / Re-autenticación en Tarjetas:**
+  - En `account-card-actions.template.ts`: botón destacado "Volver a iniciar sesión" en tarjetas expiradas, en error y en la cuenta activa (permitiendo restaurar la sesión activa ante revocaciones de Google sin eliminar la cuenta).
+  - En `account-card.template.ts`: botón directo de re-autenticación (`.btn-card-reauth`) en la cabecera de cada tarjeta junto al botón de refresco individual.
+  - En `webview.styles.ts`: estilos para `.btn-card-reauth`, `.error-badge` y borde punteado en `.account-card.error`.
+- **Compatibilidad Multiplataforma Total:**
+  - Verificada la persistencia limpia de credenciales tras re-autenticación en Windows (`write-cred.ps1`), Ubuntu/Linux (`secret-tool`) y macOS (`security add-generic-password`).
 
 ### Arreglado
 - **Corrección de Cuotas en 0% Reportadas como 100%:**

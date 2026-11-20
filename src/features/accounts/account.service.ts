@@ -75,7 +75,7 @@ export class AccountService {
   ) {}
 
   private async determineAccountStatus(
-    balanceInfo: { balances: Record<string, any>; hasError: boolean; status?: AccountStatus; isDepleted?: boolean },
+    balanceInfo: { balances: Record<string, any>; hasError: boolean; status?: AccountStatus; isDepleted?: boolean; isAuthError?: boolean },
     preferredModel: string | null,
     tokens?: { scopes?: string[] } | null
   ): Promise<AccountStatus> {
@@ -84,9 +84,12 @@ export class AccountService {
   }
 
   private async determineQuotaStatus(
-    balanceInfo: { balances: Record<string, any>; hasError: boolean; status?: AccountStatus; isDepleted?: boolean },
+    balanceInfo: { balances: Record<string, any>; hasError: boolean; status?: AccountStatus; isDepleted?: boolean; isAuthError?: boolean },
     preferredModel: string | null
   ): Promise<AccountStatus> {
+    if (balanceInfo.status === AccountStatus.TOKEN_EXPIRED || balanceInfo.isAuthError) {
+      return AccountStatus.TOKEN_EXPIRED;
+    }
     if (balanceInfo.isDepleted || balanceInfo.status === AccountStatus.DEPLETED) {
       return AccountStatus.DEPLETED;
     }
@@ -305,17 +308,33 @@ export class AccountService {
       } catch (e: any) {
         Logger.getInstance().error(`Failed to refresh token for ${email}`, e);
         const i18n = I18nService.getInstance();
-        vscode.window.showErrorMessage(i18n.t('service.sessionExpiredFailed', { email }));
         await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
         this._onAccountsChanged.fire();
+        const actionSignIn = i18n.t('accounts.reAuthenticate');
+        vscode.window.showErrorMessage(
+          i18n.t('service.sessionExpiredFailed', { email }),
+          actionSignIn
+        ).then(choice => {
+          if (choice === actionSignIn) {
+            this.reAuthenticateWorkflow(email);
+          }
+        });
         return 'error';
       }
     } else if (tokens.expiresAt <= now) {
       // Access token expired and no refresh token is stored yet
       const i18n = I18nService.getInstance();
-      vscode.window.showErrorMessage(i18n.t('service.sessionExpiredFailed', { email }));
       await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
       this._onAccountsChanged.fire();
+      const actionSignIn = i18n.t('accounts.reAuthenticate');
+      vscode.window.showErrorMessage(
+        i18n.t('service.sessionExpiredFailed', { email }),
+        actionSignIn
+      ).then(choice => {
+        if (choice === actionSignIn) {
+          this.reAuthenticateWorkflow(email);
+        }
+      });
       return 'error';
     }
 
@@ -342,9 +361,15 @@ export class AccountService {
     const verifiedTokens = await this.ensureCredentialsBelongTo(email, tokens);
     if (!verifiedTokens) {
       const i18n = I18nService.getInstance();
+      const actionSignIn = i18n.t('accounts.reAuthenticate');
       vscode.window.showErrorMessage(
-        `${i18n.t('accounts.expiredBanner')} (${email})`
-      );
+        `${i18n.t('accounts.expiredBanner')} (${email})`,
+        actionSignIn
+      ).then(choice => {
+        if (choice === actionSignIn) {
+          this.reAuthenticateWorkflow(email);
+        }
+      });
       this._onAccountsChanged.fire();
       return 'error';
     }
@@ -1548,6 +1573,8 @@ export class AccountService {
           });
         } catch (authErr) {
           Logger.getInstance().warn(`Token recovery failed for ${account.email}`);
+          balanceInfo.status = AccountStatus.TOKEN_EXPIRED;
+          balanceInfo.isAuthError = true;
         }
       }
       
@@ -1757,14 +1784,20 @@ export class AccountService {
           scopes: refreshed.scopes
         };
         const candidateOwner = await this.resolveTokenOwner(candidate.accessToken);
-        if (!candidateOwner || isEmailMatch(candidateOwner, email)) {
+        if (candidateOwner && isEmailMatch(candidateOwner, email)) {
           await this.accountRepo.storeTokens(email, candidate);
           Logger.getInstance().info(`Healed credentials for ${email} through its refresh token.`);
           return candidate;
         }
-        Logger.getInstance().warn(
-          `Refresh token stored for ${email} also belongs to ${candidateOwner}; it cannot be healed without consent.`
-        );
+        if (candidateOwner) {
+          Logger.getInstance().warn(
+            `Refresh token stored for ${email} also belongs to ${candidateOwner}; it cannot be healed without consent.`
+          );
+        } else {
+          Logger.getInstance().warn(
+            `Candidate access token for ${email} could not be verified with Google (invalid/revoked).`
+          );
+        }
       } catch (refreshErr) {
         Logger.getInstance().warn(`Refresh token rejected for ${email}.`, refreshErr);
       }
@@ -1871,6 +1904,8 @@ export class AccountService {
         });
       } catch (authErr) {
         Logger.getInstance().warn(`Token recovery failed for ${email}`);
+        balanceInfo.status = AccountStatus.TOKEN_EXPIRED;
+        balanceInfo.isAuthError = true;
       }
     }
 

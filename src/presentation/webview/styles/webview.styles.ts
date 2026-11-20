@@ -318,6 +318,28 @@ export function getWebviewStyles(): string {
             width: 12px;
             height: 12px;
           }
+          .btn-card-reauth {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            opacity: 0.7;
+          }
+          .btn-card-reauth:hover {
+            color: var(--warning-color);
+            background: var(--surface-light);
+            opacity: 1;
+          }
+          .btn-card-reauth .icon-svg {
+            width: 12px;
+            height: 12px;
+          }
           .account-card.refreshing .btn-card-refresh {
             animation: spin 1s linear infinite;
             pointer-events: none;
@@ -962,6 +984,21 @@ export function getWebviewStyles(): string {
             color: var(--warning-color);
             border: 1px solid rgba(245, 158, 11, 0.25);
             white-space: nowrap;
+          }
+
+          .error-badge {
+            background: rgba(239, 68, 68, 0.12);
+            color: var(--danger-color);
+            border: 1px solid rgba(239, 68, 68, 0.25);
+            white-space: nowrap;
+          }
+
+          .account-card.error {
+            border: 1px dashed rgba(239, 68, 68, 0.5);
+            opacity: 0.95;
+          }
+          .account-card.error:hover {
+            border-color: var(--danger-color);
           }
 
           .scope-missing-badge {

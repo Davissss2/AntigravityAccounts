@@ -2024,7 +2024,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       isRtl,
       searchQuery: this._searchQuery,
       isRefreshing: this._isRefreshingProgress.isRefreshing,
-      activeWorkflowId,
+      activeWorkflowId: activeWorkflowId ?? undefined,
       i18n
     });
 

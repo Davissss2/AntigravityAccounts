@@ -314,7 +314,7 @@ export class AccountRepositoryImpl implements IAccountRepository {
     return this.workflowStorage.deleteWorkflow(
       workflowId,
       () => this.getAllAccounts(),
-      accs => this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, accs)
+      async accs => { await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, accs); }
     );
   }
 
@@ -335,7 +335,7 @@ export class AccountRepositoryImpl implements IAccountRepository {
       emails,
       workflowId,
       () => this.getAllAccounts(),
-      accs => this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, accs)
+      async accs => { await this.context.globalState.update(STORAGE_KEYS.ACCOUNTS_LIST, accs); }
     );
   }
 }

@@ -52,13 +52,16 @@ export function renderAccountCardHtml(acc: any, effectivePreferred: string, work
 
   const isExpired = acc.status === AccountStatus.TOKEN_EXPIRED;
   const isScopeMissing = acc.status === AccountStatus.SCOPE_MISSING;
+  const isError = acc.status === AccountStatus.ERROR;
   const activeBadge = acc.isActive
     ? `<div class="badge active-badge">${i18n.t('accounts.active')}</div>`
     : isExpired
       ? `<div class="badge expired-badge">${i18n.t('accounts.expired')}</div>`
       : isScopeMissing
         ? `<div class="badge scope-missing-badge">${i18n.t('accounts.status.scopeMissing')}</div>`
-        : '';
+        : isError
+          ? `<div class="badge error-badge">${i18n.t('accounts.status.error')}</div>`
+          : '';
 
   const expiredBannerHtml = isExpired ? `
     <div class="expired-banner">
@@ -106,7 +109,7 @@ export function renderAccountCardHtml(acc: any, effectivePreferred: string, work
   const workflowBadgeHtml = renderWorkflowBadgeHtml(acc, workflows);
 
   return `
-    <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''} ${isScopeMissing ? 'scope-missing' : ''} ${acc.status === AccountStatus.DEPLETED ? 'depleted' : ''}" data-email="${acc.email}" data-name="${displayName}" data-alias="${acc.alias || ''}" data-status="${acc.status}" data-workflow="${acc.workflow || ''}" data-model-balances='${modelBalancesStr}'>
+    <div class="account-card ${acc.isActive ? 'active' : ''} ${isExpired ? 'expired' : ''} ${isScopeMissing ? 'scope-missing' : ''} ${isError ? 'error' : ''} ${acc.status === AccountStatus.DEPLETED ? 'depleted' : ''}" data-email="${acc.email}" data-name="${displayName}" data-alias="${acc.alias || ''}" data-status="${acc.status}" data-workflow="${acc.workflow || ''}" data-model-balances='${modelBalancesStr}'>
       <div class="card-header">
         <input type="checkbox" class="card-bulk-check" data-email="${acc.email}" onclick="event.stopPropagation(); handleCardCheck(this, '${acc.email}')" />
         ${acc.avatarUrl ? `<img class="avatar ${avatarClass}" src="${acc.avatarUrl}" alt="${displayName}" />` : `<div class="avatar ${avatarClass}">${displayName.charAt(0).toUpperCase()}</div>`}
@@ -119,6 +122,9 @@ export function renderAccountCardHtml(acc: any, effectivePreferred: string, work
             </button>
             <button class="btn-card-refresh" id="refresh-btn-${safeEmailId}" onclick="event.stopPropagation(); handleSingleRefresh(this, '${acc.email}')" title="${i18n.t('accounts.refreshThisAccount')}">
               <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            </button>
+            <button class="btn-card-reauth" id="reauth-btn-${safeEmailId}" onclick="event.stopPropagation(); sendMessage('reAuthenticate', '${acc.email}')" title="${i18n.t('accounts.reAuthenticate')}">
+              <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
             </button>
           </div>
           <div class="user-email-row" style="display:flex; align-items:center; gap:5px; margin-top:2px;">
