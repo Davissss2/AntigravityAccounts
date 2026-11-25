@@ -5,6 +5,16 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.73] - 2026-11-25
+
+### Arreglado
+- **Persistencia permanente del badge de plan (`ULTRA`/`PRO`/`TRIAL`/`FREE`) tras re-renderizados:**
+  - En `AccountRepositoryImpl.getAccountSummaries()` y `AccountSummary`: añadidos los campos `plan` y `planLabel` que antes se omitían en el render completo (`_getHtmlForWebview`), haciendo que el badge desapareciera a los 15-30 segundos tras el refresco automático en segundo plano.
+- **Eliminación de errores repetidos `401 Unauthorized` en `userinfo`:**
+  - En `AccountService.adoptSessionTokens`: omitida la llamada a `userinfo` cuando el token entrante ya está expirado, evitando ruido cada 15 segundos en los logs y acelerando el polling activo.
+- **Diseño 100% responsive en sidebar estrecha y ancha:**
+  - En `webview.styles.ts` y `account-card.template.ts`: `workflow-bar` y `bulk-action-bar` con `flex-wrap: wrap` (sin recortes de `Radar Filtraciones` ni scrollbar horizontal), y cabecera de tarjeta/email/badge fluida (`min-width: 0`, `flex-wrap: wrap`, media query `<= 320px`).
+
 ## [0.3.72] - 2026-11-25
 
 ### Añadido

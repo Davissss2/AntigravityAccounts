@@ -113,6 +113,8 @@ export interface AccountSummary {
   displayName: string; // alias || name || email
   alias?: string;
   avatarUrl?: string;
+  plan?: AccountPlan;
+  planLabel?: string;
   balances?: Record<string, any>;
   status: AccountStatus;
   isActive: boolean;

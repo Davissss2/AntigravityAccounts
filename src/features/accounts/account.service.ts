@@ -1767,6 +1767,18 @@ export class AccountService {
       return false;
     }
 
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (tokens.expiresAt && tokens.expiresAt <= nowSec + 30) {
+      const stored = await this.accountRepo.getTokens(email);
+      if (stored && !stored.refreshToken && tokens.refreshToken?.trim()) {
+        await this.accountRepo.storeTokens(email, {
+          ...stored,
+          refreshToken: tokens.refreshToken.trim()
+        });
+      }
+      return false;
+    }
+
     const owner = await this.resolveTokenOwnerCached(tokens.accessToken);
     if (owner && !isEmailMatch(owner, email)) {
       Logger.getInstance().warn(`Ignoring session tokens for ${email}: they belong to ${owner}.`);

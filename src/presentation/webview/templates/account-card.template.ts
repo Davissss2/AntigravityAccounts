@@ -119,18 +119,18 @@ export function renderAccountCardHtml(acc: any, effectivePreferred: string, work
         <input type="checkbox" class="card-bulk-check" data-email="${acc.email}" onclick="event.stopPropagation(); handleCardCheck(this, '${acc.email}')" />
         ${acc.avatarUrl ? `<img class="avatar ${avatarClass}" src="${acc.avatarUrl}" alt="${displayName}" />` : `<div class="avatar ${avatarClass}">${displayName.charAt(0).toUpperCase()}</div>`}
         <div class="user-info">
-          <div class="name-container" style="display:flex; align-items:center; gap:6px;">
-            <h4 class="display-name-text" id="name-display-${safeEmailId}" style="margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;">${displayName}</h4>
+          <div class="name-container">
+            <h4 class="display-name-text" id="name-display-${safeEmailId}">${displayName}</h4>
             <input type="text" class="edit-alias-input" id="name-input-${safeEmailId}" value="${acc.alias || ''}" placeholder="${i18n.t('webview.editAliasPlaceholder')}" style="display:none; padding:2px 6px; font-size:0.9em; font-family:inherit; background:var(--vscode-input-background); color:var(--vscode-input-foreground); border:1px solid var(--vscode-input-border); border-radius:3px; max-width:130px;" onkeydown="handleAliasKey(event, '${acc.email}')" onblur="saveAlias('${acc.email}')" />
-            <button class="edit-alias-btn" id="edit-btn-${safeEmailId}" onclick="startEditAlias('${acc.email}')" title="${i18n.t('webview.editAliasTooltip')}" style="background:none; border:none; padding:2px; cursor:pointer; color:var(--text-secondary); opacity:0.6; display:flex; align-items:center;">
+            <button class="edit-alias-btn" id="edit-btn-${safeEmailId}" onclick="startEditAlias('${acc.email}')" title="${i18n.t('webview.editAliasTooltip')}" style="background:none; border:none; padding:2px; cursor:pointer; color:var(--text-secondary); opacity:0.6; display:flex; align-items:center; flex-shrink:0;">
               <svg class="icon-svg" style="width:13px; height:13px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
             </button>
             <button class="btn-card-refresh" id="refresh-btn-${safeEmailId}" onclick="event.stopPropagation(); handleSingleRefresh(this, '${acc.email}')" title="${i18n.t('accounts.refreshThisAccount')}">
               <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
             </button>
           </div>
-          <div class="user-email-row" style="display:flex; align-items:center; gap:5px; margin-top:2px; flex-wrap:nowrap; min-width:0;">
-            <span class="user-email-text" style="font-size:0.75rem; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:135px; min-width:0;" title="${acc.email}">${acc.email}</span>
+          <div class="user-email-row">
+            <span class="user-email-text" title="${acc.email}">${acc.email}</span>
             ${planBadgeHtml}
             ${workflowBadgeHtml}
           </div>

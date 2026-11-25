@@ -1524,16 +1524,16 @@ export function getWebviewStyles(): string {
           .dropdown-item:disabled:hover { background: none; }
           .dropdown-icon { font-size: 0.95rem; display: inline-flex; align-items: center; justify-content: center; }
 
-          /* ── Workflows Bar ── */
+          /* ── Workflows Bar (Responsive Wrap) ── */
           .workflow-bar {
             display: flex;
+            flex-wrap: wrap;
             align-items: center;
             gap: 6px;
-            padding: 4px 2px 8px 2px;
+            padding: 4px 0 8px 0;
             margin-bottom: 6px;
-            overflow-x: auto;
-            scrollbar-width: thin;
-            scrollbar-color: var(--border-color) transparent;
+            width: 100%;
+            box-sizing: border-box;
           }
           .workflow-bar::-webkit-scrollbar {
             height: 3px;
@@ -1711,15 +1711,16 @@ export function getWebviewStyles(): string {
             position: sticky;
             bottom: 10px;
             margin-top: 10px;
-            padding: 8px 12px;
+            padding: 8px 10px;
             background: var(--surface-color);
             border: 1px solid var(--focus-border);
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
             border-radius: 10px;
             display: flex;
+            flex-wrap: wrap;
             align-items: center;
             justify-content: space-between;
-            gap: 8px;
+            gap: 6px 8px;
             z-index: 999;
             backdrop-filter: blur(8px);
             animation: slideUp 0.2s ease-out;
@@ -1735,8 +1736,9 @@ export function getWebviewStyles(): string {
           }
           .bulk-buttons {
             display: flex;
+            flex-wrap: wrap;
             align-items: center;
-            gap: 6px;
+            gap: 5px;
           }
           .btn-bulk-action {
             padding: 3px 8px;
@@ -1815,6 +1817,60 @@ export function getWebviewStyles(): string {
             background: rgba(148, 163, 184, 0.12);
             color: var(--text-secondary);
             border: 1px solid rgba(148, 163, 184, 0.28);
+          }
+          /* ── Responsive Card Header & Identity Row ── */
+          .user-info {
+            min-width: 0;
+            flex: 1 1 auto;
+          }
+          .name-container {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            min-width: 0;
+          }
+          .display-name-text {
+            margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
+            flex: 0 1 auto;
+          }
+          .user-email-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 4px 5px;
+            margin-top: 2px;
+            min-width: 0;
+          }
+          .user-email-text {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+            max-width: 100%;
+            flex: 0 1 auto;
+          }
+          .workflow-chip, .btn-new-workflow {
+            max-width: 100%;
+            box-sizing: border-box;
+          }
+          @media (max-width: 320px) {
+            .workflow-chip, .btn-new-workflow {
+              padding: 3px 8px;
+              font-size: 0.7rem;
+            }
+            .plan-badge {
+              font-size: 0.58rem;
+              padding: 1px 4px;
+            }
+            .user-email-text {
+              font-size: 0.71rem;
+            }
           }
           .workflow-hidden {
             display: none !important;

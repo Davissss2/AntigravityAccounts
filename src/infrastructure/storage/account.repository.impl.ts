@@ -239,6 +239,8 @@ export class AccountRepositoryImpl implements IAccountRepository {
       displayName: a.alias || a.name || a.email,
       alias: a.alias,
       avatarUrl: a.avatarUrl,
+      plan: a.plan,
+      planLabel: a.planLabel,
       balances: a.balances,
       status: a.status,
       isActive: a.isActive,
