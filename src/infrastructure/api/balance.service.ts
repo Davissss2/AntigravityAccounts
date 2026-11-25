@@ -243,36 +243,45 @@ export class BalanceService {
    */
   async resolveAccountContext(accessToken: string, signal?: AbortSignal): Promise<AccountContext | null> {
     if (signal?.aborted) return null;
-    try {
-      const data = await ApiClient.request<any>(API.DAILY_LOAD_CODE_ASSIST, {
-        method: 'POST',
-        body: {
-          metadata: {
-            ide_type: 'ANTIGRAVITY',
-            ide_version: API.DEFAULT_VERSION,
-            ide_name: 'antigravity'
-          }
-        },
-        accessToken,
-        timeoutMs: 8000,
-        signal
-      });
-      if (!data) return null;
-
-      const detected = detectAccountPlan(data);
-      return {
-        projectId: data.cloudaicompanionProject || undefined,
-        plan: detected.plan,
-        planLabel: detected.planLabel
-      };
-    } catch (e: any) {
-      if (signal?.aborted || (e instanceof ApiError && e.status === 499)) return null;
-      if (e instanceof ApiError && e.status === 429) {
-        return { rateLimited: true };
+    const body = {
+      metadata: {
+        ide_type: 'ANTIGRAVITY',
+        ide_version: API.DEFAULT_VERSION,
+        ide_name: 'antigravity'
       }
-      Logger.getInstance().debug('loadCodeAssist failed', e?.message || e);
-      return null;
+    };
+    let sawRateLimit = false;
+
+    for (const url of [API.DAILY_LOAD_CODE_ASSIST, API.LOAD_CODE_ASSIST]) {
+      if (signal?.aborted) return null;
+      try {
+        const data = await ApiClient.request<any>(url, {
+          method: 'POST',
+          body,
+          accessToken,
+          timeoutMs: 8000,
+          signal
+        });
+        if (!data) continue;
+        const detected = detectAccountPlan(data);
+        if (detected.plan !== AccountPlan.UNKNOWN || data.cloudaicompanionProject) {
+          return {
+            projectId: data.cloudaicompanionProject || undefined,
+            plan: detected.plan,
+            planLabel: detected.planLabel
+          };
+        }
+      } catch (e: any) {
+        if (signal?.aborted || (e instanceof ApiError && e.status === 499)) return null;
+        if (e instanceof ApiError && e.status === 429) {
+          sawRateLimit = true;
+          break;
+        }
+        Logger.getInstance().debug(`loadCodeAssist failed on ${url}`, e?.message || e);
+      }
     }
+
+    return sawRateLimit ? { rateLimited: true } : null;
   }
 
   /**

@@ -5,6 +5,14 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.75] - 2026-11-25
+
+### Arreglado
+- **Eliminación de falsos `PRO` en cuentas gratuitas (`Antigravity Starter Quota`) y detección completa de `FREE`:**
+  - En `plan.utils.ts`: clasificado explícitamente `Antigravity Starter Quota` (devuelto por Google dentro de `paidTier` en cuentas gratuitas) como `FREE` en lugar de `PRO`/`PREMIUM`; eliminada la regla genérica que asumía cualquier `paidTier` desconocido como de pago; añadidas coincidencias por límite de palabra (`\b`) y detección de cuentas gratuitas cuando `loadCodeAssist` responde sin tier de pago (`allowedTiers`/`cloudaicompanionProject`).
+  - En `BalanceService.resolveAccountContext`: añadido fallback automático a `cloudcode-pa.googleapis.com/v1internal:loadCodeAssist` cuando `daily-cloudcode-pa` devuelve respuesta vacía o falla, resolviendo las cuentas que quedaban sin insignia.
+  - En `extension.ts`: migración automática `v6` que corrige al arrancar las cuentas previamente guardadas como `premium | Antigravity Starter Quota` a `free`.
+
 ## [0.3.74] - 2026-11-25
 
 ### Arreglado

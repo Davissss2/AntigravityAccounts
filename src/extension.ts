@@ -712,6 +712,26 @@ async function migrateAndSanitizeStorage(context: vscode.ExtensionContext): Prom
       await globalState.update(MIGRATION_V5_FLAG, true);
     }
 
+    // ── Migration v6: Repair free accounts ("Antigravity Starter Quota") misclassified as premium/pro ──
+    const MIGRATION_V6_FLAG = 'antigravityAccount.storageMigration_v6_done';
+    if (!globalState.get<boolean>(MIGRATION_V6_FLAG, false)) {
+      const stored = globalState.get<any[]>('antigravity.accounts.list', []);
+      let changed = false;
+      const fixed = stored.map(acc => {
+        const lbl = String(acc?.planLabel || '').toLowerCase();
+        if ((acc?.plan === 'premium' || acc?.plan === 'pro') && /\b(starter|free)\b/.test(lbl)) {
+          changed = true;
+          return { ...acc, plan: 'free', planLabel: 'Free' };
+        }
+        return acc;
+      });
+      if (changed) {
+        await globalState.update('antigravity.accounts.list', fixed);
+        logger.info('Migrated Antigravity Starter Quota accounts from premium/pro back to free.');
+      }
+      await globalState.update(MIGRATION_V6_FLAG, true);
+    }
+
     const MIGRATION_FLAG = 'antigravityAccount.storageMigration_v4_done';
     if (globalState.get<boolean>(MIGRATION_FLAG, false)) {
       logger.debug('Storage migration already completed, skipping secret scan.');
