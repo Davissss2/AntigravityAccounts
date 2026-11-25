@@ -127,3 +127,21 @@ export function getPlanBadgeMeta(plan?: AccountPlan | string, planLabel?: string
 
   return null;
 }
+
+/**
+ * Priority weight for sorting 100%-full accounts.
+ * Paid tiers rank above free/unknown; FREE and UNKNOWN intentionally share weight 0
+ * so refreshing a free account never causes it to jump out of place.
+ */
+export function getPlanSortWeight(plan?: AccountPlan | string, planLabel?: string): number {
+  const meta = getPlanBadgeMeta(plan, planLabel);
+  if (!meta) return 0;
+  switch (meta.text) {
+    case 'ULTRA': return 4;
+    case 'PRO':
+    case 'PLUS': return 3;
+    case 'TRIAL': return 2;
+    case 'ENT': return 1;
+    default: return 0;
+  }
+}

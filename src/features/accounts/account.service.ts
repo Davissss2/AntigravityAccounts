@@ -66,6 +66,23 @@ export class AccountService {
    */
   private _tokenOwnerCache = new Map<string, { owner: string; at: number }>();
   private static readonly TOKEN_OWNER_CACHE_MS = 30 * 60_000;
+  /** Short-TTL cache & dedup for VS Code native auth session probes (prevents ~45s hangs) */
+  private _nativeAuthCache: {
+    value: {
+      email: string;
+      tokens: { accessToken: string; refreshToken: string; expiresAt: number };
+      avatarUrl?: string;
+      name?: string;
+    } | null;
+    at: number;
+  } | null = null;
+  private _nativeAuthPromise: Promise<{
+    email: string;
+    tokens: { accessToken: string; refreshToken: string; expiresAt: number };
+    avatarUrl?: string;
+    name?: string;
+  } | null> | null = null;
+  private static readonly NATIVE_AUTH_CACHE_MS = 30_000;
 
   constructor(
     private authService: AuthService,
@@ -548,6 +565,35 @@ export class AccountService {
     avatarUrl?: string;
     name?: string;
   } | null> {
+    if (this._nativeAuthCache && (Date.now() - this._nativeAuthCache.at) < AccountService.NATIVE_AUTH_CACHE_MS) {
+      return this._nativeAuthCache.value;
+    }
+    if (this._nativeAuthPromise) {
+      return this._nativeAuthPromise;
+    }
+    this._nativeAuthPromise = this._fetchNativeAuthSessionBounded()
+      .then(result => {
+        this._nativeAuthCache = { value: result, at: Date.now() };
+        return result;
+      })
+      .finally(() => {
+        this._nativeAuthPromise = null;
+      });
+    return this._nativeAuthPromise;
+  }
+
+  private async _fetchNativeAuthSessionBounded(): Promise<{
+    email: string;
+    tokens: { accessToken: string; refreshToken: string; expiresAt: number };
+    avatarUrl?: string;
+    name?: string;
+  } | null> {
+    const withTimeout = <T>(p: Thenable<T> | Promise<T>, ms: number): Promise<T | undefined> =>
+      Promise.race([
+        Promise.resolve(p),
+        new Promise<undefined>(resolve => setTimeout(() => resolve(undefined), ms))
+      ]);
+
     try {
       const providers = AUTH_PROVIDERS;
       const scopesOptions = [
@@ -562,21 +608,21 @@ export class AccountService {
 
         for (const scopes of scopesOptions) {
           try {
-            session = await vscode.authentication.getSession(providerId, scopes, { silent: true });
+            session = await withTimeout(vscode.authentication.getSession(providerId, scopes, { silent: true }), 800);
             if (session?.accessToken) break;
           } catch { }
         }
 
         if (!session?.accessToken && typeof (vscode.authentication as any).getAccounts === 'function') {
           try {
-            const accounts = await (vscode.authentication as any).getAccounts(providerId);
+            const accounts = await withTimeout<any[]>((vscode.authentication as any).getAccounts(providerId), 800);
             if (accounts && accounts.length > 0) {
               for (const scopes of scopesOptions) {
                 try {
-                  session = await vscode.authentication.getSession(providerId, scopes, {
+                  session = await withTimeout(vscode.authentication.getSession(providerId, scopes, {
                     silent: true,
                     account: accounts[0]
-                  });
+                  }), 800);
                   if (session?.accessToken) break;
                 } catch { }
               }

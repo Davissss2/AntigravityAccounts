@@ -20,6 +20,7 @@ import { CryptoUtils } from '../../core/utils/crypto.utils';
 import { ExtensionConfig } from '../../core/config/extension.config';
 import { getFriendlyModelName, normalizeModelKey, getModelBalanceValue, getModelBalanceEntry } from '../../core/utils/model.utils';
 import { isEmailMatch } from '../../core/utils/account.utils';
+import { getPlanSortWeight } from '../../core/utils/plan.utils';
 import { getWebviewStyles } from '../webview/styles/webview.styles';
 import { getModalsHtml } from '../webview/templates/modals.template';
 import { renderAccountCardHtml } from '../webview/templates/account-card.template';
@@ -148,7 +149,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
    * Asynchronously checks if the native IDE auth session differs from the pinned active account,
    * without blocking HTML generation or causing black screen delays.
    */
+  private _lastNativeAuthCheckAt: number = 0;
+
   private checkNativeAuthMismatch(): void {
+    const now = Date.now();
+    if (now - this._lastNativeAuthCheckAt < 30_000) return;
+    this._lastNativeAuthCheckAt = now;
     this.accountService.getNativeAuthEmail().then(async email => {
       if (email && email !== this._cachedNativeAuthEmail) {
         this._cachedNativeAuthEmail = email;
@@ -1024,12 +1030,8 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
       }
     }
 
-    try {
-      const nativeAuthEmail = await this.accountService.getNativeAuthEmail();
-      if (nativeAuthEmail) {
-        this._cachedNativeAuthEmail = nativeAuthEmail;
-      }
-    } catch {}
+    // Check native auth mismatch in the background (non-blocking; prevents ~45s render stalls)
+    this.checkNativeAuthMismatch();
 
     if (matchedAccount) {
       // Step 4: Pin this account — it will be moved to the top of the list
@@ -2421,7 +2423,15 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
           if (aQuota !== bQuota) {
             return bQuota - aQuota; // Descending (highest remaining quota first)
           }
-          // On tie (e.g. both 0% or both 100%), sort by soonest renewal time
+          // For 100%-full accounts, Google returns a rolling "now + 7d" resetTime that jumps on
+          // every refresh. Never sort full accounts by that rolling timestamp (it buries freshly
+          // refreshed cards to the bottom); keep paid plans first, then stable natural order.
+          if (aQuota >= 100) {
+            const planDiff = getPlanSortWeight(b.plan, b.planLabel) - getPlanSortWeight(a.plan, a.planLabel);
+            if (planDiff !== 0) return planDiff;
+            break;
+          }
+          // For partially used / depleted accounts (< 100%), sort by soonest real renewal time
           const aTime = getAccountNextRegenTime(a);
           const bTime = getAccountNextRegenTime(b);
           if (aTime !== bTime) {
@@ -2461,7 +2471,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             if (aQuota !== bQuota) {
               return bQuota - aQuota;
             }
-            // On tie with same quota (e.g. both 100%), sort by renewal time ascending (soonest to recharge first)
+            if (aQuota >= 100) {
+              const planDiff = getPlanSortWeight(b.plan, b.planLabel) - getPlanSortWeight(a.plan, a.planLabel);
+              if (planDiff !== 0) return planDiff;
+              break;
+            }
+            // On tie below 100%, sort by renewal time ascending (soonest to recharge first)
             const aTime = getAccountNextRegenTime(a);
             const bTime = getAccountNextRegenTime(b);
             if (aTime !== bTime) {

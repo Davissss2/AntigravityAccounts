@@ -26,12 +26,14 @@
       "placeholder": "El panel del Administrador de cuentas se implementará pronto."
     },
     "addAccount": {
+      "title": "Agregar cuenta",
       "placeholder": "El flujo para agregar cuenta se implementará pronto."
     },
     "switchAccount": {
       "placeholder": "El flujo para cambiar de cuenta se implementará pronto."
     },
     "refreshBalances": {
+      "title": "Refrescar cuotas",
       "placeholder": "La actualización de saldos se implementará pronto."
     },
     "setLanguage": {

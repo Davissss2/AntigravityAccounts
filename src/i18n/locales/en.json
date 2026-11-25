@@ -26,12 +26,14 @@
       "placeholder": "Account Manager panel will be implemented soon."
     },
     "addAccount": {
+      "title": "Add Account",
       "placeholder": "Add Account flow will be implemented soon."
     },
     "switchAccount": {
       "placeholder": "Switch Account flow will be implemented soon."
     },
     "refreshBalances": {
+      "title": "Refresh Balances",
       "placeholder": "Balance refresh will be implemented soon."
     },
     "setLanguage": {

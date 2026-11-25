@@ -5,6 +5,16 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.76] - 2026-11-25
+
+### Arreglado
+- **Tarjetas recién refrescadas al 100% ya no saltan al fondo de la lista tras ~40s (dando sensación de desaparición del badge `FREE`):**
+  - En `AccountsWebviewProvider.sortAccounts` (`quota` y `default`) y `plan.utils.ts` (`getPlanSortWeight`): las cuentas al 100% ya no desempatan por la fecha deslizante `resetTime` de Google (`ahora + 7 días`, que hundía las cuentas recién refrescadas debajo de cuentas sin refrescar con caché vieja); ahora priorizan planes de pago (`ULTRA` > `PRO` > `TRIAL` > `ENT`) y mantienen orden alfabético natural estable (con `FREE` y `unknown` en el mismo nivel). Las cuentas por debajo del 100% siguen ordenándose por renovación más próxima.
+- **Eliminado cuelgue de ~45s en cada re-renderizado del panel:**
+  - En `AccountsWebviewProvider._doDetectAndPinActiveAccount`: `getNativeAuthEmail()` deja de bloquear el refresco del panel y pasa a `checkNativeAuthMismatch()` en segundo plano con throttle de 30s.
+  - En `AccountService.getNativeAuthSession`: añadido timeout de 800ms por consulta y caché TTL de 30s con deduplicación.
+- **Limpieza de avisos i18n en logs:** añadidas claves `commands.refreshBalances.title` y `commands.addAccount.title` en `en.json` y `es.json`.
+
 ## [0.3.75] - 2026-11-25
 
 ### Arreglado
