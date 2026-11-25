@@ -24,6 +24,12 @@ import { getWebviewStyles } from '../webview/styles/webview.styles';
 import { getModalsHtml } from '../webview/templates/modals.template';
 import { renderAccountCardHtml } from '../webview/templates/account-card.template';
 import { getWebviewClientScript } from '../webview/scripts/webview.client';
+import {
+  pickImportWorkflowTarget,
+  handleDeleteWorkflowInteractive,
+  handleDeleteWorkflowAccounts,
+  handleBulkDeleteAccounts,
+} from '../webview/handlers/workflow-actions.handler';
 
 /** Shape of an individual account inside the backup */
 interface ExportedAccount {
@@ -366,18 +372,12 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         }
         case 'deleteWorkflow': {
           if (message.workflowId) {
-            const workflows = await this.accountRepo.getWorkflows();
-            const target = workflows.find(w => w.id === message.workflowId);
-            const wfName = target ? target.name : message.workflowId;
-            const confirm = await vscode.window.showWarningMessage(
-              i18n.t('workflows.confirmDelete', { name: wfName }),
-              { modal: true },
-              i18n.t('workflows.delete')
+            await handleDeleteWorkflowInteractive(
+              this.accountRepo,
+              this.accountService,
+              message.workflowId,
+              () => this.refresh()
             );
-            if (confirm === i18n.t('workflows.delete')) {
-              await this.accountRepo.deleteWorkflow(message.workflowId);
-              await this.refresh();
-            }
           }
           break;
         }
@@ -442,11 +442,17 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                 action: 'clear',
               },
               {
+                label: `$(trash) ${i18n.t('workflows.deleteWorkflowAccounts')}`,
+                description: `(${wfAccounts.length})`,
+                detail: i18n.t('workflows.deleteWorkflowAccountsDetail', { count: wfAccounts.length, name: wfName }),
+                action: 'deleteAccounts',
+              },
+              {
                 label: `$(edit) ${i18n.t('workflows.rename')}`,
                 action: 'rename',
               },
               {
-                label: `$(trash) ${i18n.t('workflows.delete')}`,
+                label: `$(close-all) ${i18n.t('workflows.delete')}`,
                 action: 'delete',
               }
             ], {
@@ -537,16 +543,21 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
                   await this.accountRepo.renameWorkflow(message.workflowId, newName.trim());
                   await this.refresh();
                 }
-              } else if (picked.action === 'delete') {
-                const confirm = await vscode.window.showWarningMessage(
-                  i18n.t('workflows.confirmDelete', { name: wfName }),
-                  { modal: true },
-                  i18n.t('workflows.delete')
+              } else if (picked.action === 'deleteAccounts') {
+                await handleDeleteWorkflowAccounts(
+                  this.accountRepo,
+                  this.accountService,
+                  message.workflowId,
+                  wfName,
+                  () => this.refresh()
                 );
-                if (confirm === i18n.t('workflows.delete')) {
-                  await this.accountRepo.deleteWorkflow(message.workflowId);
-                  await this.refresh();
-                }
+              } else if (picked.action === 'delete') {
+                await handleDeleteWorkflowInteractive(
+                  this.accountRepo,
+                  this.accountService,
+                  message.workflowId,
+                  () => this.refresh()
+                );
               }
             }
           }
@@ -680,6 +691,17 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         case 'bulkExportAccounts': {
           if (message.emails && Array.isArray(message.emails) && message.emails.length > 0) {
             await this.handleExport(undefined, message.emails);
+          }
+          break;
+        }
+        case 'bulkDeleteAccounts': {
+          if (message.emails && Array.isArray(message.emails) && message.emails.length > 0) {
+            await handleBulkDeleteAccounts(
+              this.accountRepo,
+              this.accountService,
+              message.emails,
+              () => this.refresh()
+            );
           }
           break;
         }
@@ -1540,87 +1562,52 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
       this._view?.webview.postMessage({ command: 'hideLoading' });
 
-      // ── Step: Ask user where to import these accounts ──
+      // ── Step: Ask user which workflow to import these accounts into ──
       const existingWorkflows = await this.accountRepo.getWorkflows();
-      let targetWorkflowId: string | undefined | null = null; // null = preserve / default, undefined = uncategorized, string = specific wf
+      const localWfIds = new Set(existingWorkflows.map(w => w.id));
+      const backupHasKnownWorkflows = payload.accounts.some(
+        entry => !!entry.account.workflow && localWfIds.has(entry.account.workflow)
+      );
 
-      interface ImportOption extends vscode.QuickPickItem {
-        action: 'keep' | 'workflow' | 'create';
-        workflowId?: string;
-      }
-
-      const importOptions: ImportOption[] = [
-        {
-          label: `$(archive) ${i18n.t('workflows.importKeep')}`,
-          description: i18n.t('webview.sortDefault') || 'Original',
-          action: 'keep',
-        },
-      ];
-
-      for (const wf of existingWorkflows) {
-        importOptions.push({
-          label: `$(folder) ${i18n.t('workflows.importToWorkflow', { name: wf.name })}`,
-          action: 'workflow',
-          workflowId: wf.id,
-        });
-      }
-
-      importOptions.push({
-        label: `$(plus) ${i18n.t('workflows.importCreateNew')}`,
-        action: 'create',
-      });
-
-      const selectedImportOption = await vscode.window.showQuickPick(importOptions, {
-        placeHolder: i18n.t('workflows.importTitle'),
-      });
-
-      if (!selectedImportOption) {
+      const importChoice = await pickImportWorkflowTarget(
+        this.accountRepo,
+        payload.accounts.length,
+        backupHasKnownWorkflows
+      );
+      if (!importChoice) {
         return; // User cancelled import
       }
 
-      if (selectedImportOption.action === 'create') {
-        const newWfName = await vscode.window.showInputBox({
-          prompt: i18n.t('workflows.createPrompt'),
-          placeHolder: i18n.t('workflows.createPlaceholder'),
-          validateInput: (val) => {
-            if (!val || !val.trim()) return i18n.t('workflows.createPlaceholder');
-            return undefined;
-          }
-        });
-        if (!newWfName) {
-          return; // User cancelled
-        }
-        const newWfId = 'wf_' + Date.now();
-        await this.accountRepo.saveWorkflow({
-          id: newWfId,
-          name: newWfName.trim(),
-          createdAt: new Date().toISOString(),
-        });
-        targetWorkflowId = newWfId;
-      } else if (selectedImportOption.action === 'workflow') {
-        targetWorkflowId = selectedImportOption.workflowId;
-      } else {
-        targetWorkflowId = null; // keep
-      }
+      const targetWorkflowId = importChoice.mode === 'workflow'
+        ? importChoice.workflowId
+        : undefined;
 
       this._view?.webview.postMessage({ command: 'showLoading', text: i18n.t('accounts.importingAccounts') });
 
-      // Get existing accounts to check for duplicates
+      // Get existing accounts to check for duplicates (case-insensitive)
       const existingAccounts = await this.accountRepo.getAllAccounts();
-      const existingEmails = new Set(existingAccounts.map(a => a.email));
+      const existingByEmail = new Map(existingAccounts.map(a => [a.email.toLowerCase(), a]));
 
       let importedCount = 0;
       let skippedCount = 0;
+      let movedExistingCount = 0;
 
       for (const entry of payload.accounts) {
-        if (existingEmails.has(entry.email)) {
-          logger.info(`Import: Skipping ${entry.email} (already exists).`);
-          skippedCount++;
+        const existingMatch = existingByEmail.get(entry.email.toLowerCase());
+        if (existingMatch) {
+          if (importChoice.mode === 'workflow' && targetWorkflowId && existingMatch.workflow !== targetWorkflowId) {
+            await this.accountRepo.updateAccount(existingMatch.email, { workflow: targetWorkflowId });
+            movedExistingCount++;
+            logger.info(`Import: Assigned existing account ${existingMatch.email} to workflow ${targetWorkflowId}.`);
+          } else {
+            logger.info(`Import: Skipping ${entry.email} (already exists).`);
+            skippedCount++;
+          }
           continue;
         }
 
-        const finalWorkflow = (targetWorkflowId === null)
-          ? entry.account.workflow
+        const finalWorkflow = importChoice.mode === 'keep'
+          ? (entry.account.workflow && localWfIds.has(entry.account.workflow) ? entry.account.workflow : undefined)
           : targetWorkflowId;
 
         // Save the account
@@ -1639,6 +1626,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
         await this.accountRepo.updateAccount(entry.email, {
           balances: entry.account.balances || {},
           plan: entry.account.plan,
+          planLabel: entry.account.planLabel,
           status: entry.account.status,
           alias: entry.account.alias,
           hasDeviceProfile: !!entry.deviceProfile,
@@ -1662,6 +1650,9 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
 
       // Build result message
       let msg = i18n.t('accounts.importSuccess', { count: importedCount });
+      if (movedExistingCount > 0) {
+        msg += i18n.t('workflows.importMovedExisting', { count: movedExistingCount });
+      }
       if (skippedCount > 0) {
         msg += i18n.t('accounts.importSkipped', { count: skippedCount });
       }
@@ -2173,6 +2164,7 @@ export class AccountsWebviewProvider implements vscode.WebviewViewProvider {
             <button type="button" class="btn-bulk-action btn-bulk-export" onclick="bulkExportSelected()" title="${i18n.t('workflows.bulkExport')}">
               <svg style="width:12px; height:12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             </button>
+            <button type="button" class="btn-bulk-action btn-bulk-danger" onclick="bulkDeleteSelected()" title="${i18n.t('workflows.bulkDeleteTooltip')}">${i18n.t('workflows.bulkDelete')}</button>
           </div>
         </div>
 

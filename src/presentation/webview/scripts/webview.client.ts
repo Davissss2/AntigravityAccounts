@@ -340,9 +340,11 @@ export function getWebviewClientScript(opts: WebviewClientScriptOptions): string
               const name = (card.dataset.name || '').toLowerCase();
               const alias = (card.dataset.alias || '').toLowerCase();
               const status = (card.dataset.status || '').toLowerCase();
+              const plan = (card.dataset.plan || '').toLowerCase();
+              const planLabel = (card.dataset.planLabel || '').toLowerCase();
               const badgeEl = card.querySelector('.badge');
               const badgeText = (badgeEl ? badgeEl.textContent || '' : '').toLowerCase();
-              const statusMatches = status.includes(q) || badgeText.includes(q);
+              const statusMatches = status.includes(q) || badgeText.includes(q) || plan.includes(q) || planLabel.includes(q);
               const textMatches = !q || email.includes(q) || name.includes(q) || alias.includes(q) || statusMatches;
 
               if (textMatches) {
@@ -513,6 +515,14 @@ export function getWebviewClientScript(opts: WebviewClientScriptOptions): string
             if (selectedBulkEmails.size === 0) return;
             vscode.postMessage({
               command: 'bulkExportAccounts',
+              emails: Array.from(selectedBulkEmails)
+            });
+          }
+
+          function bulkDeleteSelected() {
+            if (selectedBulkEmails.size === 0) return;
+            vscode.postMessage({
+              command: 'bulkDeleteAccounts',
               emails: Array.from(selectedBulkEmails)
             });
           }

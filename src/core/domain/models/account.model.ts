@@ -8,8 +8,11 @@
 /** Account subscription plan types */
 export enum AccountPlan {
   FREE = 'free',
+  TRIAL = 'trial',
+  PRO = 'pro',
   PREMIUM = 'premium',
   ULTRA = 'ultra',
+  ENTERPRISE = 'enterprise',
   UNKNOWN = 'unknown',
 }
 
@@ -48,6 +51,9 @@ export interface Account {
 
   /** Subscription plan */
   plan: AccountPlan;
+
+  /** Raw/display plan label from Google (e.g. "Google AI Ultra", "Google AI Pro", "Trial") */
+  planLabel?: string;
 
   /** Current account status */
   status: AccountStatus;

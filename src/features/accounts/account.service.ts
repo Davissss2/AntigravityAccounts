@@ -226,6 +226,7 @@ export class AccountService {
         await this.accountRepo.updateAccount(profile.email, {
           balances: balanceInfo.balances,
           plan: balanceInfo.plan,
+          planLabel: balanceInfo.planLabel,
           status: finalStatus,
           lastRefreshedAt: new Date().toISOString()
         });
@@ -735,6 +736,7 @@ export class AccountService {
             await this.accountRepo.updateAccount(email, {
               balances: balanceInfo.balances,
               plan: balanceInfo.plan,
+              planLabel: balanceInfo.planLabel,
               projectId: balanceInfo.projectId,
               status,
               lastRefreshedAt: new Date().toISOString()
@@ -856,6 +858,7 @@ export class AccountService {
             await this.accountRepo.updateAccount(email, {
               balances: balanceInfo.balances,
               plan: balanceInfo.plan,
+              planLabel: balanceInfo.planLabel,
               projectId: balanceInfo.projectId,
               status,
               lastRefreshedAt: new Date().toISOString()
@@ -1150,7 +1153,8 @@ export class AccountService {
       let balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
         fast: true,
         projectId: account.projectId,
-        probeModel: preferredModel ?? undefined
+        probeModel: preferredModel ?? undefined,
+        currentPlan: account.plan
       });
 
       if (balanceInfo.isAuthError && tokens.refreshToken) {
@@ -1164,7 +1168,8 @@ export class AccountService {
           balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
             fast: true,
             projectId: account.projectId,
-            probeModel: preferredModel ?? undefined
+            probeModel: preferredModel ?? undefined,
+            currentPlan: account.plan
           });
         } catch (authErr) {
           Logger.getInstance().warn(`Fast token recovery failed for ${activeEmail}`);
@@ -1196,11 +1201,14 @@ export class AccountService {
       const newBalances = balanceInfo.isDepleted 
         ? balanceInfo.balances 
         : this.mergeBalancesPreservingResetTime(oldBalances, balanceInfo.balances);
-      const hasChanged = JSON.stringify(oldBalances) !== JSON.stringify(newBalances) || account.status !== newStatus;
+      const hasChanged = JSON.stringify(oldBalances) !== JSON.stringify(newBalances)
+        || account.status !== newStatus
+        || (balanceInfo.plan !== AccountPlan.UNKNOWN && balanceInfo.plan !== account.plan);
 
       await this.accountRepo.updateAccount(activeEmail, {
         balances: newBalances,
         plan: balanceInfo.plan !== AccountPlan.UNKNOWN ? balanceInfo.plan : account.plan,
+        planLabel: balanceInfo.planLabel ?? account.planLabel,
         projectId: balanceInfo.projectId || account.projectId,
         status: newStatus,
         lastRefreshedAt: new Date().toISOString()
@@ -1576,7 +1584,9 @@ export class AccountService {
       let balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, { 
         projectId: account.projectId,
         signal: options?.signal,
-        probeModel: preferredModel ?? undefined
+        probeModel: preferredModel ?? undefined,
+        currentPlan: account.plan,
+        forcePlanRefresh: true
       });
 
       // Automatic 401 recovery: if token was rejected by Google, refresh with refreshToken and retry immediately
@@ -1591,7 +1601,9 @@ export class AccountService {
           balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
             projectId: account.projectId,
             signal: options?.signal,
-            probeModel: preferredModel ?? undefined
+            probeModel: preferredModel ?? undefined,
+            currentPlan: account.plan,
+            forcePlanRefresh: true
           });
         } catch (authErr) {
           Logger.getInstance().warn(`Token recovery failed for ${account.email}`);
@@ -1634,6 +1646,7 @@ export class AccountService {
       await this.accountRepo.updateAccount(account.email, {
         balances: mergedBalances,
         plan: balanceInfo.plan !== AccountPlan.UNKNOWN ? balanceInfo.plan : account.plan,
+        planLabel: balanceInfo.planLabel ?? account.planLabel,
         projectId: balanceInfo.projectId || account.projectId,
         status: status,
         lastRefreshedAt: new Date().toISOString()
@@ -1922,7 +1935,9 @@ export class AccountService {
     const preferredModelForProbe = await this.accountRepo.getPreferredModel();
     let balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
       projectId: account.projectId,
-      probeModel: preferredModelForProbe ?? undefined
+      probeModel: preferredModelForProbe ?? undefined,
+      currentPlan: account.plan,
+      forcePlanRefresh: true
     });
 
     // Automatic 401 recovery: if token was rejected, refresh with refreshToken and retry immediately
@@ -1936,7 +1951,9 @@ export class AccountService {
         await this.accountRepo.storeTokens(email, tokens);
         balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
           projectId: account.projectId,
-          probeModel: preferredModelForProbe ?? undefined
+          probeModel: preferredModelForProbe ?? undefined,
+          currentPlan: account.plan,
+          forcePlanRefresh: true
         });
       } catch (authErr) {
         Logger.getInstance().warn(`Token recovery failed for ${email}`);
@@ -1973,6 +1990,7 @@ export class AccountService {
     await this.accountRepo.updateAccount(email, {
       balances: mergedBalances,
       plan: balanceInfo.plan !== AccountPlan.UNKNOWN ? balanceInfo.plan : account.plan,
+      planLabel: balanceInfo.planLabel ?? account.planLabel,
       projectId: balanceInfo.projectId || account.projectId,
       status: status,
       lastRefreshedAt: new Date().toISOString()
@@ -2108,6 +2126,7 @@ export class AccountService {
             status: newStatus,
             balances: newBalances,
             plan: balanceInfo.plan !== AccountPlan.UNKNOWN ? balanceInfo.plan : undefined,
+            planLabel: balanceInfo.planLabel,
             projectId: balanceInfo.projectId || account?.projectId,
             lastRefreshedAt: new Date().toISOString()
           });

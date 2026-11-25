@@ -19,10 +19,12 @@ import { ApiClient, ApiError } from '../../core/network/api.client';
 import { API, CANONICAL_CONSUMER_PROJECT } from '../../core/constants/app.constants';
 import { Logger } from '../../core/utils/logger';
 import { AccountPlan, AccountStatus } from '../../core/domain/models/account.model';
+import { detectAccountPlan } from '../../core/utils/plan.utils';
 
 export interface BalanceResult {
   balances: Record<string, any>;
   plan: AccountPlan;
+  planLabel?: string;
   projectId?: string;
   hasError: boolean;
   isRateLimited?: boolean;
@@ -33,7 +35,8 @@ export interface BalanceResult {
 
 export interface AccountContext {
   projectId?: string;
-  planName?: string;
+  plan?: AccountPlan;
+  planLabel?: string;
   rateLimited?: boolean;
 }
 
@@ -52,7 +55,14 @@ export class BalanceService {
    */
   async getBalanceInfo(
     accessToken: string,
-    options?: { fast?: boolean; projectId?: string; signal?: AbortSignal; probeModel?: string }
+    options?: {
+      fast?: boolean;
+      projectId?: string;
+      signal?: AbortSignal;
+      probeModel?: string;
+      currentPlan?: AccountPlan;
+      forcePlanRefresh?: boolean;
+    }
   ): Promise<BalanceResult> {
     const result: BalanceResult = {
       balances: {},
@@ -71,6 +81,10 @@ export class BalanceService {
     result.projectId = projectId;
     let authError = false;
     let rateLimited = false;
+    const shouldResolvePlan =
+      !!options?.forcePlanRefresh ||
+      !options?.currentPlan ||
+      options.currentPlan === AccountPlan.UNKNOWN;
 
     for (let attempt = 0; attempt < 2; attempt++) {
       if (options?.signal?.aborted) {
@@ -82,7 +96,11 @@ export class BalanceService {
         Logger.getInstance().debug(
           `Querying v1internal:fetchAvailableModels${projectId ? ` for project ${projectId}` : ''}...`
         );
-        const [prodRes, dailyRes] = await Promise.allSettled([
+        const contextPromise = (attempt === 0 && shouldResolvePlan)
+          ? this.resolveAccountContext(accessToken, options?.signal)
+          : Promise.resolve(null);
+
+        const [prodRes, dailyRes, ctxRes] = await Promise.allSettled([
           ApiClient.request<any>(API.FETCH_MODELS_URL, {
             method: 'POST',
             body: projectId ? { project: projectId } : {},
@@ -96,8 +114,19 @@ export class BalanceService {
             accessToken,
             timeoutMs: 8000,
             signal: options?.signal
-          })
+          }),
+          contextPromise
         ]);
+
+        if (ctxRes.status === 'fulfilled' && ctxRes.value) {
+          if (ctxRes.value.plan && ctxRes.value.plan !== AccountPlan.UNKNOWN) {
+            result.plan = ctxRes.value.plan;
+            result.planLabel = ctxRes.value.planLabel;
+          }
+          if (ctxRes.value.projectId) {
+            result.projectId = ctxRes.value.projectId;
+          }
+        }
 
         const prodData = prodRes.status === 'fulfilled' ? prodRes.value : null;
         const dailyData = dailyRes.status === 'fulfilled' ? dailyRes.value : null;
@@ -180,8 +209,9 @@ export class BalanceService {
         rateLimited = true;
         break;
       }
-      if (context.planName && result.plan === AccountPlan.UNKNOWN) {
-        result.plan = this.parsePlanName(context.planName);
+      if (context.plan && context.plan !== AccountPlan.UNKNOWN && result.plan === AccountPlan.UNKNOWN) {
+        result.plan = context.plan;
+        result.planLabel = context.planLabel;
       }
       if (!context.projectId || context.projectId === projectId) {
         break;
@@ -229,12 +259,11 @@ export class BalanceService {
       });
       if (!data) return null;
 
-      const paidTier = data.paidTier || {};
-      const currentTier = data.currentTier || {};
-
+      const detected = detectAccountPlan(data);
       return {
         projectId: data.cloudaicompanionProject || undefined,
-        planName: paidTier.name || currentTier.name || undefined
+        plan: detected.plan,
+        planLabel: detected.planLabel
       };
     } catch (e: any) {
       if (signal?.aborted || (e instanceof ApiError && e.status === 499)) return null;
@@ -286,20 +315,5 @@ export class BalanceService {
   private isInternalModel(modelId: string): boolean {
     const lower = modelId.toLowerCase();
     return INTERNAL_MODEL_PREFIXES.some(prefix => lower.startsWith(prefix));
-  }
-
-  /**
-   * Maps Google's internal string names to our clean Domain Enums.
-   */
-  private parsePlanName(name?: string): AccountPlan {
-    if (!name) return AccountPlan.UNKNOWN;
-
-    const lower = name.toLowerCase();
-
-    if (lower.includes('ultra')) return AccountPlan.ULTRA;
-    if (lower.includes('premium')) return AccountPlan.PREMIUM;
-    if (lower.includes('free') || lower.includes('standard') || lower.includes('starter')) return AccountPlan.FREE;
-
-    return AccountPlan.UNKNOWN;
   }
 }

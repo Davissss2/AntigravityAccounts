@@ -1766,6 +1766,56 @@ export function getWebviewStyles(): string {
             justify-content: center;
             padding: 3px 7px;
           }
+          .btn-bulk-danger {
+            background: rgba(239, 68, 68, 0.16) !important;
+            color: #fca5a5 !important;
+            border-color: rgba(239, 68, 68, 0.45) !important;
+          }
+          .btn-bulk-danger:hover {
+            background: #dc2626 !important;
+            color: #fff !important;
+            border-color: #dc2626 !important;
+          }
+          /* ── Subscription Plan Badges ── */
+          .plan-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-size: 0.62rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            line-height: 1.25;
+            text-transform: uppercase;
+            white-space: nowrap;
+            flex-shrink: 0;
+            user-select: none;
+          }
+          .plan-badge-ultra {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.24), rgba(168, 85, 247, 0.28));
+            color: #fde68a;
+            border: 1px solid rgba(245, 158, 11, 0.55);
+          }
+          .plan-badge-pro {
+            background: rgba(56, 189, 248, 0.16);
+            color: #7dd3fc;
+            border: 1px solid rgba(56, 189, 248, 0.45);
+          }
+          .plan-badge-trial {
+            background: rgba(251, 146, 60, 0.16);
+            color: #fdba74;
+            border: 1px solid rgba(251, 146, 60, 0.45);
+          }
+          .plan-badge-enterprise {
+            background: rgba(16, 185, 129, 0.16);
+            color: #6ee7b7;
+            border: 1px solid rgba(16, 185, 129, 0.45);
+          }
+          .plan-badge-free {
+            background: rgba(148, 163, 184, 0.12);
+            color: var(--text-secondary);
+            border: 1px solid rgba(148, 163, 184, 0.28);
+          }
           .workflow-hidden {
             display: none !important;
           }

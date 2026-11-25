@@ -5,6 +5,19 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.72] - 2026-11-25
+
+### Añadido
+- **Insignia visual de plan en cada cuenta (`ULTRA`, `PRO`, `TRIAL`, `ENT`, `FREE`) y búsqueda por plan:**
+  - Nuevo módulo `src/core/utils/plan.utils.ts`: detección precisa de suscripción desde `paidTier` y `currentTier` de `v1internal:loadCodeAssist` (`g1-ultra-tier` / Google AI Ultra, `g1-pro-tier` / Google AI Pro / Plus, Trial, Enterprise, Free).
+  - En `BalanceService.getBalanceInfo`: consulta paralela de `loadCodeAssist` (sin latencia extra) para cuentas sin plan conocido o en refrescos manuales, guardando `plan` y `planLabel`.
+  - En `account-card.template.ts` y `webview.styles.ts`: insignia compacta diferenciada por color junto al correo de cada cuenta y soporte de filtrado por plan desde la barra de búsqueda.
+- **Importación directa a Workflow elegido y borrado masivo / completo de cuentas en Workflows:**
+  - Nuevo módulo `src/presentation/webview/handlers/workflow-actions.handler.ts`.
+  - Selector de importación mejorado: prioriza workflows existentes (activo primero) y creación de nuevo workflow antes de `Sin workflow (Todos)`, y reasigna cuentas ya existentes en `Todos` al workflow elegido si se reimportan.
+  - Al eliminar un workflow con cuentas, ahora permite elegir entre eliminar solo el workflow o **eliminar el workflow Y borrar permanentemente todas sus cuentas (también de Todos)**; añadida también la opción directa de eliminar todas las cuentas de un workflow.
+  - Botón rojo **Borrar (`bulkDeleteAccounts`)** en la barra de selección masiva (`Select`) para eliminar varias cuentas seleccionadas de una sola vez.
+
 ## [0.3.71] - 2026-11-25
 
 ### Arreglado
