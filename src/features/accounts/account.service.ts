@@ -72,7 +72,7 @@ export class AccountService {
     private balanceService: BalanceService,
     private accountRepo: IAccountRepository,
     private stateDbService: StateDbService
-  ) {}
+  ) { }
 
   private async determineAccountStatus(
     balanceInfo: { balances: Record<string, any>; hasError: boolean; status?: AccountStatus; isDepleted?: boolean; isAuthError?: boolean },
@@ -190,14 +190,14 @@ export class AccountService {
    */
   async addAccountWorkflow(): Promise<void> {
     const i18n = I18nService.getInstance();
-    
+
     try {
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
         title: i18n.t('auth.signingIn'),
         cancellable: false
       }, async (progress) => {
-        
+
         // 1. Authenticate via Browser
         const { tokens, profile } = await this.authService.login();
 
@@ -205,7 +205,7 @@ export class AccountService {
 
         // 2. Fetch Initial Balance (Decision 1: Fails gracefully)
         const balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken);
-        
+
         // 3. Save core account data and secure tokens
         const expiresAt = Math.floor(Date.now() / 1000) + tokens.expiresIn;
         await this.accountRepo.saveAccount({
@@ -247,7 +247,7 @@ export class AccountService {
           const formattedBalances = Object.entries(balanceInfo.balances).map(([k, v]) => `${k}: ${v}`).join(' | ');
           vscode.window.showInformationMessage(i18n.t('service.accountAddedSuccess', { email: profile.email, balances: formattedBalances }));
         }
-        
+
         this._onAccountsChanged.fire();
       });
     } catch (error: any) {
@@ -381,7 +381,7 @@ export class AccountService {
     tokens = verifiedTokens;
 
     // Ensure token scopes are recorded if available without blocking switch
-    await this.ensureTokenScopes(email, tokens).catch(() => {});
+    await this.ensureTokenScopes(email, tokens).catch(() => { });
 
     // If the switch was initiated manually, set a hold so auto-rotation won't revert it
     const isManual = !options?.reason || options.reason === 'manual';
@@ -400,11 +400,11 @@ export class AccountService {
       options?.skipPrompt,
       options?.reason ?? 'manual'
     );
-    
+
     if (result === 'success') {
       try {
         await this.accountRepo.setActiveAccountEmail(email.toLowerCase());
-      } catch {}
+      } catch { }
       this._onAccountsChanged.fire();
       // NOTE: Window reload is handled by StateDbService if user consents
       return 'success';
@@ -461,7 +461,7 @@ export class AccountService {
         if (repoActive) {
           return repoActive.toLowerCase();
         }
-      } catch {}
+      } catch { }
 
       return null;
     } catch (error) {
@@ -564,7 +564,7 @@ export class AccountService {
           try {
             session = await vscode.authentication.getSession(providerId, scopes, { silent: true });
             if (session?.accessToken) break;
-          } catch {}
+          } catch { }
         }
 
         if (!session?.accessToken && typeof (vscode.authentication as any).getAccounts === 'function') {
@@ -578,10 +578,10 @@ export class AccountService {
                     account: accounts[0]
                   });
                   if (session?.accessToken) break;
-                } catch {}
+                } catch { }
               }
             }
-          } catch {}
+          } catch { }
         }
 
         if (session && session.accessToken) {
@@ -623,7 +623,7 @@ export class AccountService {
                 if (dbInfo?.email && isEmailMatch(dbInfo.email, email) && dbInfo.tokens?.refreshToken) {
                   refreshToken = dbInfo.tokens.refreshToken;
                 }
-              } catch {}
+              } catch { }
             }
 
             const expiresAt = Math.floor(Date.now() / 1000) + 3600;
@@ -893,7 +893,7 @@ export class AccountService {
       const config = ExtensionConfig.getInstance();
       if (!config.isAutoCaptureAccountsEnabled()) return;
 
-      const providerCandidates = targetProviderId 
+      const providerCandidates = targetProviderId
         ? Array.from(new Set([targetProviderId, ...AUTH_PROVIDERS]))
         : Array.from(AUTH_PROVIDERS);
 
@@ -910,7 +910,7 @@ export class AccountService {
           if (typeof (vscode.authentication as any).getAccounts === 'function') {
             try {
               accounts = await (vscode.authentication as any).getAccounts(providerId);
-            } catch {}
+            } catch { }
           }
 
           // Also check default session without account specified
@@ -922,7 +922,7 @@ export class AccountService {
                 sessionsToProcess.push(defaultSession);
                 break;
               }
-            } catch {}
+            } catch { }
           }
 
           // For each discovered account, query session
@@ -937,7 +937,7 @@ export class AccountService {
                   sessionsToProcess.push(session);
                   break;
                 }
-              } catch {}
+              } catch { }
             }
           }
 
@@ -975,7 +975,7 @@ export class AccountService {
                 if (dbInfo?.email && isEmailMatch(dbInfo.email, email) && dbInfo.tokens?.refreshToken) {
                   refreshToken = dbInfo.tokens.refreshToken;
                 }
-              } catch {}
+              } catch { }
             }
 
             const existing = await this.accountRepo.getAccount(email);
@@ -1198,8 +1198,8 @@ export class AccountService {
       const newStatus = await this.determineAccountStatus(balanceInfo, preferredModel, tokens);
 
       const oldBalances = account.balances || {};
-      const newBalances = balanceInfo.isDepleted 
-        ? balanceInfo.balances 
+      const newBalances = balanceInfo.isDepleted
+        ? balanceInfo.balances
         : this.mergeBalancesPreservingResetTime(oldBalances, balanceInfo.balances);
       const hasChanged = JSON.stringify(oldBalances) !== JSON.stringify(newBalances)
         || account.status !== newStatus
@@ -1288,13 +1288,16 @@ export class AccountService {
    * 2. Highest total/average model quota > 0
    * 3. Status ACTIVE / LOW_BALANCE (not DEPLETED, not TOKEN_EXPIRED, not INELIGIBLE)
    */
-  async findBestAccountWithQuota(currentEmail: string): Promise<Account | null> {
+  async findBestAccountWithQuota(currentEmail: string, excludedEmails?: Set<string>): Promise<Account | null> {
     const allAccounts = await this.accountRepo.getAllAccounts();
-    const candidates = allAccounts.filter(a => 
+    const candidates = allAccounts.filter(a =>
       !isEmailMatch(a.email, currentEmail) &&
+      !(excludedEmails && excludedEmails.has(a.email.toLowerCase())) &&
       a.status !== AccountStatus.DEPLETED &&
       a.status !== AccountStatus.TOKEN_EXPIRED &&
-      a.status !== AccountStatus.SCOPE_MISSING
+      a.status !== AccountStatus.SCOPE_MISSING &&
+      a.status !== AccountStatus.ERROR &&
+      a.status !== AccountStatus.INELIGIBLE
     );
 
     if (candidates.length === 0) return null;
@@ -1387,9 +1390,9 @@ export class AccountService {
       const remainingMs = AccountService.REFRESH_COOLDOWN_MS - elapsed;
       const remainingSec = Math.ceil(remainingMs / 1000);
       Logger.getInstance().info(`Refresh cooldown active. Queueing next refresh in ${remainingSec}s.`);
-      
+
       this.cancelQueue();
-      
+
       if (notify && ExtensionConfig.getInstance().isNotificationsEnabled()) {
         const i18n = I18nService.getInstance();
         vscode.window.showInformationMessage(
@@ -1414,296 +1417,296 @@ export class AccountService {
     this._lastRefreshTime = now;
 
     try {
-    let accounts = await this.accountRepo.getAllAccounts();
-    if (accounts.length === 0) { this._isRefreshing = false; return false; }
-
-    // Filter to specific accounts if requested (e.g., search-filtered refresh)
-    if (options?.onlyEmails && options.onlyEmails.length > 0) {
-      const filterSet = new Set(options.onlyEmails.map(e => e.toLowerCase()));
-      accounts = accounts.filter(a => filterSet.has(a.email.toLowerCase()));
+      let accounts = await this.accountRepo.getAllAccounts();
       if (accounts.length === 0) { this._isRefreshing = false; return false; }
-    }
 
-    // Reorder accounts to match UI display order if provided
-    if (options?.orderedEmails && options.orderedEmails.length > 0) {
-      const emailOrder = options.orderedEmails.map(e => e.toLowerCase());
-      accounts = [...accounts].sort((a, b) => {
-        const aIdx = emailOrder.indexOf(a.email.toLowerCase());
-        const bIdx = emailOrder.indexOf(b.email.toLowerCase());
-        const aPos = aIdx === -1 ? emailOrder.length : aIdx;
-        const bPos = bIdx === -1 ? emailOrder.length : bIdx;
-        return aPos - bPos;
-      });
-    }
-
-    let successCount = 0;
-    const config = ExtensionConfig.getInstance();
-    let accountsProcessed = 0;
-    const activeEmail = options?.activeEmail || await this.getActiveAntigravityEmail();
-
-    for (const account of accounts) {
-      // ── Check for cancellation ──
-      if (options?.signal?.aborted) {
-        Logger.getInstance().info('Refresh cancelled by user.');
-        break;
+      // Filter to specific accounts if requested (e.g., search-filtered refresh)
+      if (options?.onlyEmails && options.onlyEmails.length > 0) {
+        const filterSet = new Set(options.onlyEmails.map(e => e.toLowerCase()));
+        accounts = accounts.filter(a => filterSet.has(a.email.toLowerCase()));
+        if (accounts.length === 0) { this._isRefreshing = false; return false; }
       }
 
-      // ── Check cache if not forced ──
-      if (!options?.force) {
+      // Reorder accounts to match UI display order if provided
+      if (options?.orderedEmails && options.orderedEmails.length > 0) {
+        const emailOrder = options.orderedEmails.map(e => e.toLowerCase());
+        accounts = [...accounts].sort((a, b) => {
+          const aIdx = emailOrder.indexOf(a.email.toLowerCase());
+          const bIdx = emailOrder.indexOf(b.email.toLowerCase());
+          const aPos = aIdx === -1 ? emailOrder.length : aIdx;
+          const bPos = bIdx === -1 ? emailOrder.length : bIdx;
+          return aPos - bPos;
+        });
+      }
+
+      let successCount = 0;
+      const config = ExtensionConfig.getInstance();
+      let accountsProcessed = 0;
+      const activeEmail = options?.activeEmail || await this.getActiveAntigravityEmail();
+
+      for (const account of accounts) {
+        // ── Check for cancellation ──
+        if (options?.signal?.aborted) {
+          Logger.getInstance().info('Refresh cancelled by user.');
+          break;
+        }
+
+        // ── Check cache if not forced ──
+        if (!options?.force) {
+          const isActive = activeEmail && isEmailMatch(account.email, activeEmail);
+          if (!isActive && account.lastRefreshedAt) {
+            const lastRefreshed = new Date(account.lastRefreshedAt).getTime();
+            const refreshIntervalMinutes = config.getRefreshIntervalMinutes();
+            const cacheDurationMs = refreshIntervalMinutes > 0
+              ? refreshIntervalMinutes * 60 * 1000
+              : config.getCacheDurationDays() * 24 * 60 * 60 * 1000;
+            if (Date.now() - lastRefreshed < cacheDurationMs) {
+              Logger.getInstance().info(`Skipping refresh for cached account: ${account.email}`);
+              options?.onAccountStart?.(account.email);
+              options?.onAccountDone?.(account.email, account.balances, account.status);
+              continue;
+            }
+          }
+        }
+
+        // ── Anti-Ban: Dynamic randomized delay ("medio medio": 4s a 8s) ──
+        if (accountsProcessed > 0) {
+          if (options?.signal?.aborted) {
+            Logger.getInstance().info('Refresh cancelled before anti-ban delay.');
+            break;
+          }
+
+          // Base delay: random entre 4,000ms (4s) y 8,000ms (8s)
+          const minDelay = 4000;
+          const maxDelay = 8000;
+          let delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+
+          // Pequeña pausa natural cada 8 a 12 cuentas (6s a 10s) para romper patrones lineales
+          if (accountsProcessed % (Math.floor(Math.random() * 5) + 8) === 0) {
+            const extraPause = Math.floor(Math.random() * (10000 - 6000 + 1)) + 6000;
+            Logger.getInstance().info(`Anti-ban: Pausa natural de ${Math.round(extraPause / 1000)}s tras procesar ${accountsProcessed} cuentas.`);
+            delay += extraPause;
+          }
+
+          const delaySec = Math.max(1, Math.round(delay / 1000));
+          Logger.getInstance().info(`Anti-ban: Esperando ${(delay / 1000).toFixed(1)}s antes de consultar ${account.email}...`);
+          options?.onAntiBanWait?.(delaySec, account.email);
+
+          await new Promise<void>(resolve => {
+            if (options?.signal?.aborted) {
+              resolve();
+              return;
+            }
+            let timer: NodeJS.Timeout | null = null;
+            const onAbort = () => {
+              if (timer) clearTimeout(timer);
+              resolve();
+            };
+            timer = setTimeout(() => {
+              options?.signal?.removeEventListener('abort', onAbort);
+              resolve();
+            }, delay);
+            options?.signal?.addEventListener('abort', onAbort, { once: true });
+          });
+
+          if (options?.signal?.aborted) {
+            Logger.getInstance().info('Refresh cancelled during anti-ban delay.');
+            break;
+          }
+        }
+
+        accountsProcessed++;
+
+        // Notify UI: this account is starting
+        options?.onAccountStart?.(account.email);
+
+        let tokens = await this.accountRepo.getTokens(account.email);
+        if (!tokens) {
+          options?.onAccountDone?.(account.email);
+          continue;
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+
+        // Auto-refresh token if needed before API call (for active account, sync live native session first)
         const isActive = activeEmail && isEmailMatch(account.email, activeEmail);
-        if (!isActive && account.lastRefreshedAt) {
-          const lastRefreshed = new Date(account.lastRefreshedAt).getTime();
-          const refreshIntervalMinutes = config.getRefreshIntervalMinutes();
-          const cacheDurationMs = refreshIntervalMinutes > 0
-            ? refreshIntervalMinutes * 60 * 1000
-            : config.getCacheDurationDays() * 24 * 60 * 60 * 1000;
-          if (Date.now() - lastRefreshed < cacheDurationMs) {
-            Logger.getInstance().info(`Skipping refresh for cached account: ${account.email}`);
-            options?.onAccountStart?.(account.email);
-            options?.onAccountDone?.(account.email, account.balances, account.status);
+        if (isActive) {
+          const activeInfo = await this.getActiveAntigravityAccountInfo();
+          // Same rule as everywhere else: never copy a foreign session into a card.
+          if (await this.adoptSessionTokens(account.email, activeInfo) && activeInfo?.tokens) {
+            tokens.accessToken = activeInfo.tokens.accessToken;
+            tokens.expiresAt = activeInfo.tokens.expiresAt;
+            if (activeInfo.tokens.refreshToken) {
+              tokens.refreshToken = activeInfo.tokens.refreshToken;
+            }
+          }
+        }
+
+        // Check if access token is expiring or missing and refresh it using refreshToken
+        if (tokens.refreshToken && (tokens.expiresAt < (now + 300) || !tokens.accessToken)) {
+          try {
+            const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
+            tokens.accessToken = newTokens.accessToken;
+            tokens.expiresAt = now + newTokens.expiresIn;
+            if (newTokens.scopes?.length) tokens.scopes = newTokens.scopes;
+            await this.accountRepo.storeTokens(account.email, tokens);
+          } catch (e) {
+            if (isPermanentTokenRevocation(e)) {
+              Logger.getInstance().warn(`Skipping balance fetch for ${account.email}: refresh token permanently revoked.`);
+              await this.accountRepo.updateAccount(account.email, { status: AccountStatus.TOKEN_EXPIRED });
+              options?.onAccountDone?.(account.email, undefined, AccountStatus.TOKEN_EXPIRED);
+            } else {
+              Logger.getInstance().warn(`Skipping balance fetch for ${account.email}: transient refresh error.`);
+              options?.onAccountDone?.(account.email, account.balances, account.status);
+            }
             continue;
           }
         }
-      }
 
-      // ── Anti-Ban: Dynamic randomized delay ("medio medio": 4s a 8s) ──
-      if (accountsProcessed > 0) {
+        // Identity check: a card must never display another account's quota. Poisoned
+        // credentials (one account's tokens stored under another's name) are flagged
+        // instead of being used to query the API.
+        if (tokens.accessToken) {
+          const owner = await this.resolveTokenOwnerCached(tokens.accessToken);
+          if (owner && !isEmailMatch(owner, account.email)) {
+            Logger.getInstance().warn(`Skipping ${account.email}: its stored token belongs to ${owner}.`);
+            await this.accountRepo.updateAccount(account.email, { status: AccountStatus.TOKEN_EXPIRED });
+            options?.onAccountDone?.(account.email, account.balances, AccountStatus.TOKEN_EXPIRED);
+            continue;
+          }
+        }
+
+        // Check cancellation again before API call
         if (options?.signal?.aborted) {
-          Logger.getInstance().info('Refresh cancelled before anti-ban delay.');
+          Logger.getInstance().info('Refresh cancelled by user before API call.');
           break;
         }
 
-        // Base delay: random entre 4,000ms (4s) y 8,000ms (8s)
-        const minDelay = 4000;
-        const maxDelay = 8000;
-        let delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
-
-        // Pequeña pausa natural cada 8 a 12 cuentas (6s a 10s) para romper patrones lineales
-        if (accountsProcessed % (Math.floor(Math.random() * 5) + 8) === 0) {
-          const extraPause = Math.floor(Math.random() * (10000 - 6000 + 1)) + 6000;
-          Logger.getInstance().info(`Anti-ban: Pausa natural de ${Math.round(extraPause / 1000)}s tras procesar ${accountsProcessed} cuentas.`);
-          delay += extraPause;
-        }
-
-        const delaySec = Math.max(1, Math.round(delay / 1000));
-        Logger.getInstance().info(`Anti-ban: Esperando ${(delay / 1000).toFixed(1)}s antes de consultar ${account.email}...`);
-        options?.onAntiBanWait?.(delaySec, account.email);
-        
-        await new Promise<void>(resolve => {
-          if (options?.signal?.aborted) {
-            resolve();
-            return;
-          }
-          let timer: NodeJS.Timeout | null = null;
-          const onAbort = () => {
-            if (timer) clearTimeout(timer);
-            resolve();
-          };
-          timer = setTimeout(() => {
-            options?.signal?.removeEventListener('abort', onAbort);
-            resolve();
-          }, delay);
-          options?.signal?.addEventListener('abort', onAbort, { once: true });
+        // Fetch Balance
+        const preferredModel = await this.accountRepo.getPreferredModel();
+        let balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
+          projectId: account.projectId,
+          signal: options?.signal,
+          probeModel: preferredModel ?? undefined,
+          currentPlan: account.plan,
+          forcePlanRefresh: true
         });
 
-        if (options?.signal?.aborted) {
-          Logger.getInstance().info('Refresh cancelled during anti-ban delay.');
+        // Automatic 401 recovery: if token was rejected by Google, refresh with refreshToken and retry immediately
+        if (balanceInfo.isAuthError && tokens.refreshToken && !options?.signal?.aborted) {
+          Logger.getInstance().info(`401 Unauthorized for ${account.email}. Attempting immediate token refresh recovery...`);
+          try {
+            const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
+            tokens.accessToken = newTokens.accessToken;
+            tokens.expiresAt = Math.floor(Date.now() / 1000) + newTokens.expiresIn;
+            if (newTokens.scopes?.length) tokens.scopes = newTokens.scopes;
+            await this.accountRepo.storeTokens(account.email, tokens);
+            balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
+              projectId: account.projectId,
+              signal: options?.signal,
+              probeModel: preferredModel ?? undefined,
+              currentPlan: account.plan,
+              forcePlanRefresh: true
+            });
+          } catch (authErr) {
+            Logger.getInstance().warn(`Token recovery failed for ${account.email}`);
+            if (isPermanentTokenRevocation(authErr)) {
+              balanceInfo.status = AccountStatus.TOKEN_EXPIRED;
+              balanceInfo.isAuthError = true;
+            } else {
+              balanceInfo.status = undefined;
+              balanceInfo.isAuthError = false;
+              balanceInfo.hasError = true;
+            }
+          }
+        }
+
+        // Safety Guard: Detect Google API rate limit (429) and abort workflow immediately to protect all accounts
+        if (balanceInfo.isRateLimited && !balanceInfo.isDepleted) {
+          Logger.getInstance().warn(`Rate limit (429) detected while refreshing ${account.email}. Aborting scan to protect remaining accounts!`);
+          vscode.window.showWarningMessage('Google API rate limit detected. Refresh stopped immediately to protect accounts from being blocked.');
+          options?.onAccountDone?.(account.email, account.balances, account.status);
           break;
         }
-      }
 
-      accountsProcessed++;
+        // `balanceInfo.balances` is already the authoritative per-model map returned by
+        // fetchAvailableModels; zeroing every model here is what made a single exhausted
+        // model look like a fully depleted account (and flipped cards back to 100% on the
+        // next refresh). Keep the API values untouched.
 
-      // Notify UI: this account is starting
-      options?.onAccountStart?.(account.email);
+        await this.ensureTokenScopes(account.email, tokens);
+        const status = await this.determineAccountStatus(balanceInfo, preferredModel, tokens);
 
-      let tokens = await this.accountRepo.getTokens(account.email);
-      if (!tokens) {
-        options?.onAccountDone?.(account.email);
-        continue;
-      }
+        if (!balanceInfo.hasError) {
+          successCount++;
+        }
 
-      const now = Math.floor(Date.now() / 1000);
-      
-      // Auto-refresh token if needed before API call (for active account, sync live native session first)
-      const isActive = activeEmail && isEmailMatch(account.email, activeEmail);
-      if (isActive) {
-        const activeInfo = await this.getActiveAntigravityAccountInfo();
-        // Same rule as everywhere else: never copy a foreign session into a card.
-        if (await this.adoptSessionTokens(account.email, activeInfo) && activeInfo?.tokens) {
-          tokens.accessToken = activeInfo.tokens.accessToken;
-          tokens.expiresAt = activeInfo.tokens.expiresAt;
-          if (activeInfo.tokens.refreshToken) {
-            tokens.refreshToken = activeInfo.tokens.refreshToken;
+        const oldBalances = account.balances || {};
+        const mergedBalances = balanceInfo.isDepleted
+          ? balanceInfo.balances
+          : this.mergeBalancesPreservingResetTime(oldBalances, balanceInfo.balances);
+
+        await this.accountRepo.updateAccount(account.email, {
+          balances: mergedBalances,
+          plan: balanceInfo.plan !== AccountPlan.UNKNOWN ? balanceInfo.plan : account.plan,
+          planLabel: balanceInfo.planLabel ?? account.planLabel,
+          projectId: balanceInfo.projectId || account.projectId,
+          status: status,
+          lastRefreshedAt: new Date().toISOString()
+        });
+
+        // Notify UI: this account is done with updated data
+        options?.onAccountDone?.(account.email, mergedBalances, status);
+
+        // Trigger low balance warning native notification if enabled
+        if (config.isLowCreditNotificationsEnabled() && !balanceInfo.hasError) {
+          const i18n = I18nService.getInstance();
+          if (status === AccountStatus.DEPLETED) {
+            vscode.window.showWarningMessage(i18n.t('notifications.depleted', { email: account.email }));
+          } else if (status === AccountStatus.LOW_BALANCE) {
+            let totalCredits = 0;
+            if (preferredModel) {
+              totalCredits = getModelBalanceValue(balanceInfo.balances, preferredModel);
+            } else {
+              const values = Object.values(balanceInfo.balances);
+              totalCredits = values.reduce((sum: number, val: any) => sum + (typeof val === 'number' ? val : (val?.value || 0)), 0);
+            }
+            vscode.window.showWarningMessage(i18n.t('notifications.lowBalance', { email: account.email, amount: totalCredits }));
+          }
+        }
+
+        // Check if we need to auto-rotate
+        const isAutoRotate = ExtensionConfig.getInstance().isAutoRotateEnabled();
+        if (isAutoRotate && status === AccountStatus.DEPLETED) {
+          const activeEmail = await this.getActiveAntigravityEmail();
+          if (activeEmail && isEmailMatch(account.email, activeEmail)) {
+            Logger.getInstance().info(`Active account ${account.email} is depleted and auto-rotate is enabled.`);
+            await this.triggerAutoRotation(account.email, true);
           }
         }
       }
 
-      // Check if access token is expiring or missing and refresh it using refreshToken
-      if (tokens.refreshToken && (tokens.expiresAt < (now + 300) || !tokens.accessToken)) {
-        try {
-          const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
-          tokens.accessToken = newTokens.accessToken;
-          tokens.expiresAt = now + newTokens.expiresIn;
-          if (newTokens.scopes?.length) tokens.scopes = newTokens.scopes;
-          await this.accountRepo.storeTokens(account.email, tokens);
-        } catch(e) {
-          if (isPermanentTokenRevocation(e)) {
-            Logger.getInstance().warn(`Skipping balance fetch for ${account.email}: refresh token permanently revoked.`);
-            await this.accountRepo.updateAccount(account.email, { status: AccountStatus.TOKEN_EXPIRED });
-            options?.onAccountDone?.(account.email, undefined, AccountStatus.TOKEN_EXPIRED);
-          } else {
-            Logger.getInstance().warn(`Skipping balance fetch for ${account.email}: transient refresh error.`);
-            options?.onAccountDone?.(account.email, account.balances, account.status);
-          }
-          continue; 
+      const wasCancelled = !!options?.signal?.aborted;
+
+      if (wasCancelled) {
+        // Don't show "all refreshed" — show cancellation notice instead
+        if (notify) {
+          const i18n = I18nService.getInstance();
+          vscode.window.showInformationMessage(i18n.t('accounts.refreshCancelled'));
         }
-      }
-
-      // Identity check: a card must never display another account's quota. Poisoned
-      // credentials (one account's tokens stored under another's name) are flagged
-      // instead of being used to query the API.
-      if (tokens.accessToken) {
-        const owner = await this.resolveTokenOwnerCached(tokens.accessToken);
-        if (owner && !isEmailMatch(owner, account.email)) {
-          Logger.getInstance().warn(`Skipping ${account.email}: its stored token belongs to ${owner}.`);
-          await this.accountRepo.updateAccount(account.email, { status: AccountStatus.TOKEN_EXPIRED });
-          options?.onAccountDone?.(account.email, account.balances, AccountStatus.TOKEN_EXPIRED);
-          continue;
-        }
-      }
-
-      // Check cancellation again before API call
-      if (options?.signal?.aborted) {
-        Logger.getInstance().info('Refresh cancelled by user before API call.');
-        break;
-      }
-
-      // Fetch Balance
-      const preferredModel = await this.accountRepo.getPreferredModel();
-      let balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, { 
-        projectId: account.projectId,
-        signal: options?.signal,
-        probeModel: preferredModel ?? undefined,
-        currentPlan: account.plan,
-        forcePlanRefresh: true
-      });
-
-      // Automatic 401 recovery: if token was rejected by Google, refresh with refreshToken and retry immediately
-      if (balanceInfo.isAuthError && tokens.refreshToken && !options?.signal?.aborted) {
-        Logger.getInstance().info(`401 Unauthorized for ${account.email}. Attempting immediate token refresh recovery...`);
-        try {
-          const newTokens = await this.authService.refreshAccessToken(tokens.refreshToken);
-          tokens.accessToken = newTokens.accessToken;
-          tokens.expiresAt = Math.floor(Date.now() / 1000) + newTokens.expiresIn;
-          if (newTokens.scopes?.length) tokens.scopes = newTokens.scopes;
-          await this.accountRepo.storeTokens(account.email, tokens);
-          balanceInfo = await this.balanceService.getBalanceInfo(tokens.accessToken, {
-            projectId: account.projectId,
-            signal: options?.signal,
-            probeModel: preferredModel ?? undefined,
-            currentPlan: account.plan,
-            forcePlanRefresh: true
-          });
-        } catch (authErr) {
-          Logger.getInstance().warn(`Token recovery failed for ${account.email}`);
-          if (isPermanentTokenRevocation(authErr)) {
-            balanceInfo.status = AccountStatus.TOKEN_EXPIRED;
-            balanceInfo.isAuthError = true;
-          } else {
-            balanceInfo.status = undefined;
-            balanceInfo.isAuthError = false;
-            balanceInfo.hasError = true;
-          }
-        }
-      }
-      
-      // Safety Guard: Detect Google API rate limit (429) and abort workflow immediately to protect all accounts
-      if (balanceInfo.isRateLimited && !balanceInfo.isDepleted) {
-        Logger.getInstance().warn(`Rate limit (429) detected while refreshing ${account.email}. Aborting scan to protect remaining accounts!`);
-        vscode.window.showWarningMessage('Google API rate limit detected. Refresh stopped immediately to protect accounts from being blocked.');
-        options?.onAccountDone?.(account.email, account.balances, account.status);
-        break;
-      }
-
-      // `balanceInfo.balances` is already the authoritative per-model map returned by
-      // fetchAvailableModels; zeroing every model here is what made a single exhausted
-      // model look like a fully depleted account (and flipped cards back to 100% on the
-      // next refresh). Keep the API values untouched.
-
-      await this.ensureTokenScopes(account.email, tokens);
-      const status = await this.determineAccountStatus(balanceInfo, preferredModel, tokens);
-      
-      if (!balanceInfo.hasError) {
-        successCount++;
-      }
-
-      const oldBalances = account.balances || {};
-      const mergedBalances = balanceInfo.isDepleted 
-        ? balanceInfo.balances 
-        : this.mergeBalancesPreservingResetTime(oldBalances, balanceInfo.balances);
-
-      await this.accountRepo.updateAccount(account.email, {
-        balances: mergedBalances,
-        plan: balanceInfo.plan !== AccountPlan.UNKNOWN ? balanceInfo.plan : account.plan,
-        planLabel: balanceInfo.planLabel ?? account.planLabel,
-        projectId: balanceInfo.projectId || account.projectId,
-        status: status,
-        lastRefreshedAt: new Date().toISOString()
-      });
-
-      // Notify UI: this account is done with updated data
-      options?.onAccountDone?.(account.email, mergedBalances, status);
-
-      // Trigger low balance warning native notification if enabled
-      if (config.isLowCreditNotificationsEnabled() && !balanceInfo.hasError) {
+      } else if (notify && successCount > 0 && ExtensionConfig.getInstance().isNotificationsEnabled()) {
         const i18n = I18nService.getInstance();
-        if (status === AccountStatus.DEPLETED) {
-          vscode.window.showWarningMessage(i18n.t('notifications.depleted', { email: account.email }));
-        } else if (status === AccountStatus.LOW_BALANCE) {
-          let totalCredits = 0;
-          if (preferredModel) {
-            totalCredits = getModelBalanceValue(balanceInfo.balances, preferredModel);
-          } else {
-            const values = Object.values(balanceInfo.balances);
-            totalCredits = values.reduce((sum: number, val: any) => sum + (typeof val === 'number' ? val : (val?.value || 0)), 0);
-          }
-          vscode.window.showWarningMessage(i18n.t('notifications.lowBalance', { email: account.email, amount: totalCredits }));
-        }
+        vscode.window.showInformationMessage(i18n.t('notifications.refreshComplete'));
       }
 
-      // Check if we need to auto-rotate
-      const isAutoRotate = ExtensionConfig.getInstance().isAutoRotateEnabled();
-      if (isAutoRotate && status === AccountStatus.DEPLETED) {
-        const activeEmail = await this.getActiveAntigravityEmail();
-        if (activeEmail && isEmailMatch(account.email, activeEmail)) {
-          Logger.getInstance().info(`Active account ${account.email} is depleted and auto-rotate is enabled.`);
-          await this.triggerAutoRotation(account.email, true);
-        }
-      }
-    }
+      // Update global refresh timestamp
+      await this.accountRepo.setBalancesLastRefreshed(Date.now());
 
-    const wasCancelled = !!options?.signal?.aborted;
+      // Notify UI: all done
+      options?.onComplete?.();
 
-    if (wasCancelled) {
-      // Don't show "all refreshed" — show cancellation notice instead
-      if (notify) {
-        const i18n = I18nService.getInstance();
-        vscode.window.showInformationMessage(i18n.t('accounts.refreshCancelled'));
-      }
-    } else if (notify && successCount > 0 && ExtensionConfig.getInstance().isNotificationsEnabled()) {
-      const i18n = I18nService.getInstance();
-      vscode.window.showInformationMessage(i18n.t('notifications.refreshComplete'));
-    }
-    
-    // Update global refresh timestamp
-    await this.accountRepo.setBalancesLastRefreshed(Date.now());
-    
-    // Notify UI: all done
-    options?.onComplete?.();
-    
-    this._onAccountsChanged.fire();
-    return !wasCancelled;
+      this._onAccountsChanged.fire();
+      return !wasCancelled;
     } finally {
       this._isRefreshing = false;
     }
@@ -2146,7 +2149,7 @@ export class AccountService {
           vscode.window.showInformationMessage(i18n.t('service.reAuthSuccess', { email }));
         } catch (balErr) {
           Logger.getInstance().debug('Failed immediate balance check after re-auth', balErr);
-          this.refreshBalancesWorkflow(false).catch(() => {});
+          this.refreshBalancesWorkflow(false).catch(() => { });
         }
       });
     } catch (error: any) {
@@ -2162,7 +2165,7 @@ export class AccountService {
   async removeAccountWorkflow(email: string): Promise<void> {
     const i18n = I18nService.getInstance();
     const actionYes = i18n.t('common.delete');
-    
+
     const choice = await vscode.window.showWarningMessage(
       i18n.t('accounts.confirmDelete') + ` (${email})`,
       actionYes,
@@ -2250,8 +2253,17 @@ export class AccountService {
     }
 
     try {
-      // Immediate automatic switch and reload
-      await this.switchAccountWorkflow(nextAccount.email, { skipPrompt: true, reason: 'depleted' });
+      const tried = new Set<string>([depletedEmail.toLowerCase()]);
+      let candidate: Account | null = nextAccount;
+      for (let attempt = 0; attempt < 3 && candidate; attempt++) {
+        tried.add(candidate.email.toLowerCase());
+        const res = await this.switchAccountWorkflow(candidate.email, { skipPrompt: true, reason: 'depleted' });
+        if (res === 'success' || res === 'cancelled') {
+          break;
+        }
+        Logger.getInstance().warn(`[Auto-Switch] Candidate ${candidate.email} failed during switch; trying next healthy account...`);
+        candidate = await this.findBestAccountWithQuota(depletedEmail, tried);
+      }
     } finally {
       this._isSwitching = false;
     }

@@ -5,6 +5,17 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.74] - 2026-11-25
+
+### Arreglado
+- **Auto-reanudación de chat (`continua`) fiable en Antigravity 2.8.0:**
+  - En `chat-resume.utils.ts`: corregido el ID de extensión oficial (`google.google-antigravity` en lugar de `google.antigravity`) para esperar su activación real tras el reinicio.
+  - En `chat-resume.utils.ts`: enfocado el panel primero (`antigravity.panel.focus`) y añadido reintento con espera inteligente (`runWithRetry`) en `openConversation`, `addContext` y `triggerSend` cuando el iframe de Jetski aún está montando los handlers RPC (`ConnectError: Endpoint .../AddContext not implemented` / `Lexical editor is not found`).
+  - En `chat-transcript.utils.ts`: corregida comparación de mayúsculas (`status === 'error'` en lugar de `'ERROR'`) y ampliadas palabras clave de cuota (`individual quota`, `baseline quota`, `limit reached`, `429`).
+- **Auto-rotación más resiliente:**
+  - En `AccountService.findBestAccountWithQuota`: excluidas también cuentas en estado `ERROR` e `INELIGIBLE`.
+  - En `AccountService.triggerAutoRotation`: fallback automático hasta 3 candidatos sanos si el primer candidato falla al refrescar/inyectar credenciales.
+
 ## [0.3.73] - 2026-11-25
 
 ### Arreglado

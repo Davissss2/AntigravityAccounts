@@ -8,10 +8,14 @@ import { Logger } from './logger';
 
 export const QUOTA_KEYWORDS = [
   '503',
+  '429',
   'unavailable',
   'resource_exhausted',
   'capacity',
   'quota',
+  'individual quota',
+  'baseline quota',
+  'limit reached',
   'rate limit',
   'rate_limit',
   'no capacity available'
@@ -72,7 +76,7 @@ export function inspectTranscriptTail(transcriptPath: string): { isQuotaError: b
       const status = String(entry.status || '').toLowerCase();
       const type = String(entry.type || '').toUpperCase();
 
-      if (type === 'ERROR_MESSAGE' || status === 'ERROR') {
+      if (type === 'ERROR_MESSAGE' || status === 'error') {
         for (const kw of QUOTA_KEYWORDS) {
           if (content.includes(kw)) {
             isQuotaError = true;

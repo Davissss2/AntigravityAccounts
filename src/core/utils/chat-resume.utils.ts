@@ -203,6 +203,26 @@ export class ChatResumeUtils {
     return true;
   }
 
+  private static isRetryableIframeError(err: any): boolean {
+    const msg = `${err?.rawMessage || ''} ${err?.message || ''} ${String(err || '')}`.toLowerCase();
+    return msg.includes('not implemented') || msg.includes('not_found') || msg.includes('lexical editor') || err?.code === 5;
+  }
+
+  private static async runWithRetry(id: string, args: unknown[], maxAttempts: number, delayMs: number): Promise<boolean> {
+    const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        if (await this.runIfAvailable(id, ...args)) return true;
+        if (attempt < maxAttempts) await wait(delayMs);
+      } catch (err: any) {
+        if (!this.isRetryableIframeError(err) || attempt === maxAttempts) throw err;
+        Logger.getInstance().debug(`[ChatResume] "${id}" iframe not ready (attempt ${attempt}/${maxAttempts}), retrying...`);
+        await wait(delayMs);
+      }
+    }
+    return false;
+  }
+
   static async executePendingResume(data: PendingResumeData): Promise<void> {
     const config = ExtensionConfig.getInstance();
     if (!config.isAutoResumeChatEnabled()) {
@@ -213,15 +233,26 @@ export class ChatResumeUtils {
     const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
     try {
-      const agy = vscode.extensions.getExtension('google.antigravity');
+      const agy = vscode.extensions.getExtension('google.google-antigravity')
+        || vscode.extensions.getExtension('google.antigravity');
       if (agy && !agy.isActive) {
         await Promise.race([agy.activate(), wait(20000)]).catch(() => undefined);
       }
-      await wait(4000);
+      await wait(4500);
+
+      // Focus the Antigravity panel first so the Jetski webview iframe mounts its RPC handlers.
+      try {
+        if (await this.runIfAvailable('antigravity.panel.focus')) {
+          Logger.getInstance().info('[ChatResume] Agent panel focused.');
+        }
+      } catch (focusErr) {
+        Logger.getInstance().debug('[ChatResume] antigravity.panel.focus failed', focusErr);
+      }
+      await wait(1200);
 
       if (data.conversationId && this.conversationExists(data.conversationId)) {
         try {
-          const opened = await this.runIfAvailable('antigravity.openConversation', data.conversationId);
+          const opened = await this.runWithRetry('antigravity.openConversation', [data.conversationId], 6, 2000);
           if (opened) {
             Logger.getInstance().info(`[ChatResume] Reopened conversation ${data.conversationId}.`);
           }
@@ -233,20 +264,11 @@ export class ChatResumeUtils {
         Logger.getInstance().info('[ChatResume] No verified conversation to reopen; keeping the panel as is.');
       }
 
-      try {
-        if (await this.runIfAvailable('antigravity.panel.focus')) {
-          Logger.getInstance().info('[ChatResume] Agent panel focused.');
-        }
-      } catch (focusErr) {
-        Logger.getInstance().debug('[ChatResume] antigravity.panel.focus failed', focusErr);
-      }
-
       if (data.reason === 'depleted' && data.wasWorking && data.prompt) {
-        await wait(1200);
         try {
-          const wrote = await this.runIfAvailable('antigravity.addContext', data.prompt);
+          const wrote = await this.runWithRetry('antigravity.addContext', [data.prompt], 8, 2500);
           await wait(800);
-          const sent = wrote ? await this.runIfAvailable('antigravity.triggerSend') : false;
+          const sent = wrote ? await this.runWithRetry('antigravity.triggerSend', [], 4, 1500) : false;
           if (sent) {
             Logger.getInstance().info(`[ChatResume] Wrote "${data.prompt}" and sent it to the interrupted agent.`);
           } else {
