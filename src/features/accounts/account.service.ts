@@ -431,7 +431,7 @@ export class AccountService {
       try {
         const dbEmail = await Promise.race([
           this.stateDbService.readCurrentEmailFromDb(),
-          new Promise<undefined>(r => setTimeout(() => r(undefined), 1500))
+          new Promise<undefined>(r => setTimeout(() => r(undefined), 2500))
         ]);
         if (dbEmail) {
           return dbEmail.toLowerCase();

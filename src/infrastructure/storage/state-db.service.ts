@@ -29,6 +29,7 @@ import { DeviceProfile } from '../../core/domain/models/device-profile.model';
 import { STATE_DB_KEYS, STORAGE_JSON_KEYS, PERSONAL_EMAIL_DOMAINS, SENTINEL_KEYS } from '../../core/constants/app.constants';
 import { getAntigravityVersion, isVersionSupported, MIN_SUPPORTED_VERSION } from '../../core/utils/version.utils';
 import { ChatResumeUtils } from '../../core/utils/chat-resume.utils';
+import { AgentVaultReader } from './agent-vault.reader';
 
 export class StateDbService {
   private static sqlJsPromise: Promise<any> | null = null;
@@ -187,6 +188,7 @@ export class StateDbService {
       }
 
       // ── Step 4: Spawn background worker + close window ──
+      AgentVaultReader.clearCache();
       const triggered = await this.triggerWorkerAndClose(account.email, dbPath, rows, deviceProfile, skipPrompt, credentialPayload, reason);
       return triggered ? 'success' : 'cancelled';
 
@@ -1224,21 +1226,13 @@ inject().catch((err) => {
       return null;
     }
 
-    const email = await this.readConsistentSnapshot<string | null>((db) => {
-      // 1. Try userStatus
-      const stmt = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
-      try {
-        stmt.bind({ $key: STATE_DB_KEYS.USER_STATUS });
-        if (stmt.step()) {
-          const base64Value = stmt.get()[0] as string;
-          const extracted = base64Value ? this.extractEmailFromUserStatus(base64Value) : null;
-          if (extracted) return extracted;
-        }
-      } finally {
-        stmt.free();
-      }
+    // 1. Prioritize AGY_GLOBAL_STATE (google.google-antigravity -> agy.onboarding.lastLoginUsername)
+    // because interactive logins in Antigravity 2.x update agy globalState + OS vault ("gemini:antigravity")
+    // without overwriting the legacy antigravityUnifiedStateSync.userStatus row.
+    const snapshot = await this.readConsistentSnapshot<{ agyEmail: string | null; userStatusEmail: string | null }>((db) => {
+      let agyEmail: string | null = null;
+      let userStatusEmail: string | null = null;
 
-      // 2. Fallback: check AGY_GLOBAL_STATE (google.google-antigravity -> agy.onboarding.lastLoginUsername)
       const agyStmt = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
       try {
         agyStmt.bind({ $key: STATE_DB_KEYS.AGY_GLOBAL_STATE });
@@ -1250,7 +1244,8 @@ inject().catch((err) => {
               const storageRaw = outer['antigravity-storage'];
               const storage = typeof storageRaw === 'string' ? JSON.parse(storageRaw) : storageRaw;
               if (storage?.['agy.onboarding.lastLoginUsername']) {
-                return String(storage['agy.onboarding.lastLoginUsername']).trim().toLowerCase();
+                const candidate = String(storage['agy.onboarding.lastLoginUsername']).trim().toLowerCase();
+                if (candidate.includes('@')) agyEmail = candidate;
               }
             } catch {}
           }
@@ -1259,8 +1254,25 @@ inject().catch((err) => {
         agyStmt.free();
       }
 
-      return null;
-    }, (value) => !!value);
+      const stmt = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
+      try {
+        stmt.bind({ $key: STATE_DB_KEYS.USER_STATUS });
+        if (stmt.step()) {
+          const base64Value = stmt.get()[0] as string;
+          const extracted = base64Value ? this.extractEmailFromUserStatus(base64Value) : null;
+          if (extracted) userStatusEmail = extracted;
+        }
+      } finally {
+        stmt.free();
+      }
+
+      return { agyEmail, userStatusEmail };
+    }, (value) => !!value && (!!value.agyEmail || !!value.userStatusEmail));
+
+    // When agy globalState exists and agrees with OS vault (or vault is unavailable), it wins over stale userStatus.
+    // Checking the cached OS vault also catches CLI/hub switches that bypassed globalState.
+    const vaultCred = await AgentVaultReader.readActiveCredential().catch(() => null);
+    const email = vaultCred?.email || snapshot?.agyEmail || snapshot?.userStatusEmail || null;
 
     if (email) {
       Logger.getInstance().info(`Detected active Antigravity account: ${email}`);
@@ -1458,51 +1470,60 @@ inject().catch((err) => {
       return null;
     }
 
-    // Both rows are required for a usable answer, so a torn read is retried instead of
-    // being reported as "no session".
-    return await this.readConsistentSnapshot<{ email: string | null; tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null; avatarUrl?: string | null } | null>((db) => {
-      let email: string | null = null;
+    // Read authoritative agent credential from OS vault (cached) first:
+    // Antigravity 2.x interactive sign-in writes here and to agy globalState while
+    // leaving antigravityUnifiedStateSync.{userStatus,oauthToken} on the previous account.
+    const vaultCred = await AgentVaultReader.readActiveCredential().catch(() => null);
+
+    // Read state.vscdb snapshot for agy globalState, userStatus, oauthToken, and profileUrl.
+    const dbSnapshot = await this.readConsistentSnapshot<{
+      agyEmail: string | null;
+      userStatusEmail: string | null;
+      tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null;
+      avatarUrl?: string | null;
+    } | null>((db) => {
+      let agyEmail: string | null = null;
+      let userStatusEmail: string | null = null;
       let tokens: { accessToken: string; refreshToken: string; expiresAt: number } | null = null;
       let avatarUrl: string | null = null;
 
-      // 1. Read userStatus
+      // 1. Read AGY_GLOBAL_STATE (google.google-antigravity -> agy.onboarding.lastLoginUsername)
+      const agyStmt = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
+      try {
+        agyStmt.bind({ $key: STATE_DB_KEYS.AGY_GLOBAL_STATE });
+        if (agyStmt.step()) {
+          const raw = agyStmt.get()[0] as string;
+          if (raw) {
+            try {
+              const outer = JSON.parse(raw);
+              const storageRaw = outer['antigravity-storage'];
+              const storage = typeof storageRaw === 'string' ? JSON.parse(storageRaw) : storageRaw;
+              if (storage?.['agy.onboarding.lastLoginUsername']) {
+                const candidate = String(storage['agy.onboarding.lastLoginUsername']).trim().toLowerCase();
+                if (candidate.includes('@')) agyEmail = candidate;
+              }
+            } catch {}
+          }
+        }
+      } finally {
+        agyStmt.free();
+      }
+
+      // 2. Read userStatus
       const stmtUser = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
       try {
         stmtUser.bind({ $key: STATE_DB_KEYS.USER_STATUS });
         if (stmtUser.step()) {
           const base64Value = stmtUser.get()[0] as string;
           if (base64Value) {
-            email = this.extractEmailFromUserStatus(base64Value);
+            userStatusEmail = this.extractEmailFromUserStatus(base64Value);
           }
         }
       } finally {
         stmtUser.free();
       }
 
-      // 1.1 Fallback: check AGY_GLOBAL_STATE if userStatus is missing
-      if (!email) {
-        const agyStmt = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
-        try {
-          agyStmt.bind({ $key: STATE_DB_KEYS.AGY_GLOBAL_STATE });
-          if (agyStmt.step()) {
-            const raw = agyStmt.get()[0] as string;
-            if (raw) {
-              try {
-                const outer = JSON.parse(raw);
-                const storageRaw = outer['antigravity-storage'];
-                const storage = typeof storageRaw === 'string' ? JSON.parse(storageRaw) : storageRaw;
-                if (storage?.['agy.onboarding.lastLoginUsername']) {
-                  email = String(storage['agy.onboarding.lastLoginUsername']).trim().toLowerCase();
-                }
-              } catch {}
-            }
-          }
-        } finally {
-          agyStmt.free();
-        }
-      }
-
-      // 2. Read oauthToken
+      // 3. Read oauthToken
       const stmtToken = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
       try {
         stmtToken.bind({ $key: STATE_DB_KEYS.OAUTH_TOKEN });
@@ -1516,7 +1537,7 @@ inject().catch((err) => {
         stmtToken.free();
       }
 
-      // 3. Read profileUrl if present
+      // 4. Read profileUrl if present
       try {
         const stmtProfile = db.prepare('SELECT value FROM ItemTable WHERE key = $key');
         try {
@@ -1529,8 +1550,25 @@ inject().catch((err) => {
         }
       } catch { /* optional */ }
 
-      return { email, tokens, avatarUrl };
-    }, (value) => !!value && !!value.email && !!value.tokens);
+      return { agyEmail, userStatusEmail, tokens, avatarUrl };
+    }, (value) => !!value && (!!value.agyEmail || !!value.userStatusEmail || !!value.tokens));
+
+    const email = vaultCred?.email || dbSnapshot?.agyEmail || dbSnapshot?.userStatusEmail || null;
+    if (!email) return null;
+
+    // Never pair the live active email with a stale oauthToken from a different userStatus account.
+    const dbTokensMatchEmail = !!dbSnapshot?.tokens && (
+      !dbSnapshot.userStatusEmail || dbSnapshot.userStatusEmail.toLowerCase() === email.toLowerCase()
+    );
+    const tokens = (vaultCred && vaultCred.email.toLowerCase() === email.toLowerCase() && vaultCred.tokens)
+      ? vaultCred.tokens
+      : (dbTokensMatchEmail ? dbSnapshot!.tokens : null);
+
+    return {
+      email,
+      tokens,
+      avatarUrl: dbSnapshot?.avatarUrl ?? null
+    };
   }
 
   /**

@@ -5,6 +5,13 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.71] - 2026-11-25
+
+### Arreglado
+- **Deteccion exacta de la cuenta y cuota activa en Antigravity 2.x (OS Credential Vault + `agy.onboarding.lastLoginUsername`):**
+  - Creado nuevo modulo desacoplado `src/infrastructure/storage/agent-vault.reader.ts` + `read-cred.ps1` (multiplataforma: Windows Credential Manager `gemini:antigravity`, macOS Keychain, Linux `secret-tool` con cache TTL de 25s).
+  - En `StateDbService.readCurrentEmailFromDb` y `readActiveAccountInfoFromDb`: priorizados el almacén real del agente (`gemini:antigravity`) y `google.google-antigravity` (`agy.onboarding.lastLoginUsername`) sobre el antiguo `antigravityUnifiedStateSync.userStatus`. Cuando el usuario inicia sesión manualmente desde los Ajustes de Antigravity, el panel, la barra de estado y el polling de cuota ahora reflejan al instante la cuenta real activa sin quedar pegados a la cuenta anterior ni cruzar tokens caducados.
+
 ## [0.3.70] - 2026-11-25
 
 ### Arreglado

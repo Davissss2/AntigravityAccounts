@@ -41,10 +41,12 @@ function copySqlJs() {
 function copyCredentialHelper() {
   try {
     fs.mkdirSync('dist', { recursive: true });
-    const src = path.join(__dirname, '..', 'src', 'infrastructure', 'storage', 'write-cred.ps1');
-    if (fs.existsSync(src)) {
-      fs.copyFileSync(src, 'dist/write-cred.ps1');
-      console.log('Copied write-cred.ps1 to dist/write-cred.ps1');
+    for (const file of ['write-cred.ps1', 'read-cred.ps1']) {
+      const src = path.join(__dirname, '..', 'src', 'infrastructure', 'storage', file);
+      if (fs.existsSync(src)) {
+        fs.copyFileSync(src, path.join('dist', file));
+        console.log(`Copied ${file} to dist/${file}`);
+      }
     }
   } catch (err) {
     console.error('Failed to copy credential helper:', err.message);
@@ -172,6 +174,9 @@ function syncToIDE() {
       }
       if (fs.existsSync('dist/write-cred.ps1')) {
         fs.copyFileSync('dist/write-cred.ps1', path.join(targetDistDir, 'write-cred.ps1'));
+      }
+      if (fs.existsSync('dist/read-cred.ps1')) {
+        fs.copyFileSync('dist/read-cred.ps1', path.join(targetDistDir, 'read-cred.ps1'));
       }
       
       fs.mkdirSync(targetThemeDir, { recursive: true });
