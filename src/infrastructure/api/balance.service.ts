@@ -101,6 +101,26 @@ export class BalanceService {
 
         const prodData = prodRes.status === 'fulfilled' ? prodRes.value : null;
         const dailyData = dailyRes.status === 'fulfilled' ? dailyRes.value : null;
+        const rejections = [prodRes, dailyRes]
+          .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+          .map(r => r.reason);
+
+        if (rejections.some(e => options?.signal?.aborted || (e instanceof ApiError && e.status === 499))) {
+          result.hasError = true;
+          return result;
+        }
+        if (!prodData && !dailyData && rejections.length > 0) {
+          if (rejections.every(e => e instanceof ApiError && e.status === 401)) {
+            Logger.getInstance().warn('fetchAvailableModels rejected the access token (401).');
+            authError = true;
+            break;
+          }
+          if (rejections.some(e => e instanceof ApiError && e.status === 429)) {
+            Logger.getInstance().warn('fetchAvailableModels hit rate limit (429). Preserving quota state.');
+            rateLimited = true;
+            break;
+          }
+        }
 
         // Prioritize dailyData (staging) as it includes complete remainingFraction and newest models
         const mainData = dailyData || prodData;
@@ -143,16 +163,6 @@ export class BalanceService {
         if (options?.signal?.aborted || (e instanceof ApiError && e.status === 499)) {
           result.hasError = true;
           return result;
-        }
-        if (e instanceof ApiError && e.status === 401) {
-          Logger.getInstance().warn('fetchAvailableModels rejected the access token (401).');
-          authError = true;
-          break;
-        }
-        if (e instanceof ApiError && e.status === 429) {
-          Logger.getInstance().warn('fetchAvailableModels hit rate limit (429). Preserving quota state.');
-          rateLimited = true;
-          break;
         }
         Logger.getInstance().debug('fetchAvailableModels failed', e?.message || e);
       }

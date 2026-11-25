@@ -5,6 +5,14 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.70] - 2026-11-25
+
+### Arreglado
+- **Deteccion exacta de tokens revocados (cero falsos positivos en boton `Re-sign in`):**
+  - En `AuthService.refreshAccessToken`: parseo del cuerpo OAuth de Google (`OAuthRefreshError`) para distinguir revocacion permanente (`invalid_grant`, `unauthorized_client`, `invalid_token` en HTTP 400/401) de fallos transitorios de red/5xx.
+  - En `BalanceService.getBalanceInfo`: corregido el manejo de rechazos en `Promise.allSettled`, que antes tragaba los errores HTTP 401 y 429 impidiendo clasificar cuentas con token muerto como `TOKEN_EXPIRED`.
+  - En `AccountService` (`switchAccountWorkflow`, `refreshActiveAccountFast`, `refreshBalancesWorkflow`, `refreshSingleAccountBalance`, `ensureCredentialsBelongTo`): `AccountStatus.TOKEN_EXPIRED` (que muestra el boton `Re-sign in` en la tarjeta) se asigna unicamente cuando hay certeza absoluta de revocacion/expiracion irrecuperable, evitando falsos positivos por cortes de red.
+
 ## [0.3.69] - 2026-11-20
 
 ### Arreglado

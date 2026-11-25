@@ -6,7 +6,7 @@
  */
 
 import * as vscode from 'vscode';
-import { AuthService } from '../../infrastructure/auth/auth.service';
+import { AuthService, isPermanentTokenRevocation } from '../../infrastructure/auth/auth.service';
 import { BalanceService } from '../../infrastructure/api/balance.service';
 import { IAccountRepository } from '../../core/domain/repositories/account.repository';
 import { StateDbService } from '../../infrastructure/storage/state-db.service';
@@ -308,17 +308,21 @@ export class AccountService {
       } catch (e: any) {
         Logger.getInstance().error(`Failed to refresh token for ${email}`, e);
         const i18n = I18nService.getInstance();
-        await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
-        this._onAccountsChanged.fire();
-        const actionSignIn = i18n.t('accounts.reAuthenticate');
-        vscode.window.showErrorMessage(
-          i18n.t('service.sessionExpiredFailed', { email }),
-          actionSignIn
-        ).then(choice => {
-          if (choice === actionSignIn) {
-            this.reAuthenticateWorkflow(email);
-          }
-        });
+        if (isPermanentTokenRevocation(e)) {
+          await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
+          this._onAccountsChanged.fire();
+          const actionSignIn = i18n.t('accounts.reAuthenticate');
+          vscode.window.showErrorMessage(
+            i18n.t('service.sessionExpiredFailed', { email }),
+            actionSignIn
+          ).then(choice => {
+            if (choice === actionSignIn) {
+              this.reAuthenticateWorkflow(email);
+            }
+          });
+        } else {
+          vscode.window.showErrorMessage(i18n.t('service.switchFailed', { email }));
+        }
         return 'error';
       }
     } else if (tokens.expiresAt <= now) {
@@ -1121,6 +1125,11 @@ export class AccountService {
         await this.accountRepo.storeTokens(activeEmail, tokens);
       } catch (e) {
         Logger.getInstance().warn(`Could not refresh access token for active account ${activeEmail}`);
+        if (isPermanentTokenRevocation(e)) {
+          await this.accountRepo.updateAccount(activeEmail, { status: AccountStatus.TOKEN_EXPIRED });
+          this._onAccountsChanged.fire();
+          return await this.accountRepo.getAccount(activeEmail);
+        }
       }
     }
 
@@ -1159,6 +1168,14 @@ export class AccountService {
           });
         } catch (authErr) {
           Logger.getInstance().warn(`Fast token recovery failed for ${activeEmail}`);
+          if (isPermanentTokenRevocation(authErr)) {
+            balanceInfo.status = AccountStatus.TOKEN_EXPIRED;
+            balanceInfo.isAuthError = true;
+          } else {
+            balanceInfo.status = undefined;
+            balanceInfo.isAuthError = false;
+            balanceInfo.hasError = true;
+          }
         }
       }
 
@@ -1523,9 +1540,14 @@ export class AccountService {
           if (newTokens.scopes?.length) tokens.scopes = newTokens.scopes;
           await this.accountRepo.storeTokens(account.email, tokens);
         } catch(e) {
-          Logger.getInstance().warn(`Skipping balance fetch for ${account.email} due to expired token.`);
-          await this.accountRepo.updateAccount(account.email, { status: AccountStatus.TOKEN_EXPIRED });
-          options?.onAccountDone?.(account.email, undefined, AccountStatus.TOKEN_EXPIRED);
+          if (isPermanentTokenRevocation(e)) {
+            Logger.getInstance().warn(`Skipping balance fetch for ${account.email}: refresh token permanently revoked.`);
+            await this.accountRepo.updateAccount(account.email, { status: AccountStatus.TOKEN_EXPIRED });
+            options?.onAccountDone?.(account.email, undefined, AccountStatus.TOKEN_EXPIRED);
+          } else {
+            Logger.getInstance().warn(`Skipping balance fetch for ${account.email}: transient refresh error.`);
+            options?.onAccountDone?.(account.email, account.balances, account.status);
+          }
           continue; 
         }
       }
@@ -1573,8 +1595,14 @@ export class AccountService {
           });
         } catch (authErr) {
           Logger.getInstance().warn(`Token recovery failed for ${account.email}`);
-          balanceInfo.status = AccountStatus.TOKEN_EXPIRED;
-          balanceInfo.isAuthError = true;
+          if (isPermanentTokenRevocation(authErr)) {
+            balanceInfo.status = AccountStatus.TOKEN_EXPIRED;
+            balanceInfo.isAuthError = true;
+          } else {
+            balanceInfo.status = undefined;
+            balanceInfo.isAuthError = false;
+            balanceInfo.hasError = true;
+          }
         }
       }
       
@@ -1800,6 +1828,9 @@ export class AccountService {
         }
       } catch (refreshErr) {
         Logger.getInstance().warn(`Refresh token rejected for ${email}.`, refreshErr);
+        if (!isPermanentTokenRevocation(refreshErr) && !owner) {
+          return null;
+        }
       }
     }
 
@@ -1865,9 +1896,14 @@ export class AccountService {
         if (newTokens.scopes?.length) tokens.scopes = newTokens.scopes;
         await this.accountRepo.storeTokens(email, tokens);
       } catch (e) {
-        Logger.getInstance().warn(`Skipping balance fetch for ${email}: expired token.`);
-        await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
-        callbacks?.onDone?.(email, undefined, AccountStatus.TOKEN_EXPIRED);
+        if (isPermanentTokenRevocation(e)) {
+          Logger.getInstance().warn(`Skipping balance fetch for ${email}: refresh token permanently revoked.`);
+          await this.accountRepo.updateAccount(email, { status: AccountStatus.TOKEN_EXPIRED });
+          callbacks?.onDone?.(email, undefined, AccountStatus.TOKEN_EXPIRED);
+        } else {
+          Logger.getInstance().warn(`Skipping balance fetch for ${email}: transient refresh error.`);
+          callbacks?.onDone?.(email, account.balances, account.status);
+        }
         return;
       }
     }
@@ -1904,8 +1940,14 @@ export class AccountService {
         });
       } catch (authErr) {
         Logger.getInstance().warn(`Token recovery failed for ${email}`);
-        balanceInfo.status = AccountStatus.TOKEN_EXPIRED;
-        balanceInfo.isAuthError = true;
+        if (isPermanentTokenRevocation(authErr)) {
+          balanceInfo.status = AccountStatus.TOKEN_EXPIRED;
+          balanceInfo.isAuthError = true;
+        } else {
+          balanceInfo.status = undefined;
+          balanceInfo.isAuthError = false;
+          balanceInfo.hasError = true;
+        }
       }
     }
 

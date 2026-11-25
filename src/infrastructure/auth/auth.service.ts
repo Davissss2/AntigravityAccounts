@@ -33,6 +33,22 @@ export interface UserProfile {
   picture?: string;
 }
 
+export class OAuthRefreshError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly oauthError?: string,
+    public readonly isPermanentRevocation: boolean = false
+  ) {
+    super(message);
+    this.name = 'OAuthRefreshError';
+  }
+}
+
+export function isPermanentTokenRevocation(error: unknown): boolean {
+  return error instanceof OAuthRefreshError && error.isPermanentRevocation;
+}
+
 export class AuthService {
   private getOauthConfig(): { clientId: string; clientSecret: string } {
     const config = vscode.workspace.getConfiguration('antigravityAccount');
@@ -163,7 +179,23 @@ export class AuthService {
       });
 
       if (!response.ok) {
-        throw new Error(`Token refresh failed with status: ${response.status}`);
+        const errorText = await response.text().catch(() => '');
+        let oauthError: string | undefined;
+        try {
+          const parsed = JSON.parse(errorText);
+          if (typeof parsed?.error === 'string') {
+            oauthError = parsed.error;
+          }
+        } catch { /* non-JSON error body */ }
+        const isPermanentRevocation =
+          (response.status === 400 || response.status === 401) &&
+          (oauthError === 'invalid_grant' || oauthError === 'unauthorized_client' || oauthError === 'invalid_token');
+        throw new OAuthRefreshError(
+          `Token refresh failed with status: ${response.status}${oauthError ? ` (${oauthError})` : ''}`,
+          response.status,
+          oauthError,
+          isPermanentRevocation
+        );
       }
 
       const data = await response.json() as any;
@@ -176,6 +208,9 @@ export class AuthService {
       };
     } catch (error: any) {
       Logger.getInstance().error('Error refreshing token', error);
+      if (error instanceof OAuthRefreshError) {
+        throw error;
+      }
       throw new Error(`Failed to refresh token: ${error.message}`);
     }
   }
