@@ -18,6 +18,7 @@ import { Logger } from '../../core/utils/logger';
 
 export interface AgentVaultCredential {
   email: string;
+  writerId?: string;
   tokens: {
     accessToken: string;
     refreshToken: string;
@@ -124,7 +125,11 @@ export class AgentVaultReader {
         };
       }
 
-      return { email, tokens };
+      const writerId = typeof data?.writer_id === 'string' && data.writer_id.trim()
+        ? data.writer_id.trim()
+        : undefined;
+
+      return { email, writerId, tokens };
     } catch {
       return null;
     }

@@ -237,19 +237,33 @@ function registerCommands(
           logger.info(`Synchronized active tokens for ${currentActive} to repository (initial).`);
         } else {
           // Never overwrite a freshly refreshed token with a stale one from state.vscdb / native session.
-          // Only sync if incoming token is strictly fresher/newer, OR stored is missing refresh token and incoming has it.
+          // Sync if incoming token is strictly fresher, stored is missing refresh token, OR the IDE
+          // just obtained a brand-new refresh_token (e.g. user re-signed in via Google inside Antigravity).
+          const incomingRefresh = tokens.refreshToken?.trim() || '';
+          const storedRefresh = storedTokens.refreshToken?.trim() || '';
           const incomingIsFresher = (tokens.expiresAt || 0) > (storedTokens.expiresAt || 0) && (tokens.expiresAt || 0) > nowSec;
-          const missingStoredRefresh = !storedTokens.refreshToken && !!tokens.refreshToken;
+          const missingStoredRefresh = !storedRefresh && !!incomingRefresh;
+          const refreshTokenChanged = !!incomingRefresh && !!storedRefresh && incomingRefresh !== storedRefresh;
 
-          if (incomingIsFresher || missingStoredRefresh) {
+          if (incomingIsFresher || missingStoredRefresh || refreshTokenChanged) {
             const mergedTokens = {
               accessToken: incomingIsFresher ? tokens.accessToken : storedTokens.accessToken,
-              refreshToken: tokens.refreshToken?.trim() || storedTokens.refreshToken || '',
+              refreshToken: incomingRefresh || storedRefresh,
               expiresAt: incomingIsFresher ? tokens.expiresAt : storedTokens.expiresAt,
-              scopes: storedTokens.scopes
+              // Clear cached scopes when refresh_token changes so new scopes (e.g. aicode) are re-learned
+              scopes: refreshTokenChanged ? [] : storedTokens.scopes
             };
             await accountRepo.storeTokens(currentActive, mergedTokens);
-            logger.info(`Synchronized active tokens for ${currentActive} to repository.`);
+            if (refreshTokenChanged) {
+              const acc = await accountRepo.getAccount(currentActive);
+              if (acc && (acc.status === AccountStatus.TOKEN_EXPIRED || acc.status === AccountStatus.SCOPE_MISSING || acc.status === AccountStatus.ERROR)) {
+                await accountRepo.updateAccount(currentActive, { status: AccountStatus.ACTIVE });
+                accountService.emitAccountsChanged();
+              }
+              logger.info(`Adopted new refresh_token from IDE re-login for ${currentActive} (cleared stale scopes).`);
+            } else {
+              logger.info(`Synchronized active tokens for ${currentActive} to repository.`);
+            }
           }
         }
       }

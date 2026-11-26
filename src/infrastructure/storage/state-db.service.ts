@@ -161,7 +161,18 @@ export class StateDbService {
       // Windows generic credential "gemini:antigravity" (a plain-JSON token blob in
       // the OS vault). state.vscdb no longer drives the chat session, so writing only
       // the database left the panel on the new account while the agent kept consuming
-      // the previous one. This payload is handed to the worker, which persists it.
+      // the previous one. Preserve/generate `writer_id` to match Antigravity 2.x schema.
+      let writerId = '';
+      try {
+        const existingVault = await AgentVaultReader.readActiveCredential();
+        if (existingVault?.writerId) {
+          writerId = existingVault.writerId;
+        }
+      } catch { /* best effort */ }
+      if (!writerId) {
+        writerId = crypto.randomBytes(32).toString('base64url');
+      }
+
       const credentialPayload = {
         token: {
           access_token: tokens.accessToken,
@@ -171,7 +182,8 @@ export class StateDbService {
           expires_in: 3599
         },
         auth_method: 'consumer',
-        id_token_email: account.email
+        id_token_email: account.email,
+        writer_id: writerId
       };
 
       if (deviceProfile) {

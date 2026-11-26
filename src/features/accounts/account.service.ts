@@ -397,8 +397,46 @@ export class AccountService {
     }
     tokens = verifiedTokens;
 
-    // Ensure token scopes are recorded if available without blocking switch
-    await this.ensureTokenScopes(email, tokens).catch(() => { });
+    // Pre-switch diagnostics: resolve scopes + loadCodeAssist context in parallel without adding noticeable delay
+    const [, ctxOutcome] = await Promise.allSettled([
+      this.ensureTokenScopes(email, tokens),
+      this.balanceService.resolveAccountContext(tokens.accessToken)
+    ]);
+    const hasAicode = this.tokenHasAicodeScope(tokens);
+    Logger.getInstance().info(
+      `[Switch Pre-Check] ${email} | hasAicodeScope=${String(hasAicode)} | scopes=${(tokens.scopes || []).length}`
+    );
+    if (ctxOutcome.status === 'fulfilled' && ctxOutcome.value) {
+      const ctx = ctxOutcome.value;
+      const metaUpdates: Partial<Account> = {};
+      if (ctx.plan && ctx.plan !== AccountPlan.UNKNOWN && ctx.plan !== account.plan) {
+        metaUpdates.plan = ctx.plan;
+        metaUpdates.planLabel = ctx.planLabel;
+      }
+      if (ctx.projectId && ctx.projectId !== account.projectId) {
+        metaUpdates.projectId = ctx.projectId;
+        account.projectId = ctx.projectId;
+      }
+      if (Object.keys(metaUpdates).length > 0) {
+        await this.accountRepo.updateAccount(email, metaUpdates);
+      }
+      if (ctx.ineligibleReason) {
+        Logger.getInstance().warn(`[Switch Pre-Check] ${email} rejected by loadCodeAssist: ${ctx.ineligibleReason}`);
+        const i18n = I18nService.getInstance();
+        const actionSignIn = i18n.t('accounts.reAuthenticate');
+        const actions = ctx.validationUrl ? ['Verify in Google', actionSignIn] : [actionSignIn];
+        vscode.window.showWarningMessage(
+          `${email}: ${ctx.ineligibleReason}`,
+          ...actions
+        ).then(choice => {
+          if (choice === 'Verify in Google' && ctx.validationUrl) {
+            vscode.env.openExternal(vscode.Uri.parse(ctx.validationUrl));
+          } else if (choice === actionSignIn) {
+            this.reAuthenticateWorkflow(email);
+          }
+        });
+      }
+    }
 
     // If the switch was initiated manually, set a hold so auto-rotation won't revert it
     const isManual = !options?.reason || options.reason === 'manual';
@@ -1817,13 +1855,21 @@ export class AccountService {
     }
 
     const nowSec = Math.floor(Date.now() / 1000);
+    const stored = await this.accountRepo.getTokens(email);
+    const incomingRefresh = tokens.refreshToken?.trim() || '';
+    const storedRefresh = stored?.refreshToken?.trim() || '';
+    const refreshTokenChanged = !!incomingRefresh && incomingRefresh !== storedRefresh;
+
     if (tokens.expiresAt && tokens.expiresAt <= nowSec + 30) {
-      const stored = await this.accountRepo.getTokens(email);
-      if (stored && !stored.refreshToken && tokens.refreshToken?.trim()) {
+      if (stored && incomingRefresh && (!storedRefresh || refreshTokenChanged)) {
         await this.accountRepo.storeTokens(email, {
           ...stored,
-          refreshToken: tokens.refreshToken.trim()
+          refreshToken: incomingRefresh,
+          scopes: refreshTokenChanged ? [] : stored.scopes
         });
+        if (refreshTokenChanged) {
+          Logger.getInstance().info(`Adopted updated refresh_token from vault for ${email}.`);
+        }
       }
       return false;
     }
@@ -1834,12 +1880,11 @@ export class AccountService {
       return false;
     }
 
-    const stored = await this.accountRepo.getTokens(email);
     const mergedTokens = {
       accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken?.trim() || stored?.refreshToken || '',
+      refreshToken: incomingRefresh || storedRefresh,
       expiresAt: tokens.expiresAt || stored?.expiresAt || 0,
-      scopes: stored?.scopes
+      scopes: refreshTokenChanged ? [] : stored?.scopes
     };
 
     await this.accountRepo.storeTokens(email, mergedTokens);

@@ -38,6 +38,8 @@ export interface AccountContext {
   plan?: AccountPlan;
   planLabel?: string;
   rateLimited?: boolean;
+  ineligibleReason?: string;
+  validationUrl?: string;
 }
 
 /** Models the IDE never shows as user-facing quota (tabs, chat previews, taps). */
@@ -263,7 +265,24 @@ export class BalanceService {
           signal
         });
         if (!data) continue;
+        // Mirror Antigravity IDE out/main.js confirmUserForService() exact consumer rule:
+        // only ineligible when free-tier is NOT in allowedTiers AND IS in ineligibleTiers with a reason.
+        const allowedHasFree = Array.isArray(data.allowedTiers) &&
+          data.allowedTiers.some((t: any) => String(t?.id || '').toLowerCase() === 'free-tier');
+        const freeIneligible = Array.isArray(data.ineligibleTiers)
+          ? data.ineligibleTiers.find((t: any) => String(t?.tierId || '').toLowerCase() === 'free-tier' && !!t?.reasonMessage)
+          : undefined;
         const detected = detectAccountPlan(data);
+        if (!allowedHasFree && freeIneligible) {
+          Logger.getInstance().warn(`[loadCodeAssist] free-tier ineligible: ${freeIneligible.reasonMessage}`);
+          return {
+            projectId: data.cloudaicompanionProject || undefined,
+            plan: detected.plan,
+            planLabel: detected.planLabel,
+            ineligibleReason: String(freeIneligible.reasonMessage),
+            validationUrl: freeIneligible.validationUrl ? String(freeIneligible.validationUrl) : undefined
+          };
+        }
         if (detected.plan !== AccountPlan.UNKNOWN || data.cloudaicompanionProject) {
           return {
             projectId: data.cloudaicompanionProject || undefined,

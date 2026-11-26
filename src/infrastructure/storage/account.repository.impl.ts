@@ -170,9 +170,10 @@ export class AccountRepositoryImpl implements IAccountRepository {
       if (tokens.accessToken && tokens.accessToken.trim()) {
         await this.context.secrets.store(SECRET_KEYS.ACCESS_TOKEN(email), tokens.accessToken.trim());
       }
-      if (tokens.expiresAt || tokens.scopes?.length) {
+      const shouldClearScopes = Array.isArray(tokens.scopes) && tokens.scopes.length === 0;
+      if (tokens.expiresAt || tokens.scopes !== undefined) {
         let scopes = tokens.scopes?.length ? tokens.scopes : undefined;
-        if (!scopes) {
+        if (!scopes && !shouldClearScopes) {
           try {
             const previous = await this.context.secrets.get(SECRET_KEYS.METADATA(email));
             const parsed = previous ? JSON.parse(previous) : null;

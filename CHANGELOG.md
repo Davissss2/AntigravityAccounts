@@ -5,6 +5,15 @@ All notable changes to the "Antigravity Hub" extension will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.77] - 2026-11-26
+
+### Arreglado
+- **Inyección completa del almacén del agente (`writer_id`) y captura real de re-login en Google:**
+  - En `AgentVaultReader` y `StateDbService.injectAccountState`: preservación/generación de `writer_id` en el payload `gemini:antigravity` de escritorio (Windows/macOS/Linux), igualando exactamente el esquema nativo de Antigravity 2.8.0.
+  - En `extension.ts`, `AccountService.adoptSessionTokens` y `AccountRepositoryImpl.storeTokens`: cuando el usuario vuelve a iniciar sesión con Google desde el IDE, la extensión ahora adopta de inmediato el nuevo `refresh_token` (incluso si el `expiry` en el vault está atrasado) y limpia `scopes` cacheados obsoletos para aprender los nuevos permisos concedidos (como `aicode`), evitando bucles de re-login al reactivar la cuenta.
+- **Pre-chequeo de elegibilidad y diagnóstico de scopes al cambiar de cuenta:**
+  - En `BalanceService.resolveAccountContext` y `AccountService.switchAccountWorkflow`: comprobación fiel a `out/main.js` (`free-tier` en `ineligibleTiers` sin `free-tier` en `allowedTiers`) y registro claro de scopes/`hasAicodeScope` antes de inyectar, ofreciendo acción directa de verificación o re-autenticación si Google exige consentimiento/verificación.
+
 ## [0.3.76] - 2026-11-25
 
 ### Arreglado
